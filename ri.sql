@@ -1,0 +1,1 @@
+INSERT INTO public.roles VALUES (16, 'ministre', 'Ministre avec accès complet et pouvoir de validation final', '{"reports": true, "demandes": true, "validations": true, "acces_total": true, "supervision": true, "gestion_ministere": true, "validation_finale": true}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);

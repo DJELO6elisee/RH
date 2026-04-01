@@ -1,0 +1,55 @@
+{
+    "name": "ministere-tourisme-app",
+    "version": "1.1.0",
+    "private": false,
+    "proxy": "https://tourisme.2ise-groupe.com",
+    "dependencies": {
+        "@faker-js/faker": "^8.4.1",
+        "@floating-ui/react": "^0.26.15",
+        "bootstrap": "^5.3.8",
+        "chart.js": "^3.9.1",
+        "classnames": "^2.3.2",
+        "d3-geo": "^3.1.0",
+        "file-saver": "^2.0.5",
+        "html2canvas": "^1.4.1",
+        "jspdf": "^3.0.3",
+        "prop-types": "^15.8.1",
+        "react": "^17.0.2",
+        "react-chartjs-2": "^4.3.1",
+        "react-component-queries": "^2.3.0",
+        "react-d3-map": "^0.8.3",
+        "react-dom": "^17.0.2",
+        "react-ga": "^3.3.1",
+        "react-icons": "^4.12.0",
+        "react-notification-system": "^0.2.17",
+        "react-router": "^5.3.4",
+        "react-router-dom": "^5.3.4",
+        "react-simple-maps": "^2.3.0",
+        "react-sizeme": "^3.0.1",
+        "react-virtualized": "^9.22.5",
+        "reactstrap": "^8.10.1",
+        "victory": "^36.6.0",
+        "xlsx": "^0.18.5"
+    },
+    "devDependencies": {
+        "gh-pages": "^6.3.0",
+        "react-scripts": "^5.0.1",
+        "sass": "^1.32.0",
+        "serve": "^10.0.2"
+    },
+    "scripts": {
+        "start": "react-scripts start",
+        "prebuild": "node scripts/generate-build-id.js",
+        "build": "react-scripts build",
+        "serve": "serve -s build",
+        "deploy": "gh-pages -d build",
+        "test": "react-scripts test --env=jsdom",
+        "eject": "react-scripts eject"
+    },
+    "browserslist": [
+        ">0.2%",
+        "not dead",
+        "not ie <= 11",
+        "not op_mini all"
+    ]
+}

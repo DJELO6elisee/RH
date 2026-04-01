@@ -1,0 +1,94 @@
+=================================================================
+ORDRE D'EXÉCUTION DES SCRIPTS - SYSTÈME DE GESTION DES CONGÉS
+=================================================================
+
+📌 Ces scripts doivent être exécutés SUR LE SERVEUR DE PRODUCTION
+   (pas en local)
+
+=================================================================
+ÉTAPE 1 : INITIALISER LE SYSTÈME
+=================================================================
+
+Commande à exécuter :
+---------------------
+cd backend
+node scripts/init-systeme-conges.js
+
+Ce que ça fait :
+- Crée les tables agent_conges et jours_feries
+- Crée la fonction calculer_jours_ouvres()
+- Initialise les jours fériés de Côte d'Ivoire
+- Initialise 30 jours de congés pour tous les agents
+
+Durée : 30 secondes - 2 minutes
+
+=================================================================
+ÉTAPE 2 : ACCORDER LES PERMISSIONS
+=================================================================
+
+Option A - Via Script Node.js :
+--------------------------------
+cd backend
+node scripts/grant-permissions-conges.js
+
+Option B - Via phpPgAdmin (si le script ne fonctionne pas) :
+------------------------------------------------------------
+Exécutez ces commandes SQL dans phpPgAdmin :
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agent_conges TO "isegroup";
+GRANT USAGE, SELECT ON SEQUENCE agent_conges_id_seq TO "isegroup";
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE jours_feries TO "isegroup";
+GRANT USAGE, SELECT ON SEQUENCE jours_feries_id_seq TO "isegroup";
+GRANT EXECUTE ON FUNCTION calculer_jours_ouvres(DATE, DATE) TO "isegroup";
+
+(Remplacez "isegroup" par votre utilisateur si différent)
+
+Ce que ça fait :
+- Donne les permissions à l'utilisateur de l'application
+- Résout l'erreur "permission denied"
+
+Durée : 5 secondes
+
+=================================================================
+ÉTAPE 3 : VÉRIFIER (Optionnel)
+=================================================================
+
+Commande à exécuter :
+---------------------
+cd backend
+node scripts/test-conges-api.js
+
+Ce que ça fait :
+- Vérifie que les tables existent
+- Vérifie que les permissions sont correctes
+- Affiche un résumé
+
+Durée : 10 secondes
+
+=================================================================
+RÉSUMÉ - COMMANDES À EXÉCUTER DANS L'ORDRE
+=================================================================
+
+1. cd backend
+2. node scripts/init-systeme-conges.js
+3. node scripts/grant-permissions-conges.js
+   (OU exécutez les commandes SQL dans phpPgAdmin)
+4. node scripts/test-conges-api.js  (optionnel)
+
+=================================================================
+⚠️ IMPORTANT
+=================================================================
+
+- L'ÉTAPE 1 doit être exécutée AVANT l'ÉTAPE 2
+- L'ÉTAPE 2 nécessite des permissions SUPERUSER
+- Exécutez ces scripts sur le serveur de production, pas en local
+
+=================================================================
+✅ APRÈS L'EXÉCUTION
+=================================================================
+
+Rechargez la page de l'agent dans l'interface web.
+La section "MES CONGÉS" devrait maintenant s'afficher.
+
+=================================================================
+

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vérifier Cache</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+</head>
+<body>
+    <h1>Instructions pour vider le cache</h1>
+    <p>Ouvrez cette page et suivez les instructions ci-dessous.</p>
+    <script>
+        // Vérifier si le nouveau code est chargé
+        if (window.FORCE_RECALCUL_VERSION) {
+            console.log('✅ Nouveau code détecté:', window.FORCE_RECALCUL_VERSION);
+            alert('✅ Le nouveau code est chargé! Version: ' + window.FORCE_RECALCUL_VERSION);
+        } else {
+            console.error('❌ Ancien code détecté - Le cache est actif!');
+            alert('❌ ANCIEN CODE DÉTECTÉ - Le cache est actif!\n\nVeuillez:\n1. Vider le cache (Ctrl+Shift+Delete)\n2. Redémarrer le serveur React\n3. Recharger la page avec Ctrl+Shift+R');
+        }
+    </script>
+</body>
+</html>
+

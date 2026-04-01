@@ -1,0 +1,214 @@
+const BaseController = require('./BaseController');
+const pool = require('../config/database');
+
+class EnfantsController extends BaseController {
+    constructor() {
+        super('enfants', 'id');
+    }
+
+    // Colonnes valides pour la table enfants
+    getValidColumns() {
+        return ['id_agent', 'nom', 'prenom', 'sexe', 'date_de_naissance', 'scolarise', 'ayant_droit'];
+    }
+
+    // Créer un nouvel enfant
+    async create(req, res) {
+        try {
+            const data = req.body;
+            
+            // Filtrer les colonnes pour ne garder que les colonnes valides
+            const validColumns = this.getValidColumns();
+            const filteredData = {};
+            
+            Object.keys(data).forEach(key => {
+                if (validColumns.includes(key)) {
+                    // Gérer les valeurs booléennes
+                    if (key === 'scolarise' || key === 'ayant_droit') {
+                        filteredData[key] = data[key] !== null && data[key] !== undefined ? Boolean(data[key]) : false;
+                    } else {
+                        filteredData[key] = data[key];
+                    }
+                }
+            });
+
+            // Validation des champs obligatoires
+            if (!filteredData.id_agent || !filteredData.nom || !filteredData.prenom || !filteredData.date_de_naissance) {
+                return res.status(400).json({
+                    error: 'Les champs id_agent, nom, prenom et date_de_naissance sont obligatoires'
+                });
+            }
+
+            // Validation du sexe
+            if (filteredData.sexe && !['M', 'F'].includes(filteredData.sexe)) {
+                return res.status(400).json({
+                    error: 'Le sexe doit être "M" ou "F"'
+                });
+            }
+
+            const columns = Object.keys(filteredData);
+            const values = Object.values(filteredData);
+            const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+
+            const query = `
+                INSERT INTO enfants (${columns.join(', ')}, created_at, updated_at)
+                VALUES (${placeholders}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, values);
+            res.status(201).json({ success: true, data: result.rows[0] });
+        } catch (error) {
+            console.error('Erreur lors de la création de l\'enfant:', error);
+            
+            // Message d'erreur plus explicite
+            if (error.code === '42703') {
+                return res.status(400).json({
+                    error: `Colonne invalide: ${error.message}`
+                });
+            }
+            
+            res.status(500).json({ error: 'Erreur serveur', details: error.message });
+        }
+    }
+
+    // Mettre à jour un enfant
+    async update(req, res) {
+        try {
+            const { id } = req.params;
+            const data = req.body;
+
+            // Filtrer les colonnes pour ne garder que les colonnes valides
+            const validColumns = this.getValidColumns();
+            const filteredData = {};
+
+            Object.keys(data).forEach(key => {
+                if (validColumns.includes(key) && key !== 'id') {
+                    // Gérer les valeurs booléennes
+                    if (key === 'scolarise' || key === 'ayant_droit') {
+                        filteredData[key] = data[key] !== null && data[key] !== undefined ? Boolean(data[key]) : false;
+                    } else {
+                        filteredData[key] = data[key];
+                    }
+                }
+            });
+
+            if (Object.keys(filteredData).length === 0) {
+                return res.status(400).json({ error: 'Aucune donnée valide à mettre à jour' });
+            }
+
+            // Validation du sexe si présent
+            if (filteredData.sexe && !['M', 'F'].includes(filteredData.sexe)) {
+                return res.status(400).json({
+                    error: 'Le sexe doit être "M" ou "F"'
+                });
+            }
+
+            const columns = Object.keys(filteredData);
+            const values = Object.values(filteredData);
+            const setClause = columns.map((col, index) => `${col} = $${index + 1}`).join(', ');
+
+            const query = `
+                UPDATE enfants 
+                SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $${columns.length + 1}
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, [...values, id]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'Enfant non trouvé' });
+            }
+
+            res.json({ success: true, data: result.rows[0] });
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour de l\'enfant:', error);
+            
+            // Message d'erreur plus explicite
+            if (error.code === '42703') {
+                return res.status(400).json({
+                    error: `Colonne invalide: ${error.message}`
+                });
+            }
+            
+            res.status(500).json({ error: 'Erreur serveur', details: error.message });
+        }
+    }
+
+    // Récupérer les enfants d'un agent
+    async getByAgent(req, res) {
+        try {
+            const { agentId } = req.params;
+            console.log(`🔍 getByAgent - Récupération des enfants pour agent ID: ${agentId}`);
+            
+            const query = `
+                SELECT id, nom, prenom, sexe, date_de_naissance, 
+                       COALESCE(scolarise, false) as scolarise, 
+                       COALESCE(ayant_droit, false) as ayant_droit
+                FROM enfants
+                WHERE id_agent = $1
+                ORDER BY date_de_naissance ASC, id ASC
+            `;
+            
+            console.log(`🔍 getByAgent - Requête SQL: ${query}`);
+            console.log(`🔍 getByAgent - Paramètre agentId: ${agentId}, type: ${typeof agentId}`);
+            
+            const result = await pool.query(query, [agentId]);
+            
+            console.log(`🔍 getByAgent - Nombre d'enfants trouvés: ${result.rows.length}`);
+            console.log(`🔍 getByAgent - Enfants récupérés:`, result.rows);
+            
+            // Vérifier aussi avec une conversion explicite en entier si besoin
+            if (result.rows.length === 0) {
+                console.log(`⚠️ getByAgent - Aucun enfant trouvé avec id_agent = ${agentId}, tentative avec conversion...`);
+                
+                // Essayer avec conversion en entier
+                const agentIdInt = parseInt(agentId, 10);
+                if (!isNaN(agentIdInt)) {
+                    const resultInt = await pool.query(query, [agentIdInt]);
+                    console.log(`🔍 getByAgent - Tentative avec agentIdInt (${agentIdInt}): ${resultInt.rows.length} enfant(s) trouvé(s)`);
+                    if (resultInt.rows.length > 0) {
+                        return res.json({ success: true, data: resultInt.rows });
+                    }
+                }
+                
+                // Vérifier s'il y a des enfants dans la table avec d'autres formats
+                const checkQuery = `
+                    SELECT id, id_agent, nom, prenom, sexe, date_de_naissance
+                    FROM enfants
+                    WHERE id_agent::text = $1 OR id_agent = $2
+                    LIMIT 5
+                `;
+                const checkResult = await pool.query(checkQuery, [String(agentId), agentIdInt || agentId]);
+                console.log(`🔍 getByAgent - Vérification alternative: ${checkResult.rows.length} résultat(s)`);
+                if (checkResult.rows.length > 0) {
+                    console.log(`🔍 getByAgent - Enfants trouvés avec vérification alternative:`, checkResult.rows);
+                    const filtered = checkResult.rows.map(row => ({
+                        id: row.id,
+                        nom: row.nom,
+                        prenom: row.prenom,
+                        sexe: row.sexe,
+                        date_de_naissance: row.date_de_naissance,
+                        scolarise: row.scolarise || false,
+                        ayant_droit: row.ayant_droit || false
+                    }));
+                    return res.json({ success: true, data: filtered });
+                }
+            }
+            
+            res.json({ success: true, data: result.rows });
+        } catch (error) {
+            console.error('❌ Erreur lors de la récupération des enfants de l\'agent:', error);
+            console.error('❌ Détails de l\'erreur:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code,
+                agentId: req.params.agentId
+            });
+            res.status(500).json({ error: 'Erreur serveur', details: error.message });
+        }
+    }
+}
+
+module.exports = EnfantsController;
+

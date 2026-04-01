@@ -1,0 +1,923 @@
+// Variables pour les couleurs modernes
+$primary-color: #2c5aa0;
+$ise-color: #fb0e0e;
+$secondary-color: #1e3a5f;
+$accent-color: #4a90e2;
+$success-color: #28a745;
+$warning-color: #ffc107;
+$info-color: #17a2b8;
+$light-color: #f8f9fa;
+$dark-color: #343a40;
+$gradient-primary: linear-gradient(135deg, #2c5aa0 0%, #4a90e2 100%);
+$gradient-secondary: linear-gradient(135deg, #1e3a5f 0%, #2c5aa0 100%);
+// Page d'accueil du ministère
+.ministere-homepage {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding-top: 80px; // Compense la hauteur de la navbar fixe
+    // Navbar
+    .navbar-ministere {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        padding: 1rem 0;
+        .navbar-brand-ministere {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: $primary-color !important;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            svg {
+                color: $accent-color;
+            }
+            .brand-text-container {
+                display: inline;
+            }
+            .brand-text-full-line {
+                display: inline;
+            }
+            .brand-text-company-desktop {
+                display: inline;
+            }
+            .brand-text-second-line {
+                display: none;
+            }
+            .brand-text-abbreviation {
+                display: inline;
+            }
+            .ise-color {
+                color: $ise-color;
+                display: inline-block;
+                justify-content: center;
+                align-items: center;
+                margin-left: 0.75rem;
+                padding-left: 0.25rem;
+            }
+            .navbar-logo {
+                height: 40px;
+                width: auto;
+                object-fit: contain;
+                transition: all 0.3s ease;
+                flex-shrink: 0;
+                &:hover {
+                    transform: scale(1.05);
+                }
+            }
+        }
+        .nav-link-ministere {
+            color: $dark-color !important;
+            font-weight: 500;
+            margin: 0 0.5rem;
+            transition: all 0.3s ease;
+            border-radius: 5px;
+            padding: 0.5rem 1rem !important;
+            &:hover {
+                color: $primary-color !important;
+                background-color: rgba(44, 90, 160, 0.1);
+                transform: translateY(-2px);
+            }
+            svg {
+                margin-right: 0.25rem;
+            }
+        }
+        .btn-login {
+            background: $gradient-primary;
+            border: none;
+            color: white;
+            font-weight: 600;
+            padding: 0.5rem 1.5rem;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            &:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(44, 90, 160, 0.3);
+            }
+        }
+    }
+    // Hero Section
+    .hero-section {
+        background: transparent;
+        color: white;
+        position: relative;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+        margin: 0;
+        padding: 0;
+        left: 50%;
+        right: 50%;
+        margin-left: -50vw;
+        margin-right: -50vw;
+        // Styles pour le carrousel
+        .hero-carousel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            background: #000;
+            .hero-carousel-inner {
+                height: 100vh;
+                width: 100vw;
+                .carousel-inner {
+                    height: 100vh;
+                    width: 100vw;
+                    .carousel-item {
+                        height: 100vh;
+                        width: 100vw;
+                        &.active {
+                            opacity: 1;
+                        }
+                        &.carousel-item-prev,
+                        &.carousel-item-next {
+                            opacity: 0;
+                        }
+                    }
+                }
+                .carousel-item {
+                    height: 100vh;
+                    width: 100vw;
+                    transition: opacity 0.6s ease-in-out;
+                    &.hero-carousel-item-wrapper {
+                        height: 100vh;
+                        width: 100vw;
+                    }
+                }
+                .hero-carousel-item {
+                    position: relative;
+                    height: 100vh;
+                    width: 100vw;
+                    display: block;
+                    overflow: hidden;
+                    .hero-carousel-image {
+                        width: 100vw !important;
+                        height: 100vh !important;
+                        object-fit: cover !important;
+                        object-position: center !important;
+                        display: block !important;
+                        position: absolute !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        bottom: 0 !important;
+                        min-width: 100% !important;
+                        min-height: 100% !important;
+                        filter: brightness(1.2) contrast(1.2) saturate(1.3) !important;
+                        image-rendering: -webkit-optimize-contrast !important;
+                        image-rendering: crisp-edges !important;
+                        transform: scale(1.02) !important;
+                        z-index: 1 !important;
+                    }
+                }
+                .hero-overlay {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.3);
+                    z-index: 1;
+                }
+                // Contrôles du carrousel
+                .carousel-control-prev,
+                .carousel-control-next {
+                    z-index: 3;
+                    width: 5%;
+                    .carousel-control-prev-icon,
+                    .carousel-control-next-icon {
+                        background-color: rgba(255, 255, 255, 0.3);
+                        border-radius: 50%;
+                        width: 50px;
+                        height: 50px;
+                        backdrop-filter: blur(10px);
+                        transition: all 0.3s ease;
+                        &:hover {
+                            background-color: rgba(255, 255, 255, 0.5);
+                            transform: scale(1.1);
+                        }
+                    }
+                }
+                .carousel-control-prev {
+                    left: 2rem;
+                }
+                .carousel-control-next {
+                    right: 2rem;
+                }
+            }
+        }
+        // Overlay du contenu
+        .hero-content-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+        }
+        // Indicateurs personnalisés du carrousel
+        .carousel-indicators-custom {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            display: flex;
+            gap: 0.5rem;
+            .carousel-indicator {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                background: transparent;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                &.active {
+                    background: #ffd700;
+                    border-color: #ffd700;
+                    transform: scale(1.2);
+                }
+                &:hover {
+                    border-color: rgba(255, 255, 255, 0.8);
+                    transform: scale(1.1);
+                }
+            }
+        }
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            .hero-badge {
+                background: rgba(255, 255, 255, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                color: white;
+                font-weight: 600;
+                padding: 0.5rem 1rem;
+                border-radius: 25px;
+                backdrop-filter: blur(10px);
+            }
+            .hero-title {
+                font-size: 3.5rem;
+                font-weight: 800;
+                line-height: 1.2;
+                margin-bottom: 1.5rem;
+                .text-primary {
+                    color: #ffd700 !important;
+                }
+            }
+            .hero-subtitle {
+                font-size: 1.25rem;
+                line-height: 1.6;
+                margin-bottom: 2rem;
+                opacity: 0.9;
+            }
+            .hero-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 1rem;
+                margin-bottom: 2rem;
+                .btn {
+                    padding: 0.6rem 1.5rem;
+                    font-weight: 600;
+                    border-radius: 25px;
+                    transition: all 0.3s ease;
+                    flex: 1;
+                    min-width: 180px;
+                    font-size: 0.95rem;
+                    &:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+                    }
+                }
+                .btn-hero-primary {
+                    background: rgba(255, 255, 255, 0.95);
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                    color: $primary-color;
+                    backdrop-filter: blur(10px);
+                    &:hover {
+                        background: white;
+                        color: $primary-color;
+                        border-color: white;
+                        box-shadow: 0 8px 20px rgba(255, 255, 255, 0.3);
+                    }
+                }
+                .btn-hero-secondary {
+                    background: rgba(255, 255, 255, 0.1);
+                    border: 2px solid rgba(255, 255, 255, 0.5);
+                    color: white;
+                    backdrop-filter: blur(10px);
+                    &:hover {
+                        background: rgba(255, 255, 255, 0.2);
+                        border-color: rgba(255, 255, 255, 0.8);
+                        color: white;
+                        box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
+                    }
+                }
+            }
+        }
+        .hero-image {
+            position: relative;
+            z-index: 2;
+            .hero-stats {
+                display: flex;
+                justify-content: space-around;
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 20px;
+                padding: 2rem;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                .stat-item {
+                    text-align: center;
+                    h3 {
+                        font-size: 2.5rem;
+                        font-weight: 800;
+                        color: #ffd700;
+                        margin-bottom: 0.5rem;
+                    }
+                    p {
+                        font-size: 1rem;
+                        opacity: 0.8;
+                        margin: 0;
+                    }
+                }
+            }
+        }
+    }
+    // Services Section
+    .services-section {
+        padding: 5rem 0;
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: $primary-color;
+            margin-bottom: 1rem;
+        }
+        .section-subtitle {
+            font-size: 1.25rem;
+            color: #6c757d;
+            margin-bottom: 0;
+        }
+        .service-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            &:hover {
+                transform: translateY(-10px);
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+            }
+            .service-icon {
+                width: 80px;
+                height: 80px;
+                background: $gradient-primary;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 1.5rem;
+                svg {
+                    font-size: 2rem;
+                    color: white;
+                }
+            }
+            .card-title {
+                color: $primary-color;
+                font-weight: 700;
+                margin-bottom: 1rem;
+            }
+            .card-text {
+                color: #6c757d;
+                line-height: 1.6;
+                margin-bottom: 1.5rem;
+            }
+            .btn {
+                border-radius: 25px;
+                font-weight: 600;
+                padding: 0.5rem 1.5rem;
+                transition: all 0.3s ease;
+                &:hover {
+                    transform: translateY(-2px);
+                }
+            }
+        }
+    }
+    // News Section
+    .news-section {
+        .news-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            &:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+            }
+            .news-image {
+                height: 200px;
+                background: $gradient-primary;
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                .news-image-bg {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    object-position: center;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    z-index: 1;
+                }
+                .news-badge {
+                    position: absolute;
+                    top: 1rem;
+                    right: 1rem;
+                    font-weight: 600;
+                    padding: 0.25rem 0.75rem;
+                    border-radius: 15px;
+                    z-index: 2;
+                }
+            }
+            .card-title {
+                color: $primary-color;
+                font-weight: 700;
+                margin-bottom: 1rem;
+            }
+            .card-text {
+                color: #6c757d;
+                line-height: 1.6;
+                margin-bottom: 1rem;
+            }
+        }
+    }
+    // Stats Section
+    .stats-section {
+        background: $gradient-secondary;
+        color: white;
+        .stat-box {
+            text-align: center;
+            padding: 2rem 1rem;
+            .stat-icon {
+                font-size: 3rem;
+                color: #ffd700;
+                margin-bottom: 1rem;
+            }
+            h3 {
+                font-size: 3rem;
+                font-weight: 800;
+                color: white;
+                margin-bottom: 0.5rem;
+            }
+            p {
+                font-size: 1.1rem;
+                opacity: 0.9;
+                margin: 0;
+            }
+        }
+    }
+    // Logo Section avec image de fond
+    .logo-section {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 6rem 0;
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        
+        .logo-container {
+            position: relative;
+            z-index: 2;
+            margin-bottom: 2rem;
+            
+            .logo-ministere {
+                max-width: 280px;
+                width: 100%;
+                height: auto;
+                transition: all 0.4s ease;
+                padding: 1.2rem;
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 20px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+                animation: fadeInScale 1s ease-out;
+                
+                &:hover {
+                    transform: scale(1.05) translateY(-5px);
+                    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+                }
+            }
+            
+            .logo-drh {
+                max-width: 240px;
+                width: 100%;
+                height: auto;
+                transition: all 0.4s ease;
+                padding: 1.2rem;
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 20px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+                animation: fadeInScale 1s ease-out 0.3s both;
+                
+                &:hover {
+                    transform: scale(1.05) translateY(-5px);
+                    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+                }
+            }
+        }
+        
+        .title-container {
+            position: relative;
+            z-index: 2;
+            margin-top: 3rem;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .animated-title {
+            font-size: 2.8rem;
+            font-weight: 700;
+            color: $primary-color;
+            position: relative;
+            display: inline-block;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            text-shadow: 0 2px 10px rgba(44, 90, 160, 0.1);
+            
+            // Animation de transition pour le changement de texte
+            &.text-animation-0,
+            &.text-animation-1 {
+                animation: fadeInOut 0.5s ease-in-out, 
+                           pulse 3s ease-in-out 2.5s infinite;
+            }
+            
+            // Effet de brillance animé
+            &::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    transparent,
+                    rgba(44, 90, 160, 0.2),
+                    transparent
+                );
+                animation: shine 3s infinite;
+            }
+        }
+        
+        // Animation fade in/out pour le changement de texte
+        @keyframes fadeInOut {
+            0% {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    }
+    
+    // Animations
+    @keyframes fadeInScale {
+        from {
+            opacity: 0;
+            transform: scale(0.8);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    
+    @keyframes slideInFade {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes shine {
+        0% {
+            left: -100%;
+        }
+        50%, 100% {
+            left: 100%;
+        }
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.02);
+        }
+    }
+    
+    // Footer
+    .footer-section {
+        background: $dark-color;
+        color: white;
+        padding: 3rem 0 1rem;
+        h5 {
+            color: $accent-color;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+        p {
+            line-height: 1.6;
+            opacity: 0.8;
+        }
+        .social-links {
+            margin-top: 1rem;
+            .btn {
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.3s ease;
+                &:hover {
+                    transform: translateY(-3px);
+                    box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+                }
+            }
+        }
+        .footer-links {
+            list-style: none;
+            padding: 0;
+            li {
+                margin-bottom: 0.5rem;
+                a {
+                    color: rgba(255, 255, 255, 0.8);
+                    text-decoration: none;
+                    transition: all 0.3s ease;
+                    &:hover {
+                        color: $accent-color;
+                        padding-left: 0.5rem;
+                    }
+                }
+            }
+        }
+        .contact-info {
+            p {
+                display: flex;
+                align-items: center;
+                margin-bottom: 0.75rem;
+                svg {
+                    color: $accent-color;
+                    margin-right: 0.5rem;
+                }
+            }
+        }
+        hr {
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+    }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+    .ministere-homepage {
+        padding-top: 70px; // Ajustement pour mobile
+        .navbar-ministere {
+            padding: 0.75rem 0;
+            .navbar-brand-ministere {
+                font-size: 0.85rem;
+                line-height: 1.4;
+                display: flex;
+                align-items: flex-start;
+                flex-wrap: wrap;
+                max-width: calc(100% - 110px);
+                font-weight: 600;
+                .brand-text-container {
+                    display: flex;
+                    flex-direction: column;
+                    line-height: 1.5;
+                }
+                .brand-text-full-line {
+                    display: block;
+                    line-height: 1.5;
+                    .brand-text-company-desktop {
+                        display: none;
+                    }
+                }
+                .brand-text-second-line {
+                    display: block;
+                    line-height: 1.5;
+                    margin-top: 0.2rem;
+                    .brand-text-abbreviation {
+                        display: inline;
+                        font-size: 0.8rem;
+                        font-weight: 500;
+                        color: rgba(44, 90, 160, 0.8);
+                        margin-left: 0.3rem;
+                    }
+                }
+                .navbar-logo {
+                    height: 32px;
+                    margin-right: 0.5rem;
+                    flex-shrink: 0;
+                    margin-top: 0.1rem;
+                }
+                .ise-color {
+                    margin-left: 0.5rem;
+                    padding-left: 0;
+                    font-weight: 700;
+                }
+            }
+            .btn-login {
+                padding: 0.45rem 1.2rem;
+                font-size: 0.9rem;
+                white-space: nowrap;
+            }
+        }
+        .hero-section {
+            .hero-content {
+                .hero-title {
+                    font-size: 2.5rem;
+                }
+                .hero-buttons {
+                    flex-direction: column;
+                    .btn {
+                        width: 100%;
+                        margin-bottom: 1rem;
+                    }
+                }
+            }
+            .hero-image {
+                .hero-stats {
+                    flex-direction: column;
+                    gap: 1rem;
+                    .stat-item {
+                        h3 {
+                            font-size: 2rem;
+                        }
+                    }
+                }
+            }
+        }
+        .logo-section {
+            padding: 3rem 0;
+            min-height: 80vh;
+            
+            .logo-container {
+                margin-bottom: 1.5rem;
+                
+                .logo-ministere {
+                    max-width: 220px;
+                    padding: 1rem;
+                }
+                
+                .logo-drh {
+                    max-width: 190px;
+                    padding: 1rem;
+                }
+            }
+            
+            .title-container {
+                margin-top: 2rem;
+                padding: 1.5rem;
+            }
+            
+            .animated-title {
+                font-size: 1.8rem;
+            }
+        }
+        .services-section {
+            .service-card {
+                margin-bottom: 2rem;
+            }
+        }
+        .stats-section {
+            .stat-box {
+                margin-bottom: 2rem;
+                h3 {
+                    font-size: 2.5rem;
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 576px) {
+    .ministere-homepage {
+        .navbar-ministere {
+            padding: 0.75rem 0;
+            .navbar-brand-ministere {
+                font-size: 0.8rem;
+                line-height: 1.4;
+                display: flex;
+                align-items: flex-start;
+                flex-wrap: wrap;
+                max-width: calc(100% - 100px);
+                font-weight: 600;
+                .brand-text-container {
+                    display: flex;
+                    flex-direction: column;
+                    line-height: 1.5;
+                }
+                .brand-text-full-line {
+                    display: block;
+                    line-height: 1.5;
+                    .brand-text-company-desktop {
+                        display: none;
+                    }
+                }
+                .brand-text-second-line {
+                    display: block;
+                    line-height: 1.5;
+                    margin-top: 0.2rem;
+                    .brand-text-abbreviation {
+                        display: inline;
+                        font-size: 0.75rem;
+                        font-weight: 500;
+                        color: rgba(44, 90, 160, 0.8);
+                        margin-left: 0.3rem;
+                    }
+                }
+                .navbar-logo {
+                    height: 28px;
+                    margin-right: 0.4rem;
+                    flex-shrink: 0;
+                    margin-top: 0.1rem;
+                }
+                .ise-color {
+                    margin-left: 0.3rem;
+                    padding-left: 0;
+                    font-weight: 700;
+                }
+            }
+            .btn-login {
+                padding: 0.4rem 1rem;
+                font-size: 0.85rem;
+                white-space: nowrap;
+            }
+            .nav-link-ministere {
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.9rem;
+            }
+        }
+        .hero-section {
+            .hero-content {
+                .hero-title {
+                    font-size: 2rem;
+                }
+                .hero-subtitle {
+                    font-size: 1rem;
+                }
+            }
+        }
+        .logo-section {
+            padding: 2rem 0;
+            min-height: 70vh;
+            
+            .logo-container {
+                margin-bottom: 1rem;
+                
+                .logo-ministere {
+                    max-width: 180px;
+                    padding: 0.8rem;
+                }
+                
+                .logo-drh {
+                    max-width: 160px;
+                    padding: 0.8rem;
+                }
+            }
+            
+            .title-container {
+                margin-top: 1.5rem;
+                padding: 1rem;
+            }
+            
+            .animated-title {
+                font-size: 1.5rem;
+            }
+        }
+        .services-section {
+            .section-title {
+                font-size: 2rem;
+            }
+        }
+    }
+}
