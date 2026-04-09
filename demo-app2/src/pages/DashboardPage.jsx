@@ -150,7 +150,7 @@ class DashboardPage extends React.Component {
         }
 
         return (
-            <Page className="DashboardPage" title="Dashboard Super Admin" breadcrumbs={[{ name: 'Dashboard', active: true }]}>
+            <Page className="DashboardPage" title="Dashboard Super Admin" breadcrumbs={[{ name: 'Dashboard', active: true }]} style={{ overflowX: 'hidden' }}>
                 <Row>
                     <Col lg={3} md={6} sm={6} xs={12}>
                         <NumberWidget

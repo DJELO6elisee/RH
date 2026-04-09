@@ -564,7 +564,13 @@ class AgentsInstitutionsController {
     // Rapport hiérarchique
     async getHierarchicalReport(req, res) {
         try {
-            const { id_institution } = req.query;
+            let { id_institution } = req.query;
+            
+            // Si id_institution est un tableau (plusieurs paramètres du même nom), prendre le dernier
+            if (Array.isArray(id_institution)) {
+                id_institution = id_institution[id_institution.length - 1];
+                console.log(`⚠️ Plusieurs id_institution reçus, utilisation du dernier: ${id_institution}`);
+            }
             const userInstitutionId = await this.getUserInstitutionId(req);
             const institutionId = id_institution || userInstitutionId;
 

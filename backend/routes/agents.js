@@ -79,6 +79,9 @@ router.get('/retired', requireRoleOrAssigned, agentsController.getRetiredAgents.
 // Récupérer les agents à la retraite (date de retraite atteinte) - DOIT être avant /:id
 router.get('/retired-by-retirement', requireRoleOrAssigned, agentsController.getRetiredByRetirement.bind(agentsController));
 
+// Agents retirés avec le motif "Mise à disposition" - DOIT être avant /:id
+router.get('/mise-a-disposition', requireRoleOrAssigned, agentsController.getAgentsMiseADisposition.bind(agentsController));
+
 // Vérifier les agents déjà à la retraite selon les conditions (grade + date de naissance)
 router.get('/check-already-retired', requireRoleOrAssigned, agentsController.checkAgentsAlreadyRetired.bind(agentsController));
 

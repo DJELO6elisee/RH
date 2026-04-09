@@ -88,19 +88,19 @@ class AgentsController extends BaseController {
         try {
             const {
                 page = 1,
-                    limit = 10,
-                    search,
-                    sortBy = 'created_at',
-                    sortOrder = 'DESC',
-                    civilite,
-                    nationalite,
-                    type_agent,
-                    id_type_d_agent, // Accepter aussi ce paramètre du frontend
-                    sexe,
-                    statut_emploi,
-                    service_id, // Variable non utilisée dans la requête SQL actuelle, mais présente dans les filtres
-                    id_entite,
-                    for_select = false // Nouveau paramètre pour les listes déroulantes
+                limit = 10,
+                search,
+                sortBy = 'created_at',
+                sortOrder = 'DESC',
+                civilite,
+                nationalite,
+                type_agent,
+                id_type_d_agent, // Accepter aussi ce paramètre du frontend
+                sexe,
+                statut_emploi,
+                service_id, // Variable non utilisée dans la requête SQL actuelle, mais présente dans les filtres
+                id_entite,
+                for_select = false // Nouveau paramètre pour les listes déroulantes
             } = req.query;
 
             // Unifier les deux paramètres de type d'agent
@@ -501,8 +501,12 @@ class AgentsController extends BaseController {
                 console.log(`📁 Filtrage par sous-direction ID: ${req.query.id_sous_direction}`);
             }
 
-            // Filtrage par ministère - priorité au paramètre de requête, sinon utiliser le ministère de l'utilisateur
-            let ministereId = req.query.id_ministere || userMinistereId;
+            // Filtrer par ministère - priorité au paramètre de requête, sinon utiliser le ministère de l'utilisateur
+            let reqMinistereId = req.query.id_ministere;
+            if (Array.isArray(reqMinistereId)) {
+                reqMinistereId = reqMinistereId[reqMinistereId.length - 1];
+            }
+            let ministereId = reqMinistereId || userMinistereId;
 
             if (req.user && req.user.role && req.user.role.toLowerCase() === 'drh') {
                 ministereId = userMinistereId;
@@ -547,7 +551,7 @@ class AgentsController extends BaseController {
 
             // Exclure les agents retirés de la liste principale (si la colonne existe)
             // Vérifier si la colonne retire existe
-            const columnExists = async(tableName, columnName) => {
+            const columnExists = async (tableName, columnName) => {
                 try {
                     const result = await pool.query(
                         `SELECT EXISTS (
@@ -1746,7 +1750,8 @@ class AgentsController extends BaseController {
                     await authCodeService.saveLoginCode(agent.id, loginCode);
 
                     // Envoyer l'email avec les informations de connexion
-                    const agentWithUsername = {...agent,
+                    const agentWithUsername = {
+                        ...agent,
                         username: userCreated ? finalUsername : null
                     };
                     emailResult = await emailService.sendWelcomeEmail(agentWithUsername, loginCode, userCreated ? tempPassword : null);
@@ -2288,9 +2293,9 @@ class AgentsController extends BaseController {
             if (agentData.sous_direction_id !== undefined) {
                 const originalValue = agentData.sous_direction_id;
                 agentData.id_sous_direction = (agentData.sous_direction_id === '' ||
-                        agentData.sous_direction_id === null ||
-                        agentData.sous_direction_id === 'null' ||
-                        agentData.sous_direction_id === 'undefined') ?
+                    agentData.sous_direction_id === null ||
+                    agentData.sous_direction_id === 'null' ||
+                    agentData.sous_direction_id === 'undefined') ?
                     null :
                     Number(agentData.sous_direction_id) || null;
                 delete agentData.sous_direction_id;
@@ -2301,9 +2306,9 @@ class AgentsController extends BaseController {
             if (agentData.service_id !== undefined) {
                 const originalValue = agentData.service_id;
                 agentData.id_service = (agentData.service_id === '' ||
-                        agentData.service_id === null ||
-                        agentData.service_id === 'null' ||
-                        agentData.service_id === 'undefined') ?
+                    agentData.service_id === null ||
+                    agentData.service_id === 'null' ||
+                    agentData.service_id === 'undefined') ?
                     null :
                     Number(agentData.service_id) || null;
                 console.log(`🔧 Backend - service_id normalisé: ${originalValue} -> ${agentData.id_service}`);
@@ -2520,8 +2525,8 @@ class AgentsController extends BaseController {
                 const sousDirectionValue = ('id_sous_direction' in filteredAgentData) ?
                     filteredAgentData.id_sous_direction :
                     (agentData.id_sous_direction === '' || agentData.id_sous_direction === null || agentData.id_sous_direction === undefined || agentData.id_sous_direction === 'null' || agentData.id_sous_direction === 'undefined') ?
-                    null :
-                    Number(agentData.id_sous_direction) || null;
+                        null :
+                        Number(agentData.id_sous_direction) || null;
 
                 // S'assurer que id_sous_direction est dans filteredAgentData
                 filteredAgentData.id_sous_direction = sousDirectionValue;
@@ -3417,7 +3422,7 @@ class AgentsController extends BaseController {
             }
 
             // Fonction helper pour vérifier si une colonne existe dans une table
-            const columnExists = async(tableName, columnName) => {
+            const columnExists = async (tableName, columnName) => {
                 try {
                     const result = await pool.query(
                         `SELECT EXISTS (
@@ -3954,7 +3959,7 @@ class AgentsController extends BaseController {
             }
 
             // Fonction helper pour vérifier si une colonne existe dans une table
-            const columnExists = async(tableName, columnName) => {
+            const columnExists = async (tableName, columnName) => {
                 try {
                     const result = await pool.query(
                         `SELECT EXISTS (
@@ -4798,7 +4803,7 @@ class AgentsController extends BaseController {
     async getRetiredAgents(req, res) {
         try {
             // Vérifier si la colonne retire existe
-            const columnExists = async(tableName, columnName) => {
+            const columnExists = async (tableName, columnName) => {
                 try {
                     const result = await pool.query(
                         `SELECT EXISTS (
@@ -4852,10 +4857,10 @@ class AgentsController extends BaseController {
 
             const {
                 page = 1,
-                    limit = 10,
-                    search,
-                    sortBy = 'date_retrait',
-                    sortOrder = 'DESC'
+                limit = 10,
+                search,
+                sortBy = 'date_retrait',
+                sortOrder = 'DESC'
             } = req.query;
 
             const offset = (page - 1) * limit;
@@ -5017,7 +5022,7 @@ class AgentsController extends BaseController {
     async getRetiredByRetirement(req, res) {
         try {
             // Vérifier si la colonne retire existe
-            const columnExists = async(tableName, columnName) => {
+            const columnExists = async (tableName, columnName) => {
                 try {
                     const result = await pool.query(
                         `SELECT EXISTS (
@@ -5037,11 +5042,20 @@ class AgentsController extends BaseController {
 
             const {
                 page = 1,
-                    limit = 10,
-                    search,
-                    sortBy = 'date_retraite',
-                    sortOrder = 'DESC'
+                limit = 10,
+                search,
+                sortBy = 'date_retraite',
+                sortOrder = 'DESC'
             } = req.query;
+
+            // Filtrer par ministère
+            const userRoleLower = req.user && req.user.role ? String(req.user.role).toLowerCase() : '';
+            const userMinistereId = req.user && req.user.id_ministere ? req.user.id_ministere : null;
+            let reqMinistereId = req.query.id_ministere;
+            if (Array.isArray(reqMinistereId)) {
+                reqMinistereId = reqMinistereId[reqMinistereId.length - 1];
+            }
+            const idMinistere = userRoleLower === 'super_admin' ? reqMinistereId : (userMinistereId || reqMinistereId);
 
             const offset = (page - 1) * limit;
             let query = `
@@ -5442,9 +5456,9 @@ class AgentsController extends BaseController {
         try {
             const {
                 page = 1,
-                    limit = 100,
-                    search,
-                    onlyRetired = true // Si true, retourne seulement ceux déjà retirés
+                limit = 100,
+                search,
+                onlyRetired = true // Si true, retourne seulement ceux déjà retirés
             } = req.query;
 
             const offset = (page - 1) * limit;
@@ -5878,12 +5892,21 @@ class AgentsController extends BaseController {
         }
     }
 
+
+
     // Statistiques par type d'agent
     async getStatsByType(req, res) {
         try {
-            // Récupérer le ministère de l'utilisateur connecté
+            // Récupérer le ministère de l'utilisateur connecté ou le filtre global
             let userMinistereId = null;
-            if (req.user && req.user.id_agent) {
+            const isSuperAdmin = req.user && req.user.role && req.user.role.toLowerCase().replace(/\s+/g, '_') === 'super_admin';
+
+            if (isSuperAdmin && req.query.id_ministere) {
+                userMinistereId = Array.isArray(req.query.id_ministere)
+                    ? req.query.id_ministere[req.query.id_ministere.length - 1]
+                    : req.query.id_ministere;
+                console.log(`🔍 Stats par type - Filtre Super Admin, Ministère ID: ${userMinistereId}`);
+            } else if (!isSuperAdmin && req.user && req.user.id_agent) {
                 try {
                     const userAgentQuery = await pool.query(
                         'SELECT id_ministere FROM agents WHERE id = $1', [req.user.id_agent]
@@ -5938,9 +5961,16 @@ class AgentsController extends BaseController {
     // Statistiques par service
     async getStatsByService(req, res) {
         try {
-            // Récupérer le ministère de l'utilisateur connecté
+            // Récupérer le ministère de l'utilisateur connecté ou le filtre global
             let userMinistereId = null;
-            if (req.user && req.user.id_agent) {
+            const isSuperAdmin = req.user && req.user.role && req.user.role.toLowerCase().replace(/\s+/g, '_') === 'super_admin';
+
+            if (isSuperAdmin && req.query.id_ministere) {
+                userMinistereId = Array.isArray(req.query.id_ministere)
+                    ? req.query.id_ministere[req.query.id_ministere.length - 1]
+                    : req.query.id_ministere;
+                console.log(`🔍 Stats par service - Filtre Super Admin, Ministère ID: ${userMinistereId}`);
+            } else if (!isSuperAdmin && req.user && req.user.id_agent) {
                 try {
                     const userAgentQuery = await pool.query(
                         'SELECT id_ministere FROM agents WHERE id = $1', [req.user.id_agent]
@@ -5996,9 +6026,16 @@ class AgentsController extends BaseController {
 
     async getStatsByDirection(req, res) {
         try {
-            // Récupérer le ministère de l'utilisateur connecté
+            // Récupérer le ministère de l'utilisateur connecté ou le filtre global
             let userMinistereId = null;
-            if (req.user && req.user.id_agent) {
+            const isSuperAdmin = req.user && req.user.role && req.user.role.toLowerCase().replace(/\s+/g, '_') === 'super_admin';
+
+            if (isSuperAdmin && req.query.id_ministere) {
+                userMinistereId = Array.isArray(req.query.id_ministere)
+                    ? req.query.id_ministere[req.query.id_ministere.length - 1]
+                    : req.query.id_ministere;
+                console.log(`🔍 Stats par direction - Filtre Super Admin, Ministère ID: ${userMinistereId}`);
+            } else if (!isSuperAdmin && req.user && req.user.id_agent) {
                 try {
                     const userAgentQuery = await pool.query(
                         'SELECT id_ministere FROM agents WHERE id = $1', [req.user.id_agent]
@@ -7041,153 +7078,244 @@ class AgentsController extends BaseController {
 
     // Fonction pour générer un PDF simple avec PDFKit
     async generateFicheSignaletiquePDFKit(agent) {
-            const PDFDocument = require('pdfkit');
-            const doc = new PDFDocument({ margin: 50 });
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ margin: 50 });
 
-            // Collecter les données du PDF dans un buffer
-            const chunks = [];
-            doc.on('data', chunk => chunks.push(chunk));
+        // Collecter les données du PDF dans un buffer
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
 
-            return new Promise(async(resolve, reject) => {
-                        doc.on('end', () => {
-                            const pdfBuffer = Buffer.concat(chunks);
-                            resolve(pdfBuffer);
-                        });
+        return new Promise(async (resolve, reject) => {
+            doc.on('end', () => {
+                const pdfBuffer = Buffer.concat(chunks);
+                resolve(pdfBuffer);
+            });
 
-                        doc.on('error', reject);
+            doc.on('error', reject);
 
-                        try {
-                            // Log des données de l'agent pour débogage
-                            console.log('🔍 Données de l\'agent pour PDF:');
-                            console.log('   - Nom:', agent.nom);
-                            console.log('   - Prénoms:', agent.prenom);
-                            console.log('   - Nationalité:', agent.nationalite_libele);
-                            console.log('   - Situation matrimoniale:', agent.situation_matrimoniale_libele);
-                            console.log('   - Handicap:', agent.handicap_nom);
-                            console.log('   - Grade:', agent.grade_libele);
-                            console.log('   - Emploi:', agent.emploi_libele);
-                            console.log('   - Ministère:', agent.ministere_nom);
-                            console.log('   - Service:', agent.service_libelle);
-                            console.log('   - Type d\'agent:', agent.type_agent_libele);
-                            console.log('   - Emploi actuel:', agent.emploi_actuel);
-                            console.log('   - Fonction actuelle:', agent.fonction_actuelle);
+            try {
+                // Log des données de l'agent pour débogage
+                console.log('🔍 Données de l\'agent pour PDF:');
+                console.log('   - Nom:', agent.nom);
+                console.log('   - Prénoms:', agent.prenom);
+                console.log('   - Nationalité:', agent.nationalite_libele);
+                console.log('   - Situation matrimoniale:', agent.situation_matrimoniale_libele);
+                console.log('   - Handicap:', agent.handicap_nom);
+                console.log('   - Grade:', agent.grade_libele);
+                console.log('   - Emploi:', agent.emploi_libele);
+                console.log('   - Ministère:', agent.ministere_nom);
+                console.log('   - Service:', agent.service_libelle);
+                console.log('   - Type d\'agent:', agent.type_agent_libele);
+                console.log('   - Emploi actuel:', agent.emploi_actuel);
+                console.log('   - Fonction actuelle:', agent.fonction_actuelle);
 
-                            // En-tête officiel selon l'image
-                            const pageWidth = doc.page.width;
-                            const margin = 50;
-                            const headerY = 50;
+                // En-tête officiel selon l'image
+                const pageWidth = doc.page.width;
+                const margin = 50;
+                const headerY = 50;
 
-                            // Bloc gauche - Ministère
-                            doc.fontSize(12).font('Helvetica-Bold').text('MINISTERE DU TOURISME', margin, headerY);
-                            doc.fontSize(12).font('Helvetica-Bold').text('ET DES LOISIRS', margin, headerY + 15);
+                // Bloc gauche - Ministère
+                doc.fontSize(12).font('Helvetica-Bold').text('MINISTERE DU TOURISME', margin, headerY);
+                doc.fontSize(12).font('Helvetica-Bold').text('ET DES LOISIRS', margin, headerY + 15);
 
-                            // Ligne horizontale sous "ET DES LOISIRS"
-                            doc.moveTo(margin, headerY + 30).lineTo(margin + 80, headerY + 30).stroke();
+                // Ligne horizontale sous "ET DES LOISIRS"
+                doc.moveTo(margin, headerY + 30).lineTo(margin + 80, headerY + 30).stroke();
 
-                            doc.fontSize(12).font('Helvetica-Bold').text('DIRECTION DES RESSOURCES', margin, headerY + 40);
-                            doc.fontSize(12).font('Helvetica-Bold').text('HUMAINES', margin, headerY + 55);
+                doc.fontSize(12).font('Helvetica-Bold').text('DIRECTION DES RESSOURCES', margin, headerY + 40);
+                doc.fontSize(12).font('Helvetica-Bold').text('HUMAINES', margin, headerY + 55);
 
-                            // Ligne horizontale sous "HUMAINES"
-                            doc.moveTo(margin, headerY + 70).lineTo(margin + 80, headerY + 70).stroke();
+                // Ligne horizontale sous "HUMAINES"
+                doc.moveTo(margin, headerY + 70).lineTo(margin + 80, headerY + 70).stroke();
 
-                            // Bloc droit - République (déplacé plus à gauche pour éviter l'entremêlement)
-                            const rightBlockX = pageWidth - margin - 200; // Augmenté de 80 pixels vers la gauche
-                            doc.fontSize(12).font('Helvetica-Bold').text('REPUBLIQUE DE CÔTE D\'IVOIRE', rightBlockX, headerY, { align: 'right' });
-                            doc.fontSize(12).font('Helvetica-Bold').text('Union-Discipline-Travail', rightBlockX, headerY + 15, { align: 'right' });
+                // Bloc droit - République (déplacé plus à gauche pour éviter l'entremêlement)
+                const rightBlockX = pageWidth - margin - 200; // Augmenté de 80 pixels vers la gauche
+                doc.fontSize(12).font('Helvetica-Bold').text('REPUBLIQUE DE CÔTE D\'IVOIRE', rightBlockX, headerY, { align: 'right' });
+                doc.fontSize(12).font('Helvetica-Bold').text('Union-Discipline-Travail', rightBlockX, headerY + 15, { align: 'right' });
 
-                            // Ligne horizontale en pointillés sous "Union-Discipline-Travail" - centrée sous le texte
-                            const dashLength = 3;
-                            const dashGap = 2;
-                            const dashLineLength = 80; // Longueur de la ligne en pointillés
-                            const dashStartX = rightBlockX + (200 - dashLineLength) / 2; // Centrer la ligne sous le texte
-                            let currentX = dashStartX;
-                            while (currentX < dashStartX + dashLineLength) {
-                                doc.moveTo(currentX, headerY + 30).lineTo(currentX + dashLength, headerY + 30).stroke();
-                                currentX += dashLength + dashGap;
-                            }
+                // Ligne horizontale en pointillés sous "Union-Discipline-Travail" - centrée sous le texte
+                const dashLength = 3;
+                const dashGap = 2;
+                const dashLineLength = 80; // Longueur de la ligne en pointillés
+                const dashStartX = rightBlockX + (200 - dashLineLength) / 2; // Centrer la ligne sous le texte
+                let currentX = dashStartX;
+                while (currentX < dashStartX + dashLineLength) {
+                    doc.moveTo(currentX, headerY + 30).lineTo(currentX + dashLength, headerY + 30).stroke();
+                    currentX += dashLength + dashGap;
+                }
 
-                            // Titre central dans une boîte grise
-                            const titleBoxY = headerY + 90;
-                            const titleBoxWidth = 200;
-                            const titleBoxHeight = 40;
-                            const titleBoxX = (pageWidth - titleBoxWidth) / 2;
+                // Titre central dans une boîte grise
+                const titleBoxY = headerY + 90;
+                const titleBoxWidth = 200;
+                const titleBoxHeight = 40;
+                const titleBoxX = (pageWidth - titleBoxWidth) / 2;
 
-                            // Dessiner la boîte grise pour le titre
-                            doc.rect(titleBoxX, titleBoxY, titleBoxWidth, titleBoxHeight)
-                                .fillAndStroke('#808080', '#000000');
+                // Dessiner la boîte grise pour le titre
+                doc.rect(titleBoxX, titleBoxY, titleBoxWidth, titleBoxHeight)
+                    .fillAndStroke('#808080', '#000000');
 
-                            // Texte du titre en blanc dans la boîte
-                            doc.fillColor('white')
-                                .fontSize(14).font('Helvetica-Bold')
-                                .text('FICHE SIGNALETIQUE', titleBoxX + 10, titleBoxY + 8, {
-                                    width: titleBoxWidth - 20,
-                                    align: 'center'
-                                });
+                // Texte du titre en blanc dans la boîte
+                doc.fillColor('white')
+                    .fontSize(14).font('Helvetica-Bold')
+                    .text('FICHE SIGNALETIQUE', titleBoxX + 10, titleBoxY + 8, {
+                        width: titleBoxWidth - 20,
+                        align: 'center'
+                    });
 
-                            // Déterminer le statut selon le type d'agent
-                            const agentStatus = (agent.type_agent_libele && agent.type_agent_libele.toUpperCase() === 'FONCTIONNAIRE') ? 'AGENTS FONCTIONNAIRES' : 'AGENT NON FONCTIONNAIRE';
+                // Déterminer le statut selon le type d'agent
+                const agentStatus = (agent.type_agent_libele && agent.type_agent_libele.toUpperCase() === 'FONCTIONNAIRE') ? 'AGENTS FONCTIONNAIRES' : 'AGENT NON FONCTIONNAIRE';
 
-                            doc.fontSize(12).font('Helvetica-Bold')
-                                .text(agentStatus, titleBoxX + 10, titleBoxY + 25, {
-                                    width: titleBoxWidth - 20,
-                                    align: 'center'
-                                });
+                doc.fontSize(12).font('Helvetica-Bold')
+                    .text(agentStatus, titleBoxX + 10, titleBoxY + 25, {
+                        width: titleBoxWidth - 20,
+                        align: 'center'
+                    });
 
-                            // Remettre la couleur noire pour la suite
-                            doc.fillColor('black');
+                // Remettre la couleur noire pour la suite
+                doc.fillColor('black');
 
-                            // Positionner le curseur après l'en-tête
-                            doc.y = titleBoxY + titleBoxHeight + 30;
+                // Positionner le curseur après l'en-tête
+                doc.y = titleBoxY + titleBoxHeight + 30;
 
-                            // Position de départ pour les informations
-                            const startY = doc.y;
-                            const leftColumnX = 50;
-                            const rightColumnX = 450; // Déplacé plus à droite
+                // Position de départ pour les informations
+                const startY = doc.y;
+                const leftColumnX = 50;
+                const rightColumnX = 450; // Déplacé plus à droite
 
-                            // État Civil - titre à gauche avec espacement
-                            const etatCivilY = startY - 30; // Positionner le titre plus haut
-                            doc.fontSize(12).font('Helvetica-Bold').text('ÉTAT CIVIL', leftColumnX, etatCivilY, { underline: true });
-                            const photoSize = 100; // Hauteur augmentée
+                // État Civil - titre à gauche avec espacement
+                const etatCivilY = startY - 30; // Positionner le titre plus haut
+                doc.fontSize(12).font('Helvetica-Bold').text('ÉTAT CIVIL', leftColumnX, etatCivilY, { underline: true });
+                const photoSize = 100; // Hauteur augmentée
 
-                            // Afficher la photo de l'agent si disponible
-                            console.log(`🔍 DEBUG PHOTO - agent.photos:`, agent.photos);
-                            console.log(`🔍 DEBUG PHOTO - agent.photos.length:`, agent.photos ? agent.photos.length : 'undefined');
+                // Afficher la photo de l'agent si disponible
+                console.log(`🔍 DEBUG PHOTO - agent.photos:`, agent.photos);
+                console.log(`🔍 DEBUG PHOTO - agent.photos.length:`, agent.photos ? agent.photos.length : 'undefined');
 
-                            if (agent.photos && agent.photos.length > 0) {
+                if (agent.photos && agent.photos.length > 0) {
+                    try {
+                        const photo = agent.photos[0];
+                        console.log(`🔍 Photo trouvée: ${photo.photo_url}`);
+                        console.log(`🔍 Photo complète:`, photo);
+
+                        // Construire le chemin complet vers la photo
+                        let photoPath;
+                        const baseDir = path.join(__dirname, '..'); // Remonter au dossier backend
+
+                        if (photo.photo_url.startsWith('/uploads/')) {
+                            // Si l'URL commence par /uploads/, construire le chemin vers backend/uploads
+                            photoPath = path.join(baseDir, photo.photo_url.substring(1)); // Enlever le premier /
+                        } else if (photo.photo_url.startsWith('uploads/')) {
+                            // Si l'URL commence par uploads/, ajouter directement
+                            photoPath = path.join(baseDir, photo.photo_url);
+                        } else {
+                            // Sinon, utiliser le chemin tel quel
+                            photoPath = path.join(baseDir, photo.photo_url);
+                        }
+
+                        console.log(`🔍 Chemin de la photo: ${photoPath}`);
+                        console.log(`🔍 Répertoire backend: ${baseDir}`);
+
+                        // Vérifier si le fichier existe
+                        if (fs.existsSync(photoPath)) {
+                            // Vérifier le format de l'image
+                            const fileExtension = path.extname(photoPath).toLowerCase();
+                            console.log(`🔍 Extension du fichier: ${fileExtension}`);
+
+                            // PDFKit supporte: JPEG, PNG, GIF, TIFF, BMP
+                            const supportedFormats = ['.jpg', '.jpeg', '.png', '.gif', '.tiff', '.tif', '.bmp'];
+
+                            if (!supportedFormats.includes(fileExtension)) {
+                                console.log(`⚠️ Format ${fileExtension} détecté - Tentative de conversion vers JPEG`);
+
+                                // Créer un fichier temporaire pour la conversion
+                                const tempDir = path.join(__dirname, '..', 'temp');
+                                if (!fs.existsSync(tempDir)) {
+                                    fs.mkdirSync(tempDir, { recursive: true });
+                                }
+
+                                const convertedPath = path.join(tempDir, `converted_${Date.now()}.jpg`);
+
                                 try {
-                                    const photo = agent.photos[0];
-                                    console.log(`🔍 Photo trouvée: ${photo.photo_url}`);
-                                    console.log(`🔍 Photo complète:`, photo);
+                                    // Convertir l'image vers JPEG
+                                    const conversionSuccess = await this.convertImageToPDFSupported(photoPath, convertedPath);
 
-                                    // Construire le chemin complet vers la photo
-                                    let photoPath;
-                                    const baseDir = path.join(__dirname, '..'); // Remonter au dossier backend
+                                    if (conversionSuccess && fs.existsSync(convertedPath)) {
+                                        const imageBuffer = fs.readFileSync(convertedPath);
+                                        console.log(`📷 Taille du buffer image convertie: ${imageBuffer.length} bytes`);
 
-                                    if (photo.photo_url.startsWith('/uploads/')) {
-                                        // Si l'URL commence par /uploads/, construire le chemin vers backend/uploads
-                                        photoPath = path.join(baseDir, photo.photo_url.substring(1)); // Enlever le premier /
-                                    } else if (photo.photo_url.startsWith('uploads/')) {
-                                        // Si l'URL commence par uploads/, ajouter directement
-                                        photoPath = path.join(baseDir, photo.photo_url);
+                                        doc.image(imageBuffer, rightColumnX, startY, {
+                                            width: photoSize,
+                                            height: photoSize + 20,
+                                            fit: [photoSize, photoSize + 20],
+                                            align: 'center'
+                                        });
+                                        console.log(`✅ Photo convertie et ajoutée avec succès: ${photo.photo_url}`);
+
+                                        // Nettoyer le fichier temporaire
+                                        fs.unlinkSync(convertedPath);
                                     } else {
-                                        // Sinon, utiliser le chemin tel quel
-                                        photoPath = path.join(baseDir, photo.photo_url);
+                                        console.log(`❌ Échec de la conversion - Photo ignorée: ${photo.photo_url}`);
                                     }
+                                } catch (conversionError) {
+                                    console.log(`❌ Erreur lors de la conversion: ${conversionError.message}`);
+                                    console.log(`⚠️ Photo ignorée: ${photo.photo_url}`);
+                                }
+                            } else {
+                                try {
+                                    // Lire le fichier et l'utiliser directement avec PDFKit
+                                    const imageBuffer = fs.readFileSync(photoPath);
+                                    console.log(`📷 Taille du buffer image: ${imageBuffer.length} bytes`);
 
-                                    console.log(`🔍 Chemin de la photo: ${photoPath}`);
-                                    console.log(`🔍 Répertoire backend: ${baseDir}`);
+                                    // Ajouter l'image avec gestion d'erreur améliorée
+                                    doc.image(imageBuffer, rightColumnX, startY, {
+                                        width: photoSize,
+                                        height: photoSize + 20,
+                                        fit: [photoSize, photoSize + 20],
+                                        align: 'center'
+                                    });
+                                    console.log(`✅ Photo de l'agent ajoutée avec succès: ${photo.photo_url}`);
+                                } catch (imageError) {
+                                    console.log(`❌ Erreur lors de l'ajout de l'image: ${imageError.message}`);
+                                    console.log(`❌ Stack trace:`, imageError.stack);
+                                    console.log(`⚠️ Photo ignorée: ${photo.photo_url}`);
+                                }
+                            }
+                        } else {
+                            console.log(`⚠️ Photo non trouvée: ${photoPath}`);
+                            console.log(`⚠️ Vérification des chemins alternatifs...`);
 
-                                    // Vérifier si le fichier existe
-                                    if (fs.existsSync(photoPath)) {
-                                        // Vérifier le format de l'image
-                                        const fileExtension = path.extname(photoPath).toLowerCase();
-                                        console.log(`🔍 Extension du fichier: ${fileExtension}`);
+                            // Essayer des chemins alternatifs plus complets
+                            const alternativePaths = [
+                                // Chemins relatifs au backend
+                                path.join(baseDir, 'uploads', 'photos', path.basename(photo.photo_url)),
+                                path.join(baseDir, '..', 'uploads', 'photos', path.basename(photo.photo_url)),
+                                // Chemins avec URL complète
+                                path.join(baseDir, photo.photo_url.replace('/uploads/', 'uploads/')),
+                                // Chemins absolus possibles
+                                path.join(process.cwd(), 'backend', 'uploads', 'photos', path.basename(photo.photo_url)),
+                                path.join(process.cwd(), 'uploads', 'photos', path.basename(photo.photo_url))
+                            ];
 
-                                        // PDFKit supporte: JPEG, PNG, GIF, TIFF, BMP
+                            let photoFound = false;
+                            for (const altPath of alternativePaths) {
+                                console.log(`🔍 Test du chemin alternatif: ${altPath}`);
+                                if (fs.existsSync(altPath)) {
+                                    try {
+                                        const fileExtension = path.extname(altPath).toLowerCase();
                                         const supportedFormats = ['.jpg', '.jpeg', '.png', '.gif', '.tiff', '.tif', '.bmp'];
 
-                                        if (!supportedFormats.includes(fileExtension)) {
-                                            console.log(`⚠️ Format ${fileExtension} détecté - Tentative de conversion vers JPEG`);
+                                        if (supportedFormats.includes(fileExtension)) {
+                                            const imageBuffer = fs.readFileSync(altPath);
+                                            doc.image(imageBuffer, rightColumnX, startY, {
+                                                width: photoSize,
+                                                height: photoSize + 20,
+                                                fit: [photoSize, photoSize + 20],
+                                                align: 'center'
+                                            });
+                                            console.log(`✅ Photo trouvée avec chemin alternatif: ${altPath}`);
+                                            photoFound = true;
+                                            break;
+                                        } else {
+                                            console.log(`⚠️ Format non supporté pour le chemin alternatif: ${fileExtension} - Tentative de conversion`);
 
                                             // Créer un fichier temporaire pour la conversion
                                             const tempDir = path.join(__dirname, '..', 'temp');
@@ -7195,211 +7323,120 @@ class AgentsController extends BaseController {
                                                 fs.mkdirSync(tempDir, { recursive: true });
                                             }
 
-                                            const convertedPath = path.join(tempDir, `converted_${Date.now()}.jpg`);
+                                            const convertedPath = path.join(tempDir, `converted_alt_${Date.now()}.jpg`);
 
                                             try {
-                                                // Convertir l'image vers JPEG
-                                                const conversionSuccess = await this.convertImageToPDFSupported(photoPath, convertedPath);
+                                                const conversionSuccess = await this.convertImageToPDFSupported(altPath, convertedPath);
 
                                                 if (conversionSuccess && fs.existsSync(convertedPath)) {
                                                     const imageBuffer = fs.readFileSync(convertedPath);
-                                                    console.log(`📷 Taille du buffer image convertie: ${imageBuffer.length} bytes`);
-
                                                     doc.image(imageBuffer, rightColumnX, startY, {
                                                         width: photoSize,
                                                         height: photoSize + 20,
                                                         fit: [photoSize, photoSize + 20],
                                                         align: 'center'
                                                     });
-                                                    console.log(`✅ Photo convertie et ajoutée avec succès: ${photo.photo_url}`);
+                                                    console.log(`✅ Photo convertie trouvée avec chemin alternatif: ${altPath}`);
+                                                    photoFound = true;
 
                                                     // Nettoyer le fichier temporaire
                                                     fs.unlinkSync(convertedPath);
-                                                } else {
-                                                    console.log(`❌ Échec de la conversion - Photo ignorée: ${photo.photo_url}`);
+                                                    break;
                                                 }
                                             } catch (conversionError) {
-                                                console.log(`❌ Erreur lors de la conversion: ${conversionError.message}`);
-                                                console.log(`⚠️ Photo ignorée: ${photo.photo_url}`);
-                                            }
-                                        } else {
-                                            try {
-                                                // Lire le fichier et l'utiliser directement avec PDFKit
-                                                const imageBuffer = fs.readFileSync(photoPath);
-                                                console.log(`📷 Taille du buffer image: ${imageBuffer.length} bytes`);
-
-                                                // Ajouter l'image avec gestion d'erreur améliorée
-                                                doc.image(imageBuffer, rightColumnX, startY, {
-                                                    width: photoSize,
-                                                    height: photoSize + 20,
-                                                    fit: [photoSize, photoSize + 20],
-                                                    align: 'center'
-                                                });
-                                                console.log(`✅ Photo de l'agent ajoutée avec succès: ${photo.photo_url}`);
-                                            } catch (imageError) {
-                                                console.log(`❌ Erreur lors de l'ajout de l'image: ${imageError.message}`);
-                                                console.log(`❌ Stack trace:`, imageError.stack);
-                                                console.log(`⚠️ Photo ignorée: ${photo.photo_url}`);
+                                                console.log(`❌ Erreur lors de la conversion du chemin alternatif: ${conversionError.message}`);
                                             }
                                         }
-                                    } else {
-                                        console.log(`⚠️ Photo non trouvée: ${photoPath}`);
-                                        console.log(`⚠️ Vérification des chemins alternatifs...`);
-
-                                        // Essayer des chemins alternatifs plus complets
-                                        const alternativePaths = [
-                                            // Chemins relatifs au backend
-                                            path.join(baseDir, 'uploads', 'photos', path.basename(photo.photo_url)),
-                                            path.join(baseDir, '..', 'uploads', 'photos', path.basename(photo.photo_url)),
-                                            // Chemins avec URL complète
-                                            path.join(baseDir, photo.photo_url.replace('/uploads/', 'uploads/')),
-                                            // Chemins absolus possibles
-                                            path.join(process.cwd(), 'backend', 'uploads', 'photos', path.basename(photo.photo_url)),
-                                            path.join(process.cwd(), 'uploads', 'photos', path.basename(photo.photo_url))
-                                        ];
-
-                                        let photoFound = false;
-                                        for (const altPath of alternativePaths) {
-                                            console.log(`🔍 Test du chemin alternatif: ${altPath}`);
-                                            if (fs.existsSync(altPath)) {
-                                                try {
-                                                    const fileExtension = path.extname(altPath).toLowerCase();
-                                                    const supportedFormats = ['.jpg', '.jpeg', '.png', '.gif', '.tiff', '.tif', '.bmp'];
-
-                                                    if (supportedFormats.includes(fileExtension)) {
-                                                        const imageBuffer = fs.readFileSync(altPath);
-                                                        doc.image(imageBuffer, rightColumnX, startY, {
-                                                            width: photoSize,
-                                                            height: photoSize + 20,
-                                                            fit: [photoSize, photoSize + 20],
-                                                            align: 'center'
-                                                        });
-                                                        console.log(`✅ Photo trouvée avec chemin alternatif: ${altPath}`);
-                                                        photoFound = true;
-                                                        break;
-                                                    } else {
-                                                        console.log(`⚠️ Format non supporté pour le chemin alternatif: ${fileExtension} - Tentative de conversion`);
-
-                                                        // Créer un fichier temporaire pour la conversion
-                                                        const tempDir = path.join(__dirname, '..', 'temp');
-                                                        if (!fs.existsSync(tempDir)) {
-                                                            fs.mkdirSync(tempDir, { recursive: true });
-                                                        }
-
-                                                        const convertedPath = path.join(tempDir, `converted_alt_${Date.now()}.jpg`);
-
-                                                        try {
-                                                            const conversionSuccess = await this.convertImageToPDFSupported(altPath, convertedPath);
-
-                                                            if (conversionSuccess && fs.existsSync(convertedPath)) {
-                                                                const imageBuffer = fs.readFileSync(convertedPath);
-                                                                doc.image(imageBuffer, rightColumnX, startY, {
-                                                                    width: photoSize,
-                                                                    height: photoSize + 20,
-                                                                    fit: [photoSize, photoSize + 20],
-                                                                    align: 'center'
-                                                                });
-                                                                console.log(`✅ Photo convertie trouvée avec chemin alternatif: ${altPath}`);
-                                                                photoFound = true;
-
-                                                                // Nettoyer le fichier temporaire
-                                                                fs.unlinkSync(convertedPath);
-                                                                break;
-                                                            }
-                                                        } catch (conversionError) {
-                                                            console.log(`❌ Erreur lors de la conversion du chemin alternatif: ${conversionError.message}`);
-                                                        }
-                                                    }
-                                                } catch (imageError) {
-                                                    console.log(`❌ Erreur avec le chemin alternatif: ${imageError.message}`);
-                                                }
-                                            }
-                                        }
-
-                                        if (!photoFound) {
-                                            console.log(`⚠️ Aucun chemin alternatif n'a fonctionné`);
-                                            console.log(`⚠️ Liste des fichiers dans uploads/photos:`,
-                                                fs.existsSync(path.join(baseDir, 'uploads', 'photos')) ?
-                                                fs.readdirSync(path.join(baseDir, 'uploads', 'photos')) : 'Dossier non trouvé');
-                                        }
+                                    } catch (imageError) {
+                                        console.log(`❌ Erreur avec le chemin alternatif: ${imageError.message}`);
                                     }
-                                } catch (error) {
-                                    console.error('❌ Erreur lors de l\'ajout de la photo:', error);
-                                    console.error('❌ Stack trace:', error.stack);
                                 }
-                            } else {
-                                console.log(`⚠️ Aucune photo trouvée pour l'agent ${agent.id}`);
                             }
 
-                            // Informations personnelles (colonne de gauche)
-                            doc.fontSize(11).font('Helvetica').text(`Nom: ${agent.nom || 'N/A'}`, leftColumnX, startY);
-                            doc.text(`Prénoms: ${agent.prenom || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Date de naissance: ${agent.date_de_naissance ? new Date(agent.date_de_naissance).toLocaleDateString('fr-FR') : 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Lieu de naissance: ${agent.lieu_de_naissance || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Nationalité: ${agent.nationalite_libele || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Sexe: ${agent.sexe === 'M' ? 'Masculin' : agent.sexe === 'F' ? 'Féminin' : 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Nom du père: ${agent.nom_du_pere || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Nom de la mère: ${agent.nom_de_la_mere || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Situation matrimoniale: ${agent.situation_matrimoniale_libele || 'N/A'}`, leftColumnX, doc.y);
-                            doc.text(`Handicap: ${agent.handicap_nom || 'Aucun'}`, leftColumnX, doc.y);
-                            doc.text(`Nombre d'enfants: ${agent.nombre_enfant || '0'}`, leftColumnX, doc.y);
-
-                            // Positionner le curseur après la photo pour la suite
-                            const maxY = Math.max(doc.y, startY + photoSize + 30);
-                            doc.y = maxY;
-                            doc.moveDown();
-
-                            // Renseignements Administratifs
-                            doc.fontSize(12).font('Helvetica-Bold').text('RENSEIGNEMENTS ADMINISTRATIFS', { underline: true });
-                            doc.moveDown();
-
-                            if (agent.type_agent_libele === 'Fonctionnaire') {
-                                // Informations pour les fonctionnaires
-                                doc.fontSize(11).font('Helvetica').text(`Matricule: ${agent.matricule || 'N/A'}`);
-                                doc.text(`Grade: ${agent.grade_libele || 'N/A'}`);
-                                doc.text(`Emploi: ${agent.emploi_libele || 'N/A'}`);
-                                doc.text(`Date de nomination: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                doc.text(`Ministère d'affectation: ${agent.ministere_nom || 'N/A'}`);
-                                doc.text(`Date de départ à la retraite: ${agent.date_retraite ? new Date(agent.date_retraite).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                doc.text(`Situation militaire: ${agent.situation_militaire || 'N/A'}`);
-                                doc.text(`Date de première prise de service: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                doc.text(`Adresse personnelle: ${agent.ad_pri_rue || agent.ad_pri_ville || agent.ad_pri_batiment ? `${agent.ad_pri_rue || ''} ${agent.ad_pri_ville || ''} ${agent.ad_pri_batiment || ''}`.trim() : 'N/A'}`);
-                                doc.text(`Téléphone: ${agent.telephone1 || 'N/A'}`);
-                                doc.text(`Personne à contacter en cas de besoin: ${agent.telephone2 || 'N/A'}`);
-                                doc.text(`Email: ${agent.email || 'N/A'}`);
-                            } else {
-                                // Informations spécifiques pour les agents non fonctionnaires
-                                doc.fontSize(11).font('Helvetica').text(`Type de contrat: ${agent.type_agent_libele || 'N/A'}`);
-                                doc.text(`Matricule: ${agent.matricule || 'N/A'}`);
-                                doc.text(`Emploi: ${agent.emploi_libele || 'N/A'}`);
-                                doc.text(`Date de prise de service: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                doc.text(`Service d'affectation: ${agent.service_libelle || 'N/A'}`);
-                                doc.text(`Numéro CNPS: ${agent.numero_cnps || 'N/A'}`);
-                                doc.text(`Date de déclaration: ${agent.date_declaration_cnps ? new Date(agent.date_declaration_cnps).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                doc.text(`Adresse personnelle: ${agent.ad_pri_rue || agent.ad_pri_ville || agent.ad_pri_batiment ? `${agent.ad_pri_rue || ''} ${agent.ad_pri_ville || ''} ${agent.ad_pri_batiment || ''}`.trim() : 'N/A'}`);
-                                doc.text(`Téléphone: ${agent.telephone1 || 'N/A'}`);
-                                doc.text(`Email: ${agent.email || 'N/A'}`);
-                                doc.text(`Personne à contacter en cas de besoin: ${agent.telephone2 || 'N/A'}`);
+                            if (!photoFound) {
+                                console.log(`⚠️ Aucun chemin alternatif n'a fonctionné`);
+                                console.log(`⚠️ Liste des fichiers dans uploads/photos:`,
+                                    fs.existsSync(path.join(baseDir, 'uploads', 'photos')) ?
+                                        fs.readdirSync(path.join(baseDir, 'uploads', 'photos')) : 'Dossier non trouvé');
                             }
+                        }
+                    } catch (error) {
+                        console.error('❌ Erreur lors de l\'ajout de la photo:', error);
+                        console.error('❌ Stack trace:', error.stack);
+                    }
+                } else {
+                    console.log(`⚠️ Aucune photo trouvée pour l'agent ${agent.id}`);
+                }
 
-                            // Ajouter la section des emplois actuels
-                            if (agent.emploi_actuel) {
-                                doc.moveDown();
-                                doc.fontSize(12).font('Helvetica-Bold').text('EMPLOI ACTUEL', { underline: true });
-                                doc.moveDown();
-                                
-                                doc.fontSize(11).font('Helvetica').text(`Emploi: ${agent.emploi_actuel.emploi_libele || 'N/A'}`);
-                                doc.text(`Date de nomination: ${agent.emploi_actuel.date_entree ? new Date(agent.emploi_actuel.date_entree).toLocaleDateString('fr-FR') : 'N/A'}`);
-                                
-                                // Acte de nomination
-                                doc.moveDown();
-                                doc.fontSize(11).font('Helvetica-Bold').text(`Acte de nomination comme ${agent.emploi_actuel.emploi_libele || 'N/A'}:`, { underline: true });
-                                doc.moveDown();
-                                
-                                doc.fontSize(11).font('Helvetica').text(`Nature: ${agent.emploi_actuel.nature || 'N/A'}`);
-                                doc.text(`Numéro: ${agent.emploi_actuel.numero || 'N/A'}`);
-                                doc.text(`Date signature: ${agent.emploi_actuel.date_signature ? new Date(agent.emploi_actuel.date_signature).toLocaleDateString('fr-FR') : 'N/A'}`);
-                            }
+                // Informations personnelles (colonne de gauche)
+                doc.fontSize(11).font('Helvetica').text(`Nom: ${agent.nom || 'N/A'}`, leftColumnX, startY);
+                doc.text(`Prénoms: ${agent.prenom || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Date de naissance: ${agent.date_de_naissance ? new Date(agent.date_de_naissance).toLocaleDateString('fr-FR') : 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Lieu de naissance: ${agent.lieu_de_naissance || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Nationalité: ${agent.nationalite_libele || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Sexe: ${agent.sexe === 'M' ? 'Masculin' : agent.sexe === 'F' ? 'Féminin' : 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Nom du père: ${agent.nom_du_pere || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Nom de la mère: ${agent.nom_de_la_mere || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Situation matrimoniale: ${agent.situation_matrimoniale_libele || 'N/A'}`, leftColumnX, doc.y);
+                doc.text(`Handicap: ${agent.handicap_nom || 'Aucun'}`, leftColumnX, doc.y);
+                doc.text(`Nombre d'enfants: ${agent.nombre_enfant || '0'}`, leftColumnX, doc.y);
+
+                // Positionner le curseur après la photo pour la suite
+                const maxY = Math.max(doc.y, startY + photoSize + 30);
+                doc.y = maxY;
+                doc.moveDown();
+
+                // Renseignements Administratifs
+                doc.fontSize(12).font('Helvetica-Bold').text('RENSEIGNEMENTS ADMINISTRATIFS', { underline: true });
+                doc.moveDown();
+
+                if (agent.type_agent_libele === 'Fonctionnaire') {
+                    // Informations pour les fonctionnaires
+                    doc.fontSize(11).font('Helvetica').text(`Matricule: ${agent.matricule || 'N/A'}`);
+                    doc.text(`Grade: ${agent.grade_libele || 'N/A'}`);
+                    doc.text(`Emploi: ${agent.emploi_libele || 'N/A'}`);
+                    doc.text(`Date de nomination: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
+                    doc.text(`Ministère d'affectation: ${agent.ministere_nom || 'N/A'}`);
+                    doc.text(`Date de départ à la retraite: ${agent.date_retraite ? new Date(agent.date_retraite).toLocaleDateString('fr-FR') : 'N/A'}`);
+                    doc.text(`Situation militaire: ${agent.situation_militaire || 'N/A'}`);
+                    doc.text(`Date de première prise de service: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
+                    doc.text(`Adresse personnelle: ${agent.ad_pri_rue || agent.ad_pri_ville || agent.ad_pri_batiment ? `${agent.ad_pri_rue || ''} ${agent.ad_pri_ville || ''} ${agent.ad_pri_batiment || ''}`.trim() : 'N/A'}`);
+                    doc.text(`Téléphone: ${agent.telephone1 || 'N/A'}`);
+                    doc.text(`Personne à contacter en cas de besoin: ${agent.telephone2 || 'N/A'}`);
+                    doc.text(`Email: ${agent.email || 'N/A'}`);
+                } else {
+                    // Informations spécifiques pour les agents non fonctionnaires
+                    doc.fontSize(11).font('Helvetica').text(`Type de contrat: ${agent.type_agent_libele || 'N/A'}`);
+                    doc.text(`Matricule: ${agent.matricule || 'N/A'}`);
+                    doc.text(`Emploi: ${agent.emploi_libele || 'N/A'}`);
+                    doc.text(`Date de prise de service: ${agent.date_embauche ? new Date(agent.date_embauche).toLocaleDateString('fr-FR') : 'N/A'}`);
+                    doc.text(`Service d'affectation: ${agent.service_libelle || 'N/A'}`);
+                    doc.text(`Numéro CNPS: ${agent.numero_cnps || 'N/A'}`);
+                    doc.text(`Date de déclaration: ${agent.date_declaration_cnps ? new Date(agent.date_declaration_cnps).toLocaleDateString('fr-FR') : 'N/A'}`);
+                    doc.text(`Adresse personnelle: ${agent.ad_pri_rue || agent.ad_pri_ville || agent.ad_pri_batiment ? `${agent.ad_pri_rue || ''} ${agent.ad_pri_ville || ''} ${agent.ad_pri_batiment || ''}`.trim() : 'N/A'}`);
+                    doc.text(`Téléphone: ${agent.telephone1 || 'N/A'}`);
+                    doc.text(`Email: ${agent.email || 'N/A'}`);
+                    doc.text(`Personne à contacter en cas de besoin: ${agent.telephone2 || 'N/A'}`);
+                }
+
+                // Ajouter la section des emplois actuels
+                if (agent.emploi_actuel) {
+                    doc.moveDown();
+                    doc.fontSize(12).font('Helvetica-Bold').text('EMPLOI ACTUEL', { underline: true });
+                    doc.moveDown();
+
+                    doc.fontSize(11).font('Helvetica').text(`Emploi: ${agent.emploi_actuel.emploi_libele || 'N/A'}`);
+                    doc.text(`Date de nomination: ${agent.emploi_actuel.date_entree ? new Date(agent.emploi_actuel.date_entree).toLocaleDateString('fr-FR') : 'N/A'}`);
+
+                    // Acte de nomination
+                    doc.moveDown();
+                    doc.fontSize(11).font('Helvetica-Bold').text(`Acte de nomination comme ${agent.emploi_actuel.emploi_libele || 'N/A'}:`, { underline: true });
+                    doc.moveDown();
+
+                    doc.fontSize(11).font('Helvetica').text(`Nature: ${agent.emploi_actuel.nature || 'N/A'}`);
+                    doc.text(`Numéro: ${agent.emploi_actuel.numero || 'N/A'}`);
+                    doc.text(`Date signature: ${agent.emploi_actuel.date_signature ? new Date(agent.emploi_actuel.date_signature).toLocaleDateString('fr-FR') : 'N/A'}`);
+                }
                 doc.moveDown();
 
                 // Expérience Professionnelle
@@ -7410,15 +7447,15 @@ class AgentsController extends BaseController {
                 if (agent.fonction_actuelle) {
                     doc.fontSize(11).font('Helvetica-Bold').text('Fonctions actuelles:', { underline: true });
                     doc.moveDown();
-                    
+
                     doc.fontSize(11).font('Helvetica').text(`Date d'entrée: ${agent.fonction_actuelle.date_entree ? new Date(agent.fonction_actuelle.date_entree).toLocaleDateString('fr-FR') : 'N/A'}`);
                     doc.text(`Désignation du poste: ${agent.fonction_actuelle.designation_poste || 'N/A'}`);
                     doc.moveDown();
-                    
+
                     // Acte de nomination
                     doc.fontSize(11).font('Helvetica-Bold').text(`Acte de nomination comme ${agent.fonction_actuelle.fonction_libele || 'N/A'}:`, { underline: true });
                     doc.moveDown();
-                    
+
                     doc.fontSize(11).font('Helvetica').text(`Nature: ${agent.fonction_actuelle.nature || 'N/A'}`);
                     doc.text(`Numéro: ${agent.fonction_actuelle.numero || 'N/A'}`);
                     doc.text(`Date signature: ${agent.fonction_actuelle.date_signature ? new Date(agent.fonction_actuelle.date_signature).toLocaleDateString('fr-FR') : 'N/A'}`);
@@ -7429,8 +7466,8 @@ class AgentsController extends BaseController {
                     doc.fontSize(11).font('Helvetica').text('Aucune fonction actuelle renseignée');
                     doc.moveDown();
                 }
-                
-               
+
+
                 // Fonctions antérieures - Tableau
                 if (agent.fonctions_anterieures && agent.fonctions_anterieures.length > 0) {
                     const pageWidth = doc.page.width;
@@ -7439,23 +7476,23 @@ class AgentsController extends BaseController {
                     const xPosition = (pageWidth - textWidth) / 2;
                     doc.fontSize(12).font('Helvetica-Bold').text(titleText, xPosition, doc.y, { underline: true });
                     doc.moveDown();
-                    
+
                     // Créer un tableau pour les fonctions antérieures
                     const fonctionsTable = {
                         headers: ['Du', 'Au', 'Désignation du poste', 'Structure', 'Position admin.', 'Acte de nomination'],
                         rows: agent.fonctions_anterieures.map((fonction, index) => {
                             // La première fonction (index 0) est la fonction actuelle
                             const isCurrentFunction = index === 0;
-                            const dateSortie = isCurrentFunction ? 'En cours' : 
+                            const dateSortie = isCurrentFunction ? 'En cours' :
                                 (fonction.date_sortie ? new Date(fonction.date_sortie).toLocaleDateString('fr-FR') : 'Antérieur');
-                            
+
                             // Construire l'information de l'acte de nomination
                             const acteInfo = [];
                             if (fonction.nature) acteInfo.push(`Nature: ${fonction.nature}`);
                             if (fonction.numero) acteInfo.push(`N°: ${fonction.numero}`);
                             if (fonction.date_signature) acteInfo.push(`Date: ${new Date(fonction.date_signature).toLocaleDateString('fr-FR')}`);
                             const acteNomination = acteInfo.length > 0 ? acteInfo.join('\n') : 'N/A';
-                            
+
                             return [
                                 fonction.date_entree ? new Date(fonction.date_entree).toLocaleDateString('fr-FR') : 'N/A',
                                 dateSortie,
@@ -7466,7 +7503,7 @@ class AgentsController extends BaseController {
                             ];
                         })
                     };
-                    
+
                     // Dessiner le tableau
                     this.drawTable(doc, fonctionsTable, 50, doc.y);
                     doc.moveDown();
@@ -7483,23 +7520,23 @@ class AgentsController extends BaseController {
                     const xPosition = (pageWidth - textWidth) / 2;
                     doc.fontSize(12).font('Helvetica-Bold').text(titleText, xPosition, doc.y, { underline: true });
                     doc.moveDown();
-                    
+
                     // Créer un tableau pour les emplois antérieurs
                     const emploisTable = {
                         headers: ['Du', 'Au', 'Désignation du poste', 'Structure', 'Position admin.', 'Acte de nomination'],
                         rows: agent.emplois_anterieurs.map((emploi, index) => {
                             // Le premier emploi (index 0) est l'emploi actuel
                             const isCurrentEmploi = index === 0;
-                            const dateSortie = isCurrentEmploi ? 'En cours' : 
+                            const dateSortie = isCurrentEmploi ? 'En cours' :
                                 (emploi.date_sortie ? new Date(emploi.date_sortie).toLocaleDateString('fr-FR') : 'Antérieur');
-                            
+
                             // Construire l'information de l'acte de nomination
                             const acteInfo = [];
                             if (emploi.nature) acteInfo.push(`Nature: ${emploi.nature}`);
                             if (emploi.numero) acteInfo.push(`N°: ${emploi.numero}`);
                             if (emploi.date_signature) acteInfo.push(`Date: ${new Date(emploi.date_signature).toLocaleDateString('fr-FR')}`);
                             const acteNomination = acteInfo.length > 0 ? acteInfo.join('\n') : 'N/A';
-                            
+
                             return [
                                 emploi.date_entree ? new Date(emploi.date_entree).toLocaleDateString('fr-FR') : 'N/A',
                                 dateSortie,
@@ -7510,7 +7547,7 @@ class AgentsController extends BaseController {
                             ];
                         })
                     };
-                    
+
                     // Dessiner le tableau
                     this.drawTable(doc, emploisTable, 50, doc.y);
                     doc.moveDown();
@@ -7535,7 +7572,7 @@ class AgentsController extends BaseController {
                     const xPositionStages = (pageWidthStages - textWidthStages) / 2;
                     doc.fontSize(11).font('Helvetica-Bold').text(titleTextStages, xPositionStages, doc.y, { underline: true });
                     doc.moveDown();
-                    
+
                     agent.stages.forEach((stage, index) => {
                         doc.fontSize(11).font('Helvetica').text(`${index + 1}. ${stage.intitule_stage || 'N/A'}`);
                         doc.text(`   Établissement: ${stage.etablissement || 'N/A'}`);
@@ -7561,7 +7598,7 @@ class AgentsController extends BaseController {
                     const xPositionDiplomes = (pageWidthDiplomes - textWidthDiplomes) / 2;
                     doc.fontSize(11).font('Helvetica-Bold').text(titleTextDiplomes, xPositionDiplomes, doc.y, { underline: true });
                     doc.moveDown();
-                    
+
                     // Créer un tableau pour les diplômes
                     const diplomesTable = {
                         headers: ['Diplôme', 'École', 'Ville', 'Pays', 'Année d\'obtention'],
@@ -7573,7 +7610,7 @@ class AgentsController extends BaseController {
                             etude.date_diplome ? etude.date_diplome.toString() : 'N/A'
                         ])
                     };
-                    
+
                     // Dessiner le tableau
                     this.drawTable(doc, diplomesTable, 50, doc.y);
                     doc.moveDown();
@@ -7596,7 +7633,7 @@ class AgentsController extends BaseController {
                             langue.niveau_libele || 'N/A'
                         ])
                     };
-                    
+
                     // Dessiner le tableau
                     this.drawTable(doc, languesTable, 50, doc.y);
                     doc.moveDown();
@@ -7611,7 +7648,7 @@ class AgentsController extends BaseController {
                     doc.fontSize(12).font('Helvetica-Bold').text(titleText, xPosition, doc.y, { underline: true });
                     doc.moveDown();
 
-                    
+
                     // Créer un tableau pour les logiciels
                     const logicielsTable = {
                         headers: ['Logiciel/Outil', 'Niveau'],
@@ -7620,7 +7657,7 @@ class AgentsController extends BaseController {
                             logiciel.niveau_libele || 'N/A'
                         ])
                     };
-                    
+
                     // Dessiner le tableau
                     this.drawTable(doc, logicielsTable, 50, doc.y);
                     doc.moveDown();
@@ -7643,11 +7680,11 @@ class AgentsController extends BaseController {
     async convertImageToPDFSupported(inputPath, outputPath) {
         try {
             console.log(`🔄 Conversion de l'image: ${inputPath} vers ${outputPath}`);
-            
+
             await sharp(inputPath)
                 .jpeg({ quality: 90 }) // Convertir en JPEG avec une bonne qualité
                 .toFile(outputPath);
-            
+
             console.log(`✅ Image convertie avec succès: ${outputPath}`);
             return true;
         } catch (error) {
@@ -7663,7 +7700,7 @@ class AgentsController extends BaseController {
         const baseRowHeight = 20;
         const pageWidth = doc.page.width;
         const tableWidth = pageWidth - 100; // Marge de 50 de chaque côté
-        
+
         // Définir des largeurs de colonnes personnalisées pour une meilleure répartition
         let colWidths;
         if (headers.length === 6) { // Tableaux FONCTIONS ANTÉRIEURES et EMPLOIS ANTÉRIEURS
@@ -7681,13 +7718,13 @@ class AgentsController extends BaseController {
             // Pour les autres tableaux, utiliser une répartition égale
             colWidths = new Array(headers.length).fill(tableWidth / headers.length);
         }
-        
+
         let currentY = startY;
-        
+
         // Dessiner l'en-tête du tableau
         doc.rect(startX, currentY, tableWidth, baseRowHeight).stroke();
         doc.fontSize(11).font('Helvetica-Bold');
-        
+
         let currentCellX = startX;
         headers.forEach((header, index) => {
             const cellWidth = colWidths[index];
@@ -7699,15 +7736,15 @@ class AgentsController extends BaseController {
             });
             currentCellX += cellWidth;
         });
-        
+
         currentY += baseRowHeight;
-        
+
         // Dessiner les lignes de données
         doc.fontSize(10).font('Helvetica');
         rows.forEach((row, rowIndex) => {
             // Calculer la hauteur nécessaire pour cette ligne
             let maxCellHeight = baseRowHeight;
-            
+
             // Calculer la hauteur nécessaire pour chaque cellule
             row.forEach((cell, colIndex) => {
                 if (cell && cell !== 'N/A') {
@@ -7719,21 +7756,21 @@ class AgentsController extends BaseController {
                     maxCellHeight = Math.max(maxCellHeight, cellHeight);
                 }
             });
-            
+
             // Vérifier si on a besoin d'une nouvelle page
             if (currentY + maxCellHeight > doc.page.height - 50) {
                 doc.addPage();
                 currentY = 50;
             }
-            
+
             // Dessiner la ligne avec la hauteur calculée
             doc.rect(startX, currentY, tableWidth, maxCellHeight).stroke();
-            
+
             let currentCellX = startX;
             row.forEach((cell, colIndex) => {
                 const cellWidth = colWidths[colIndex];
                 doc.rect(currentCellX, currentY, cellWidth, maxCellHeight).stroke();
-                
+
                 // Ajuster la hauteur du texte pour s'adapter à la cellule
                 doc.text(cell || 'N/A', currentCellX + cellPadding, currentY + cellPadding, {
                     width: cellWidth - (cellPadding * 2),
@@ -7743,22 +7780,22 @@ class AgentsController extends BaseController {
                 });
                 currentCellX += cellWidth;
             });
-            
+
             currentY += maxCellHeight;
         });
-        
+
         // Mettre à jour la position Y du document
         doc.y = currentY + 10;
     }
 
     // Fonction pour générer le HTML de la fiche signalétique
     generateFicheSignaletiqueHTML(agent) {
-            const formatDate = (date) => {
-                if (!date) return 'N/A';
-                return new Date(date).toLocaleDateString('fr-FR');
-            };
+        const formatDate = (date) => {
+            if (!date) return 'N/A';
+            return new Date(date).toLocaleDateString('fr-FR');
+        };
 
-            return `
+        return `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7885,10 +7922,10 @@ class AgentsController extends BaseController {
                 </div>
                 <div style="width: 120px; text-align: center;">
                     <div class="photo">
-                        ${agent.photos && agent.photos.length > 0 ? 
-                            `<img src="http://localhost:5000${agent.photos[0].photo_url}" style="width: 100%; height: 100%; object-fit: cover;" alt="Photo de profil">` :
-                            '<div style="display: flex; align-items: center; justify-content: center; height: 100%; background-color: #f8f9fa;">Photo</div>'
-                        }
+                        ${agent.photos && agent.photos.length > 0 ?
+                `<img src="http://localhost:5000${agent.photos[0].photo_url}" style="width: 100%; height: 100%; object-fit: cover;" alt="Photo de profil">` :
+                '<div style="display: flex; align-items: center; justify-content: center; height: 100%; background-color: #f8f9fa;">Photo</div>'
+            }
                     </div>
                 </div>
             </div>
@@ -8116,7 +8153,7 @@ class AgentsController extends BaseController {
             const photosQuery = `SELECT * FROM agent_photos WHERE id_agent = $1 ORDER BY is_profile_photo DESC, uploaded_at ASC`;
             const photosResult = await pool.query(photosQuery, [id]);
             agent.photos = photosResult.rows;
-            
+
             console.log(`🔍 Photos récupérées pour l'agent ${id}:`, agent.photos.length);
             if (agent.photos.length > 0) {
                 console.log(`📸 Première photo:`, agent.photos[0]);
@@ -8258,21 +8295,21 @@ class AgentsController extends BaseController {
             // Générer le PDF avec PDFKit
             console.log('🚀 Début de la génération PDF pour l\'agent:', id);
             console.log('📦 Génération du PDF avec PDFKit...');
-            
+
             const pdfBuffer = await this.generateFicheSignaletiquePDFKit(agent);
             console.log('✅ PDF généré avec PDFKit, taille:', pdfBuffer.length, 'bytes');
-            
+
             // Retourner le PDF
             console.log('📤 Envoi du PDF au client...');
             console.log('📊 Taille du buffer à envoyer:', pdfBuffer.length, 'bytes');
-            
+
             // S'assurer que les headers sont corrects
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Length', pdfBuffer.length);
             res.setHeader('Content-Disposition', `attachment; filename="fiche-signaletique-${agent.nom}-${agent.prenom}.pdf"`);
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Pragma', 'no-cache');
-            
+
             // Envoyer le buffer directement
             res.end(pdfBuffer);
             console.log('✅ PDF envoyé avec succès');
@@ -8390,25 +8427,25 @@ class AgentsController extends BaseController {
                 '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             };
-            
+
             // Prioriser le type MIME de la base de données, puis l'extension, sinon par défaut
             let mimeType = doc.document_mime_type;
             if (!mimeType || mimeType === 'application/octet-stream') {
                 mimeType = mimeTypes[ext] || 'application/octet-stream';
             }
-            
+
             // S'assurer que le type MIME est valide - si toujours octet-stream, essayer depuis le nom de fichier
             if (!mimeType || mimeType === 'application/octet-stream') {
                 const fileName = doc.document_name || path.basename(absolutePath);
                 const fileNameExt = path.extname(fileName).toLowerCase();
                 mimeType = mimeTypes[fileNameExt] || 'application/octet-stream';
             }
-            
+
             // Détection finale : si c'est un PDF (commence par %PDF), forcer le type
             if (mimeType === 'application/octet-stream' && ext === '.pdf') {
                 mimeType = 'application/pdf';
             }
-            
+
             console.log('🔍 Envoi du fichier:', {
                 docId,
                 agentId: id,
@@ -8420,11 +8457,11 @@ class AgentsController extends BaseController {
                 fileExists: fs.existsSync(absolutePath),
                 fileSize: fs.existsSync(absolutePath) ? fs.statSync(absolutePath).size : 0
             });
-            
+
             // Lire le fichier en binaire
             const fileBuffer = fs.readFileSync(absolutePath);
             const fileStats = fs.statSync(absolutePath);
-            
+
             // Définir les headers CORS pour permettre l'accès au fichier depuis le frontend
             res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
             res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -8436,14 +8473,14 @@ class AgentsController extends BaseController {
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.document_name || path.basename(absolutePath))}"`);
             res.setHeader('Cache-Control', 'private, max-age=3600');
             res.setHeader('Accept-Ranges', 'bytes');
-            
+
             console.log('📤 Envoi du fichier:', {
                 size: fileStats.size,
                 mimeType,
                 fileName: doc.document_name,
                 contentType: mimeType
             });
-            
+
             // Envoyer le fichier en binaire
             res.send(fileBuffer);
         } catch (error) {
@@ -8480,7 +8517,7 @@ class AgentsController extends BaseController {
     async getById(req, res) {
         try {
             const { id } = req.params;
-            
+
             // Requête complète pour récupérer l'agent avec toutes les informations
             // Formater les dates directement dans la requête SQL pour éviter les décalages de fuseau horaire
             const query = `
@@ -8591,13 +8628,13 @@ class AgentsController extends BaseController {
                 ) ech_actuelle ON a.id = ech_actuelle.id_agent
                 WHERE a.id = $1
             `;
-            
+
             const result = await pool.query(query, [id]);
-            
+
             if (result.rows.length === 0) {
-                return res.status(404).json({ 
+                return res.status(404).json({
                     success: false,
-                    error: 'Agent non trouvé' 
+                    error: 'Agent non trouvé'
                 });
             }
 
@@ -8899,7 +8936,7 @@ class AgentsController extends BaseController {
                     console.error('❌ Erreur lors du recalcul de la position via dernières demandes approuvées:', autoDemandesPosError);
                 }
             }
-            
+
             // Mapper les noms de colonnes de la DB vers les noms de champs du frontend
             if (agent.id_sous_direction !== undefined) {
                 agent.sous_direction_id = agent.id_sous_direction;
@@ -8935,7 +8972,7 @@ class AgentsController extends BaseController {
                 });
                 agent.enfants = [];
             }
-            
+
             // Récupérer les langues de l'agent (agent_langues + libellés via requêtes séparées pour robustesse)
             try {
                 const linkRows = await pool.query(
@@ -8985,7 +9022,7 @@ class AgentsController extends BaseController {
                 console.error('Erreur lors de la récupération des langues:', err);
                 agent.langues = [];
             }
-            
+
             // Récupérer les logiciels de l'agent (agent_logiciels + libellés via requêtes séparées)
             try {
                 const linkRows = await pool.query(
@@ -9148,7 +9185,7 @@ class AgentsController extends BaseController {
                 `;
                 const tousEmploisResult = await pool.query(tousEmploisQuery, [id]);
                 const tousEmplois = tousEmploisResult.rows || [];
-                
+
                 // Exclure l'emploi actuel (le plus récent) pour ne garder que les antérieurs
                 if (tousEmplois.length > 0) {
                     // Le premier élément est l'emploi actuel, on le retire
@@ -9156,7 +9193,7 @@ class AgentsController extends BaseController {
                 } else {
                     agent.emplois_anterieurs = [];
                 }
-                
+
                 console.log(`✅ Emplois antérieurs récupérés pour l'agent ${id}:`, agent.emplois_anterieurs.length, 'sur', tousEmplois.length, 'emplois totaux');
             } catch (err) {
                 console.error('Erreur lors de la récupération des emplois antérieurs:', err);
@@ -9203,8 +9240,14 @@ class AgentsController extends BaseController {
     // Nouvelle fonction pour récupérer les agents avec informations hiérarchiques complètes
     async getHierarchicalReport(req, res) {
         try {
-            const { id_ministere, include_entites = 'true' } = req.query;
-            
+            let { id_ministere, include_entites = 'true' } = req.query;
+
+            // Si id_ministere est un tableau (plusieurs paramètres du même nom), prendre le dernier
+            if (Array.isArray(id_ministere)) {
+                id_ministere = id_ministere[id_ministere.length - 1];
+                console.log(`⚠️ Plusieurs id_ministere reçus, utilisation du dernier: ${id_ministere}`);
+            }
+
             // Récupérer le ministère de l'utilisateur connecté si pas fourni dans la requête
             let userMinistereId = null;
             if (!id_ministere && req.user && req.user.id_agent) {
@@ -9223,10 +9266,10 @@ class AgentsController extends BaseController {
                 // Pour le super admin, ne pas appliquer de filtrage par défaut
                 console.log(`🔍 Super Admin connecté - Pas de filtrage par ministère appliqué`);
             }
-            
+
             // Utiliser l'ID du ministère fourni en paramètre ou celui de l'utilisateur
             const finalMinistereId = id_ministere || userMinistereId;
-            
+
             console.log('🔍 Récupération du rapport hiérarchique pour le ministère:', finalMinistereId);
             console.log('🔍 Include entités:', include_entites);
             console.log('🔍 Paramètre id_ministere original:', id_ministere);
@@ -9249,7 +9292,7 @@ class AgentsController extends BaseController {
                 AND ${effRetHier}::date <= (CURRENT_DATE + ($${hierRetirementParamIndex}::int * INTERVAL '1 year'))::date
             )`
                     : '';
-            
+
             // Étape 1: Identifier les services, directions et sous-directions qui ont au moins un agent
             // Inclure aussi les agents sans entité hiérarchique (grade depuis grades_agents)
             const hierarchyQuery = `
@@ -9281,22 +9324,22 @@ class AgentsController extends BaseController {
                 AND ${this.getRetirementExclusionCondition('a', 'ga_curr')}
                 ${hierarchyExcludeRetirementClause}
             `;
-            
+
             const hierarchyParams = [];
             if (finalMinistereId) hierarchyParams.push(finalMinistereId);
             if (excludeRetirementWithinYears > 0) hierarchyParams.push(excludeRetirementWithinYears);
             const hierarchyResult = await pool.query(hierarchyQuery, hierarchyParams);
-            
+
             // Extraire les IDs des entités qui ont des agents
             const activeDirectionIds = [...new Set(hierarchyResult.rows.map(row => row.id_direction).filter(id => id !== null))];
             const activeSousDirectionIds = [...new Set(hierarchyResult.rows.map(row => row.id_sous_direction).filter(id => id !== null))];
             const activeServiceIds = [...new Set(hierarchyResult.rows.map(row => row.id_service).filter(id => id !== null))];
-            
+
             console.log('🔍 Entités hiérarchiques avec agents:');
             console.log('   - Directions actives:', activeDirectionIds.length);
             console.log('   - Sous-directions actives:', activeSousDirectionIds.length);
             console.log('   - Services actifs:', activeServiceIds.length);
-            
+
             // Étape 2: Requête principale pour récupérer les agents avec filtrage dynamique
             let mainQuery = `
                 SELECT 
@@ -9482,7 +9525,7 @@ class AgentsController extends BaseController {
                 ${finalMinistereId ? 'AND a.id_ministere = $1' : ''}
                 AND ${this.getRetirementExclusionCondition('a', 'ga_actuelle')}
             `;
-            
+
             // Construire les conditions de filtrage dynamique
             const conditions = [];
             const queryParams = [];
@@ -9498,47 +9541,47 @@ class AgentsController extends BaseController {
                 queryParams.push(excludeRetirementWithinYears);
                 paramIndex++;
             }
-            
+
             // Appliquer le filtre include_entites comme dans getAll
             if (include_entites === 'false') {
                 conditions.push(`a.id_entite_principale IS NULL`);
             }
-            
+
             // Filtre par type d'agent
             if (req.query.type_agent && req.query.type_agent !== '') {
                 conditions.push(`ta.libele = $${paramIndex}`);
                 queryParams.push(req.query.type_agent);
                 paramIndex++;
             }
-            
+
             // Filtre par sexe
             if (req.query.sexe && req.query.sexe !== '') {
                 conditions.push(`a.sexe = $${paramIndex}`);
                 queryParams.push(req.query.sexe);
                 paramIndex++;
             }
-            
+
             // Filtre par statut emploi
             if (req.query.statut_emploi && req.query.statut_emploi !== '') {
                 conditions.push(`a.statut_emploi = $${paramIndex}`);
                 queryParams.push(req.query.statut_emploi);
                 paramIndex++;
             }
-            
+
             // Filtre par catégorie (depuis categories_agents)
             if (req.query.id_categorie && req.query.id_categorie !== '') {
                 conditions.push(`ca_actuelle.id_categorie = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_categorie));
                 paramIndex++;
             }
-            
+
             // Filtre par grade (depuis grades_agents)
             if (req.query.id_grade && req.query.id_grade !== '') {
                 conditions.push(`ga_actuelle.id_grade = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_grade));
                 paramIndex++;
             }
-            
+
             // Filtre par direction générale : uniquement agents directement liés (sans direction/sous-direction)
             if (req.query.id_direction_generale && req.query.id_direction_generale !== '') {
                 conditions.push(`a.id_direction_generale = $${paramIndex}`);
@@ -9547,49 +9590,49 @@ class AgentsController extends BaseController {
                 conditions.push('a.id_direction IS NULL');
                 conditions.push('a.id_sous_direction IS NULL');
             }
-            
+
             // Filtre par direction
             if (req.query.id_direction && req.query.id_direction !== '') {
                 conditions.push(`a.id_direction = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_direction));
                 paramIndex++;
             }
-            
+
             // Filtre par sous-direction
             if (req.query.id_sous_direction && req.query.id_sous_direction !== '') {
                 conditions.push(`a.id_sous_direction = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_sous_direction));
                 paramIndex++;
             }
-            
+
             // Filtre par service
             if (req.query.id_service && req.query.id_service !== '') {
                 conditions.push(`a.id_service = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_service));
                 paramIndex++;
             }
-            
+
             // Filtre par emploi (depuis emploi_agents)
             if (req.query.id_emploi && req.query.id_emploi !== '') {
                 conditions.push(`ea_actuelle.id_emploi = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_emploi));
                 paramIndex++;
             }
-            
+
             // Filtre par fonction (depuis fonction_agents)
             if (req.query.id_fonction && req.query.id_fonction !== '') {
                 conditions.push(`fa_actuelle.id_fonction = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.id_fonction));
                 paramIndex++;
             }
-            
+
             // Filtre par année de prise de service (agents inscrits sur une année donnée)
             if (req.query.annee_prise_service && req.query.annee_prise_service !== '') {
                 conditions.push(`EXTRACT(YEAR FROM a.date_prise_service_au_ministere) = $${paramIndex}`);
                 queryParams.push(parseInt(req.query.annee_prise_service));
                 paramIndex++;
             }
-            
+
             // Filtre par période (date début / date fin) - prise de service au ministère
             if (req.query.date_debut && req.query.date_debut !== '') {
                 conditions.push(`a.date_prise_service_au_ministere::date >= $${paramIndex}`);
@@ -9601,14 +9644,14 @@ class AgentsController extends BaseController {
                 queryParams.push(req.query.date_fin);
                 paramIndex++;
             }
-            
+
             // Inclure TOUS les agents du ministère (avec et sans entité hiérarchique)
             // Ne pas filtrer par entité hiérarchique pour s'assurer que tous les agents sont inclus
-            
+
             if (conditions.length > 0) {
                 mainQuery += ` AND (${conditions.join(' AND ')})`;
             }
-            
+
             mainQuery += `
                 ORDER BY 
                     COALESCE(d.libelle, 'ZZZ') ASC,
@@ -9617,14 +9660,14 @@ class AgentsController extends BaseController {
                     a.nom ASC,
                     a.prenom ASC
             `;
-            
+
             const finalParams = finalMinistereId ? [finalMinistereId, ...queryParams] : queryParams;
             const result = await pool.query(mainQuery, finalParams);
 
             // Uniquement pour le Ministère du Tourisme et des Loisirs : ordre spécifique (CABINET puis INSPECTION GENERALE)
             const ministereNom = (result.rows[0] && result.rows[0].ministere_nom) ? String(result.rows[0].ministere_nom).toUpperCase() : '';
             const isMinistereTourismeLoisirs = ministereNom.includes('TOURISME') && ministereNom.includes('LOISIRS');
-            
+
             console.log('🔍 Agents récupérés pour le rapport hiérarchique (avec filtrage dynamique):', result.rows.length);
             console.log('🔍 Échantillon des agents:', result.rows.slice(0, 3).map(agent => ({
                 nom: agent.nom_complet,
@@ -9633,7 +9676,7 @@ class AgentsController extends BaseController {
                 service: agent.service_libelle,
                 statut: agent.statut_emploi
             })));
-            
+
             // Ajouter les informations sur les entités actives pour le frontend (listes à plat pour les filtres)
             const activeHierarchy = {
                 directions: hierarchyResult.rows
@@ -9932,7 +9975,7 @@ class AgentsController extends BaseController {
                 },
                 hierarchyTree
             });
-            
+
         } catch (error) {
             console.error('❌ Erreur lors de la récupération du rapport hiérarchique:', error);
             res.status(500).json({
@@ -9958,7 +10001,7 @@ class AgentsController extends BaseController {
             let ministereId = id_ministere;
             if (!ministereId && req.user && req.user.id_agent) {
                 const userAgentQuery = await pool.query(
-                    'SELECT id_ministere, id_direction, id_direction_generale, id_sous_direction FROM agents WHERE id = $1', 
+                    'SELECT id_ministere, id_direction, id_direction_generale, id_sous_direction FROM agents WHERE id = $1',
                     [req.user.id_agent]
                 );
                 if (userAgentQuery.rows.length > 0) {
@@ -10011,7 +10054,7 @@ class AgentsController extends BaseController {
             // Construire la requête SQL pour récupérer les anniversaires à venir
             let whereClause = 'WHERE a.date_de_naissance IS NOT NULL AND a.statut_emploi = \'actif\'';
             const queryParams = [];
-            
+
             if (ministereId && req.user.role !== 'super_admin') {
                 queryParams.push(ministereId);
                 whereClause += ` AND a.id_ministere = $${queryParams.length}`;
@@ -10027,7 +10070,7 @@ class AgentsController extends BaseController {
                     whereClause += ` AND a.id_direction IS NULL AND a.id_sous_direction IS NULL`;
                 }
             }
-            
+
             // Filtrer par direction si fourni (et pas déjà filtré par direction générale)
             if (id_direction && !id_direction_generale) {
                 queryParams.push(id_direction);
@@ -10038,7 +10081,7 @@ class AgentsController extends BaseController {
                     whereClause += ` AND a.id_sous_direction IS NULL`;
                 }
             }
-            
+
             // Filtrer par sous-direction si fourni
             if (id_sous_direction) {
                 queryParams.push(id_sous_direction);
@@ -10207,7 +10250,7 @@ class AgentsController extends BaseController {
                         ) VALUES (NULL, $1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)
                         RETURNING id
                     `;
-                    
+
                     const notificationType = type === 'today' ? 'anniversaire_aujourdhui' : 'anniversaire_avenir';
                     const notificationResult = await pool.query(notificationQuery, [
                         agentId,
@@ -10251,13 +10294,13 @@ class AgentsController extends BaseController {
      */
     calculateRetirementAge(gradeLibele) {
         if (!gradeLibele) return 60; // Par défaut 60 ans si pas de grade
-        
+
         // Normaliser le grade : supprimer les espaces et mettre en majuscules
         const gradeNormalise = String(gradeLibele).replace(/\s+/g, '').toUpperCase();
-        
+
         // Grades spéciaux qui partent à 65 ans
         const gradesSpeciaux = ['A4', 'A5', 'A6', 'A7'];
-        
+
         // Vérifier si le grade normalisé correspond à un grade spécial
         // Gère les cas comme "A4", "A 4", "a4", etc.
         return gradesSpeciaux.includes(gradeNormalise) ? 65 : 60;
@@ -10279,13 +10322,13 @@ class AgentsController extends BaseController {
      */
     calculateRetirementDate(dateNaissance, gradeLibele) {
         if (!dateNaissance) return null;
-        
+
         const birthDate = new Date(dateNaissance);
         const birthYear = birthDate.getFullYear();
-        
+
         const retirementAge = this.calculateRetirementAge(gradeLibele);
         const retirementYear = birthYear + retirementAge;
-        
+
         // La date de retraite est toujours le 31 décembre de l'année de retraite
         // Mois 11 = Décembre (0-indexed en JavaScript)
         return new Date(retirementYear, 11, 31);
@@ -10298,7 +10341,7 @@ class AgentsController extends BaseController {
     async calculateAgentRetirement(req, res) {
         try {
             const { id } = req.params;
-            
+
             // Récupérer l'agent avec son grade (exclure les contractuels)
             const agentQuery = `
                 SELECT 
@@ -10315,18 +10358,18 @@ class AgentsController extends BaseController {
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 WHERE a.id = $1
             `;
-            
+
             const agentResult = await pool.query(agentQuery, [id]);
-            
+
             if (agentResult.rows.length === 0) {
                 return res.status(404).json({
                     success: false,
                     message: 'Agent non trouvé'
                 });
             }
-            
+
             const agent = agentResult.rows[0];
-            
+
             // Vérifier si l'agent est contractuel
             if (agent.type_agent_libele && agent.type_agent_libele.toUpperCase().includes('CONTRACTUEL')) {
                 return res.status(400).json({
@@ -10334,18 +10377,18 @@ class AgentsController extends BaseController {
                     message: 'Les agents contractuels n\'ont pas de date de retraite automatique'
                 });
             }
-            
+
             if (!agent.date_de_naissance) {
                 return res.status(400).json({
                     success: false,
                     message: 'Date de naissance non renseignée pour cet agent'
                 });
             }
-            
+
             // Calculer la date de retraite
             const retirementDate = this.calculateRetirementDate(agent.date_de_naissance, agent.grade_libele);
             const retirementAge = this.calculateRetirementAge(agent.grade_libele);
-            
+
             // Mettre à jour la date de retraite
             const updateQuery = `
                 UPDATE agents 
@@ -10353,9 +10396,9 @@ class AgentsController extends BaseController {
                 WHERE id = $2
                 RETURNING *
             `;
-            
+
             await pool.query(updateQuery, [retirementDate, id]);
-            
+
             res.json({
                 success: true,
                 message: 'Date de retraite calculée et mise à jour',
@@ -10368,7 +10411,7 @@ class AgentsController extends BaseController {
                     date_retraite: retirementDate
                 }
             });
-            
+
         } catch (error) {
             console.error('Erreur lors du calcul de la retraite:', error);
             res.status(500).json({
@@ -10388,7 +10431,7 @@ class AgentsController extends BaseController {
             const { id } = req.params;
             // Gérer les données qui peuvent venir de FormData ou JSON
             let { additional_years, target_age, numero_acte, nombre_annees, nature_acte, date_acte } = req.body || {};
-            
+
             // Si les données viennent de FormData, les valeurs sont des strings
             if (target_age && typeof target_age === 'string') {
                 target_age = parseInt(target_age, 10);
@@ -10862,7 +10905,7 @@ class AgentsController extends BaseController {
             // Récupérer le chemin du document depuis les paramètres
             // Le chemin est encodé en base64 pour éviter les problèmes avec les caractères spéciaux
             let documentPath = req.params.documentPath;
-            
+
             // Décoder le chemin depuis base64
             try {
                 // Décoder le base64
@@ -10965,7 +11008,7 @@ class AgentsController extends BaseController {
                     : (userMinistereId || requestedIdMinistere);
             const ministereClause = idMinistere ? ' AND a.id_ministere = $1 ' : '';
             const ministereParams = idMinistere ? [idMinistere] : [];
-            
+
             // Récupérer tous les agents avec leur grade et date de naissance (exclure les contractuels)
             const agentsQuery = `
                 SELECT 
@@ -10986,28 +11029,28 @@ class AgentsController extends BaseController {
                     ${ministereClause}
                 ORDER BY a.id
             `;
-            
+
             const agentsResult = await pool.query(agentsQuery, ministereParams);
             const agents = agentsResult.rows;
-            
+
             console.log(`📊 ${agents.length} agents à traiter`);
-            
+
             let updatedCount = 0;
             let errors = [];
-            
+
             // Mettre à jour chaque agent
             for (const agent of agents) {
                 try {
                     const retirementDate = this.calculateRetirementDate(agent.date_de_naissance, agent.grade_libele);
                     const retirementAge = this.calculateRetirementAge(agent.grade_libele);
-                    
+
                     if (retirementDate) {
                         await pool.query(
                             'UPDATE agents SET date_retraite = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
                             [retirementDate, agent.id]
                         );
                         updatedCount++;
-                        
+
                         if (updatedCount % 100 === 0) {
                             console.log(`✅ ${updatedCount} agents traités...`);
                         }
@@ -11020,13 +11063,13 @@ class AgentsController extends BaseController {
                     });
                 }
             }
-            
+
             console.log(`✅ Mise à jour terminée : ${updatedCount} agents mis à jour`);
-            
+
             if (errors.length > 0) {
                 console.log(`⚠️ ${errors.length} erreurs rencontrées`);
             }
-            
+
             res.json({
                 success: true,
                 message: 'Calcul des dates de retraite terminé',
@@ -11037,7 +11080,7 @@ class AgentsController extends BaseController {
                     error_details: errors.length > 0 ? errors : undefined
                 }
             });
-            
+
         } catch (error) {
             console.error('Erreur lors du calcul en masse des retraites:', error);
             res.status(500).json({
@@ -11055,7 +11098,10 @@ class AgentsController extends BaseController {
     async getRetirementStats(req, res) {
         try {
             // Filtrer par ministère
-            const requestedIdMinistere = req.query && req.query.id_ministere ? req.query.id_ministere : null;
+            let requestedIdMinistere = req.query && req.query.id_ministere ? req.query.id_ministere : null;
+            if (Array.isArray(requestedIdMinistere)) {
+                requestedIdMinistere = requestedIdMinistere[requestedIdMinistere.length - 1];
+            }
             const userRoleLower = req.user && req.user.role ? String(req.user.role).toLowerCase() : '';
             const userMinistereId = req.user && req.user.id_ministere ? req.user.id_ministere : null;
             // Priorité: le ministère du user connecté (fiable). Le query est un fallback.
@@ -11088,9 +11134,9 @@ class AgentsController extends BaseController {
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 WHERE (ta.libele IS NULL OR UPPER(ta.libele) NOT LIKE '%CONTRACTUEL%')${ministereClause};
             `;
-            
+
             const statsResult = await pool.query(statsQuery, params);
-            
+
             // Récupérer les agents qui partiront à la retraite dans l'année (exclure les contractuels)
             const upcomingQuery = `
                 SELECT 
@@ -11117,9 +11163,9 @@ class AgentsController extends BaseController {
                 ORDER BY a.date_retraite ASC
                 LIMIT 50
             `;
-            
+
             const upcomingResult = await pool.query(upcomingQuery, params);
-            
+
             res.json({
                 success: true,
                 data: {
@@ -11127,7 +11173,7 @@ class AgentsController extends BaseController {
                     upcoming_retirements: upcomingResult.rows
                 }
             });
-            
+
         } catch (error) {
             console.error('Erreur lors de la récupération des statistiques de retraite:', error);
             res.status(500).json({
@@ -11148,7 +11194,10 @@ class AgentsController extends BaseController {
             const yearsInt = parseInt(years);
 
             // Filtrer par ministère
-            const requestedIdMinistere = req.query && req.query.id_ministere ? req.query.id_ministere : null;
+            let requestedIdMinistere = req.query && req.query.id_ministere ? req.query.id_ministere : null;
+            if (Array.isArray(requestedIdMinistere)) {
+                requestedIdMinistere = requestedIdMinistere[requestedIdMinistere.length - 1];
+            }
             const userRoleLower = req.user && req.user.role ? String(req.user.role).toLowerCase() : '';
             const userMinistereId = req.user && req.user.id_ministere ? req.user.id_ministere : null;
             // Priorité: le ministère du user connecté (fiable). Le query est un fallback.
@@ -11158,14 +11207,14 @@ class AgentsController extends BaseController {
                     : (userMinistereId || requestedIdMinistere);
             const ministereClause = idMinistere ? ' AND a.id_ministere = $1' : '';
             const params = idMinistere ? [idMinistere] : [];
-            
+
             if (isNaN(yearsInt) || yearsInt < 1 || yearsInt > 50) {
                 return res.status(400).json({
                     success: false,
                     message: 'Le nombre d\'années doit être entre 1 et 50'
                 });
             }
-            
+
             // Projection année par année (exclure les contractuels)
             const projectionQuery = `
                 WITH retirement_years AS (
@@ -11190,9 +11239,9 @@ class AgentsController extends BaseController {
                 )
                 SELECT * FROM retirement_years;
             `;
-            
+
             const projectionResult = await pool.query(projectionQuery, params);
-            
+
             // Liste détaillée des agents par année (exclure les contractuels)
             const detailedQuery = `
                 SELECT 
@@ -11248,9 +11297,9 @@ class AgentsController extends BaseController {
                     ${ministereClause}
                 ORDER BY a.date_retraite, a.nom, a.prenom
             `;
-            
+
             const detailedResult = await pool.query(detailedQuery, params);
-            
+
             // Statistiques globales (exclure les contractuels)
             const globalStatsQuery = `
                 SELECT 
@@ -11268,9 +11317,9 @@ class AgentsController extends BaseController {
                     AND (ta.libele IS NULL OR UPPER(ta.libele) NOT LIKE '%CONTRACTUEL%')
                     ${ministereClause}
             `;
-            
+
             const globalStatsResult = await pool.query(globalStatsQuery, params);
-            
+
             res.json({
                 success: true,
                 data: {
@@ -11284,10 +11333,192 @@ class AgentsController extends BaseController {
                     liste_agents: detailedResult.rows
                 }
             });
-            
+
         } catch (error) {
             console.error('Erreur lors de la projection des retraites:', error);
             res.status(500).json({
+                success: false,
+                message: 'Erreur interne du serveur',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Récupérer tous les agents RETIRÉS avec le motif "Mise à disposition"
+     * Ces agents ont retire = true et motif_retrait contenant "Mise à disposition" (insensible à la casse)
+     * GET /api/agents/mise-a-disposition
+     */
+    async getAgentsMiseADisposition(req, res) {
+        try {
+            const {
+                id_ministere, id_direction_generale, id_direction, id_sous_direction,
+                search, page = 1, limit = 500
+            } = req.query;
+
+            const offset = (parseInt(page) - 1) * parseInt(limit);
+            const params = [];
+            const whereConditions = [
+                "COALESCE(a.retire, false) = true",
+                "a.motif_retrait ILIKE '%Mise à disposition%'"
+            ];
+
+            // Filtrage par ministère (DRH forcé sur son ministère)
+            let ministereId = id_ministere;
+            if (!ministereId && req.user && req.user.role && req.user.role.toLowerCase() === 'drh') {
+                if (req.user.id_agent) {
+                    const userRow = await pool.query('SELECT id_ministere FROM agents WHERE id = $1', [req.user.id_agent]);
+                    if (userRow.rows.length > 0) ministereId = userRow.rows[0].id_ministere;
+                }
+                if (!ministereId && req.user.id_ministere) ministereId = req.user.id_ministere;
+            }
+            if (ministereId) {
+                params.push(ministereId);
+                whereConditions.push(`a.id_ministere = $${params.length}`);
+            }
+
+            // Filtrage par direction générale
+            if (id_direction_generale) {
+                params.push(id_direction_generale);
+                whereConditions.push(`a.id_direction_generale = $${params.length}`);
+            }
+
+            // Filtrage par direction
+            if (id_direction) {
+                params.push(id_direction);
+                whereConditions.push(`a.id_direction = $${params.length}`);
+            }
+
+            // Filtrage par sous-direction
+            if (id_sous_direction) {
+                params.push(id_sous_direction);
+                whereConditions.push(`a.id_sous_direction = $${params.length}`);
+            }
+
+            // Recherche textuelle
+            if (search) {
+                params.push(`%${search}%`);
+                whereConditions.push(`(a.nom ILIKE $${params.length} OR a.prenom ILIKE $${params.length} OR a.matricule ILIKE $${params.length})`);
+            }
+
+            const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+
+            const query = `
+                SELECT
+                    a.id,
+                    a.matricule,
+                    a.nom,
+                    a.prenom,
+                    a.sexe,
+                    a.date_de_naissance,
+                    a.lieu_de_naissance,
+                    a.telephone1,
+                    a.telephone2,
+                    a.email,
+                    a.statut_emploi,
+                    a.retire,
+                    a.date_retrait,
+                    a.motif_retrait,
+                    a.motif_restauration,
+                    a.id_ministere,
+                    a.id_direction_generale,
+                    a.id_direction,
+                    a.id_sous_direction,
+                    a.id_service,
+                    a.id_categorie,
+                    a.created_at,
+                    a.updated_at,
+                    -- Jointures
+                    m.nom AS ministere_nom,
+                    COALESCE(dg.libelle, dg_via_dir.libelle) AS direction_generale_libelle,
+                    d.libelle AS direction_libelle,
+                    sd.libelle AS sous_direction_libelle,
+                    srv.libelle AS service_libelle,
+                    cat.libele AS categorie_libele,
+                    -- Grade actuel
+                    COALESCE(ga_actuelle.grade_libele, g_pref.libele, a.grade_prefectoral) AS grade_libele,
+                    -- Fonction actuelle
+                    fa_actuelle.fonction_libele AS fonction_actuelle_libele,
+                    -- Emploi actuel
+                    ea_actuel.emploi_libele AS emploi_actuel_libele
+                FROM agents a
+                LEFT JOIN ministeres m ON a.id_ministere = m.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                LEFT JOIN directions d ON a.id_direction = d.id
+                LEFT JOIN direction_generale dg_via_dir ON d.id_direction_generale = dg_via_dir.id
+                LEFT JOIN sous_directions sd ON a.id_sous_direction = sd.id
+                LEFT JOIN services srv ON a.id_service = srv.id
+                LEFT JOIN categories cat ON a.id_categorie = cat.id
+                LEFT JOIN grades g ON a.id_grade = g.id
+                LEFT JOIN grades g_pref ON a.grade_prefectoral IS NOT NULL
+                    AND a.grade_prefectoral ~ '^[0-9]+$'
+                    AND g_pref.id = (a.grade_prefectoral::INTEGER)
+                -- Grade actuel
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ga.id_agent)
+                        ga.id_agent,
+                        g.libele AS grade_libele
+                    FROM grades_agents ga
+                    LEFT JOIN grades g ON ga.id_grade = g.id
+                    ORDER BY ga.id_agent, COALESCE(ga.date_entree, ga.created_at) DESC
+                ) ga_actuelle ON a.id = ga_actuelle.id_agent
+                -- Fonction actuelle
+                LEFT JOIN (
+                    SELECT DISTINCT ON (fa.id_agent)
+                        fa.id_agent,
+                        f.libele AS fonction_libele,
+                        fa.date_entree
+                    FROM fonction_agents fa
+                    LEFT JOIN fonctions f ON fa.id_fonction = f.id
+                    ORDER BY fa.id_agent, fa.date_entree DESC
+                ) fa_actuelle ON a.id = fa_actuelle.id_agent
+                -- Emploi actuel
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ea.id_agent)
+                        ea.id_agent,
+                        e.libele AS emploi_libele,
+                        ea.date_entree
+                    FROM emploi_agents ea
+                    LEFT JOIN emplois e ON ea.id_emploi = e.id
+                    ORDER BY ea.id_agent, ea.date_entree DESC
+                ) ea_actuel ON a.id = ea_actuel.id_agent
+                ${whereClause}
+                ORDER BY a.date_retrait DESC NULLS LAST, a.nom ASC, a.prenom ASC
+                LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+            `;
+
+            params.push(parseInt(limit), offset);
+
+            // Requête count
+            const countQuery = `
+                SELECT COUNT(*) FROM agents a ${whereClause}
+            `;
+            const countParams = params.slice(0, -2); // sans LIMIT/OFFSET
+
+            const [result, countResult] = await Promise.all([
+                pool.query(query, params),
+                pool.query(countQuery, countParams)
+            ]);
+
+            const totalCount = parseInt(countResult.rows[0].count);
+
+            console.log(`✅ Agents Mise à Disposition récupérés: ${result.rows.length} / ${totalCount}`);
+
+            res.set('Cache-Control', 'private, no-store');
+            return res.json({
+                success: true,
+                data: result.rows,
+                pagination: {
+                    currentPage: parseInt(page),
+                    totalPages: Math.ceil(totalCount / parseInt(limit)),
+                    totalCount,
+                    limit: parseInt(limit)
+                }
+            });
+
+        } catch (error) {
+            console.error('❌ Erreur getAgentsMiseADisposition:', error);
+            return res.status(500).json({
                 success: false,
                 message: 'Erreur interne du serveur',
                 error: error.message

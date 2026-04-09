@@ -129,11 +129,11 @@ class MainLayout extends React.Component {
     
     // Pour DRH et super_admin, afficher le layout complet avec sidebar
     return (
-      <main className="cr-app bg-light" style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+      <main className="cr-app bg-light" style={{ display: 'flex', minHeight: '100vh' }}>
         <FilteredSidebar />
-        <Content fluid onClick={this.handleContentClick} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <Content fluid onClick={this.handleContentClick} style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
           <Header />
-          <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <div style={{ flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto' }}>
             {children}
           </div>
           <Footer style={{ marginTop: 'auto' }} />
