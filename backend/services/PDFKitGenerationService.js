@@ -505,10 +505,11 @@ class PDFKitGenerationService {
                     (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     '';
                 const agentDirectionName = agent.direction_nom ||
+                    agent.service_nom ||
+                    agent.direction_generale_nom ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     headerContext.directionName ||
                     (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    agent.service_nom ||
                     '';
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     headerContext.ministryName ||
@@ -713,6 +714,7 @@ class PDFKitGenerationService {
                        a.date_embauche, a.id_direction, a.id_ministere,
                        c.libele as civilite,
                        s.libelle as service_nom, s.libelle as direction_nom,
+                       COALESCE(dg.libelle, dg_via_dir.libelle) AS direction_generale_nom,
                        m.nom as ministere_nom, m.sigle as ministere_sigle,
                        cat.libele as classe_libelle,
                        COALESCE(a.date_embauche, a.date_prise_service_au_ministere) as grade_date_entree,
@@ -735,6 +737,8 @@ class PDFKitGenerationService {
                 LEFT JOIN agents a ON doc.id_agent_destinataire = a.id
                 LEFT JOIN civilites c ON a.id_civilite = c.id
                 LEFT JOIN directions s ON a.id_direction = s.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                LEFT JOIN direction_generale dg_via_dir ON s.id_direction_generale = dg_via_dir.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN categories cat ON a.id_categorie = cat.id
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
@@ -839,6 +843,7 @@ class PDFKitGenerationService {
                 id_ministere: row.id_ministere,
                 service_nom: row.service_nom,
                 direction_nom: row.direction_nom || row.service_nom,
+                direction_generale_nom: row.direction_generale_nom,
                 ministere_nom: row.ministere_nom,
                 ministere_sigle: row.ministere_sigle,
                 grade_libele: row.grade_libele,
@@ -2699,8 +2704,16 @@ class PDFKitGenerationService {
                                 }
                             }
 
-                            // Affectation
-                            const affectation = agent.direction_nom || agent.service_nom || agent.direction_libelle || agent.service_libelle || '';
+                            // Affectation : Direction en priorité, sinon Direction Générale
+                            const resolveAffectation = (a) => {
+                                for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
+                                    if (typeof val === 'string' && val.trim() !== '' && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined') {
+                                        return val.trim();
+                                    }
+                                }
+                                return '';
+                            };
+                            const affectation = resolveAffectation(agent);
 
                             // Référence certificat avec date
                             const certReference = options.cert_reference || options.certificat_reference || '';
@@ -2748,7 +2761,10 @@ class PDFKitGenerationService {
                             // 6. Affectation (classe retirée selon demande)
                             // Utiliser la fonction utilitaire pour déterminer la bonne préposition
                             const genre = agent.sexe === 'F' ? 'F' : 'M';
-                            texte1Parts.push(formatAffectationPhrase(affectation, genre));
+                            const affectationPhrase = formatAffectationPhrase(affectation, genre);
+                            if (affectationPhrase) {
+                                texte1Parts.push(affectationPhrase);
+                            }
 
                             // 7. Conformément au certificat
                             if (certReference) {
@@ -3238,6 +3254,17 @@ class PDFKitGenerationService {
                 if (!echelon) {
                     echelon = agent.echelon_libelle || agent.echelon_libele || '';
                 }
+                
+                // Affectation : Direction en priorité, sinon Direction Générale
+                const resolveAffectation = (a) => {
+                    for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
+                        if (typeof val === 'string' && val.trim() !== '' && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined') {
+                            return val.trim();
+                        }
+                    }
+                    return '';
+                };
+                const affectationOrigine = resolveAffectation(agent);
                 
                 console.log(`🔍 [generateNoteDeServiceMutationPDF] Grade et échelon finaux:`, {
                     grade: grade,

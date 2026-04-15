@@ -292,12 +292,14 @@ function resolveOfficialHeaderContext({ agent = {}, validateur = {}, userInfo = 
   let directionName = pickFirstNonEmptyString([
     userInfo?.direction_nom,
     userInfo?.direction,
+    userInfo?.direction_generale_nom,
     userInfo?.service_nom,
     userInfo?.service,
     userInfo?.structure_nom,
     userInfo?.structure,
     validateur?.direction_nom,
     validateur?.direction,
+    validateur?.direction_generale_nom,
     validateur?.direction_label,
     validateur?.service_nom,
     validateur?.service,
@@ -309,6 +311,7 @@ function resolveOfficialHeaderContext({ agent = {}, validateur = {}, userInfo = 
     validateur?.unite,
     agent?.direction_nom,
     agent?.direction,
+    agent?.direction_generale_nom,
     agent?.service_nom,
     agent?.service
   ]);

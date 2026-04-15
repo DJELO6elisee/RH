@@ -125,7 +125,7 @@ const sidebarBackground = {
 // ];
 
 const navItems = [
-    { to: '/', name: 'dashboard', exact: true, Icon: MdDashboard },
+    { to: '/', name: 'Tableau de Bord', exact: true, Icon: MdDashboard },
     { to: '/fiche-signaletique', name: 'fiche signalétique', exact: false, Icon: MdDescription },
     { to: '/parametres', name: 'paramètres', exact: false, Icon: MdSettings },
     // { to: '/cards', name: 'cards', exact: false, Icon: MdWeb },

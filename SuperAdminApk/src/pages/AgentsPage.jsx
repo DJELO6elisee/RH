@@ -126,7 +126,8 @@ const AgentsPage = () => {
             title: "Informations Professionnelles",
             fields: [
                 { name: 'id_position', label: 'Position', type: 'select', dynamicTable: 'positions', dynamicField: 'libele', colSize: 6, defaultValue: 'PRESENT', defaultLabel: 'Présent' },
-                { name: 'id_direction', label: 'Direction', type: 'select', dynamicTable: 'directions', dynamicField: 'libelle', required: true, colSize: 6, cascadeTrigger: true },
+                { name: 'id_direction_generale', label: 'Direction Générale', type: 'select', dynamicTable: 'directions-generales', dynamicField: 'libelle', colSize: 6, required: false },
+                { name: 'id_direction', label: 'Direction', type: 'select', dynamicTable: 'directions', dynamicField: 'libelle', required: false, colSize: 6, cascadeTrigger: true, conditionalRequired: { field: 'id_direction_generale', isEmpty: true }, helpText: 'Obligatoire si aucune Direction Générale n\'est sélectionnée', dependsOn: 'id_direction_generale' },
                 { name: 'id_sous_direction', label: 'Sous-direction', type: 'select', dynamicTable: 'sous_directions', dynamicField: 'libelle', colSize: 6, cascadeTrigger: true, dependsOn: 'id_direction' },
                 { name: 'service_id', label: 'Service', type: 'select', dynamicTable: 'services', dynamicField: 'libelle', colSize: 6, dependsOn: ['id_sous_direction', 'id_direction'], cascadeTrigger: true },
                 { name: 'statut_emploi', label: 'Statut emploi', type: 'select', options: ['actif', 'inactif', 'retraite', 'demission', 'licencie'], defaultValue: 'actif', colSize: 6 },

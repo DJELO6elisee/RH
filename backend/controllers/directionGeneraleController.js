@@ -72,6 +72,49 @@ exports.getAllDirectionsGenerales = async(req, res) => {
 };
 
 /**
+ * GET /api/directions-generales/select/all
+ * Récupérer toutes les directions générales sans pagination (pour les listes déroulantes)
+ */
+exports.getAllForSelect = async (req, res) => {
+    try {
+        const id_ministere = req.query.id_ministere || req.query.ministere_id;
+        
+        let query = `
+            SELECT 
+                id,
+                libelle
+            FROM direction_generale
+            WHERE is_active = true
+        `;
+
+        const params = [];
+        let paramCount = 1;
+
+        if (id_ministere) {
+            query += ` AND id_ministere = $${paramCount}`;
+            params.push(id_ministere);
+            paramCount++;
+        }
+
+        query += ` ORDER BY libelle ASC`;
+
+        const result = await pool.query(query, params);
+
+        res.json({
+            success: true,
+            data: result.rows
+        });
+    } catch (error) {
+        console.error('Erreur lors de la récupération des directions générales pour select:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des directions générales pour select',
+            message: error.message
+        });
+    }
+};
+
+/**
  * GET /api/directions-generales/:id
  * Récupérer une direction générale par son ID
  */

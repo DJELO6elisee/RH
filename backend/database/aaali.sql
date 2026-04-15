@@ -56,9 +56,9 @@
 -- ============================================
 -- REQUÊTE POUR SUPPRIMER DES DOCUMENTS
 -- ============================================
-DELETE FROM documents_autorisation 
-WHERE type_document = 'certificat_prise_service' 
-AND date_generation < '2026-01-25';  -- Remplacez par la date souhaitée
+-- DELETE FROM documents_autorisation 
+-- WHERE type_document = 'certificat_prise_service' 
+-- AND date_generation < '2026-01-25';  -- Remplacez par la date souhaitée
 
 -- UPDATE fonction_agents
 -- SET id_fonction = 124
@@ -90,23 +90,22 @@ AND date_generation < '2026-01-25';  -- Remplacez par la date souhaitée
 -- ALTER TABLE public.workflow_demandes
 --     ALTER COLUMN niveau_validation TYPE VARCHAR(50);
     
--- DELETE FROM demandes
--- WHERE id_agent = 1090;
--- DELETE FROM documents_autorisation
--- WHERE id_agent_destinataire = 1090;
+DELETE FROM demandes
+WHERE id_agent = 1848;
+DELETE FROM documents_autorisation
+WHERE id_agent_destinataire = 1848;
 -- DELETE FROM decisions
 -- WHERE created_by IN (1082, 3);
 
--- DELETE FROM agents
--- WHERE matricule = '16543';
+DELETE FROM agents
+WHERE matricule = '5461515';
 
--- DELETE FROM utilisateurs
--- WHERE username = '16543';
+DELETE FROM utilisateurs
+WHERE username = '5461515';
 
 -- UPDATE agents
--- SET id_direction_generale = 52,
---     updated_at = CURRENT_TIMESTAMP
--- WHERE matricule IN ('821115C', '821439R', '813575R', '159015T');
+-- SET date_de_naissance = '1970-03-09'
+-- WHERE date_de_naissance = '1965-04-09' AND id = 1910;
 
 -- ============================================
 -- REQUÊTE POUR MODIFIER LA DATE DE GÉNÉRATION

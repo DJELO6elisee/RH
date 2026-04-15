@@ -71,10 +71,14 @@ function getPrepositionForDirection(direction) {
  * @returns {string} - La phrase formatée : "est affectée au/à la/à l' [direction]"
  */
 function formatAffectationPhrase(direction, genre = 'F') {
-    const preposition = getPrepositionForDirection(direction);
+    if (!direction || typeof direction !== 'string' || direction.trim() === '' || direction.trim() === '.') {
+        return '';
+    }
+    const validDirection = direction.trim();
+    const preposition = getPrepositionForDirection(validDirection);
     const verbe = genre === 'F' ? 'affectée' : 'affecté';
     
-    return `est ${verbe} ${preposition} ${direction}`;
+    return `est ${verbe} ${preposition} ${validDirection}`;
 }
 
 /**

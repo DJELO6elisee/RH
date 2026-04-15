@@ -514,7 +514,6 @@ class MinisteresController extends BaseController {
                     COUNT(CASE WHEN is_active = true THEN 1 END) as ministeres_actifs,
                     COUNT(CASE WHEN is_active = false THEN 1 END) as ministeres_inactifs,
                     (SELECT COUNT(*) FROM entites_administratives WHERE is_active = true) as total_entites,
-                    (SELECT COUNT(*) FROM agents WHERE statut_emploi = 'actif') as total_agents,
                     (SELECT COUNT(*) FROM directions) as nombre_directions,
                     (SELECT COUNT(*) FROM services) as nombre_services
                 FROM ministeres
@@ -522,9 +521,67 @@ class MinisteresController extends BaseController {
 
             const result = await pool.query(statsQuery);
 
+
+
+
+            // Requête unique : total_agents + répartition genre + répartition type d'agent
+            const detailQuery = `
+                SELECT
+                    -- Total agents actifs (excluant retirés et retraités)
+                    COUNT(DISTINCT a.id) AS total_agents,
+
+                    -- Genre (normalisation UPPER+TRIM+COALESCE pour gérer NULL, espaces, casse)
+                    -- Femmes = tout agent dont le sexe n'est PAS 'M' (catch-all garanti total_H+total_F = total_agents)
+                    COUNT(DISTINCT a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) = 'M') AS total_hommes,
+                    COUNT(DISTINCT a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) <> 'M') AS total_femmes,
+
+                    -- Fonctionnaires (type_d_agent id=1)
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id = 1) AS total_fonctionnaires,
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id = 1 AND UPPER(TRIM(COALESCE(a.sexe, ''))) = 'M') AS fonctionnaires_hommes,
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id = 1 AND UPPER(TRIM(COALESCE(a.sexe, ''))) <> 'M') AS fonctionnaires_femmes,
+
+                    -- Contractuels = contractuel (id=2) + BNETD (id=16) + Article 18 (id=17)
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id IN (2, 16, 17)) AS total_contractuels,
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id IN (2, 16, 17) AND UPPER(TRIM(COALESCE(a.sexe, ''))) = 'M') AS contractuels_hommes,
+                    COUNT(DISTINCT a.id) FILTER (WHERE ta.id IN (2, 16, 17) AND UPPER(TRIM(COALESCE(a.sexe, ''))) <> 'M') AS contractuels_femmes
+
+                FROM agents a
+                LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
+                LEFT JOIN grades g ON a.id_grade = g.id
+                WHERE
+                    (a.retire IS NULL OR a.retire = false)
+                    AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+                    AND (
+                        (
+                            a.date_retraite IS NULL
+                            AND (
+                                a.date_de_naissance IS NULL
+                                OR DATE_PART('year', AGE(CURRENT_DATE, a.date_de_naissance)) <
+                                   CASE WHEN g.libele IS NOT NULL AND UPPER(REPLACE(g.libele, ' ', '')) IN ('A4','A5','A6','A7') THEN 65 ELSE 60 END
+                            )
+                        )
+                        OR (a.date_retraite IS NOT NULL AND a.date_retraite > CURRENT_DATE)
+                    )
+                    AND NOT (
+                        a.id_type_d_agent = 1
+                        AND a.date_de_naissance IS NOT NULL
+                        AND g.libele IS NOT NULL
+                        AND MAKE_DATE(
+                            EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER +
+                            CASE WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4','A5','A6','A7') THEN 65 ELSE 60 END,
+                            12, 31
+                        )::DATE < CURRENT_DATE::DATE
+                    )
+            `;
+
+            const detailResult = await pool.query(detailQuery);
+
             res.json({
                 success: true,
-                data: result.rows[0]
+                data: {
+                    ...result.rows[0],
+                    ...detailResult.rows[0]
+                }
             });
 
         } catch (error) {

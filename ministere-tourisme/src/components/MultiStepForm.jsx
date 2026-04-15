@@ -2000,7 +2000,7 @@ const MultiStepForm = ({
         const dynamicFields = [];
         steps.forEach(step => {
             step.fields.forEach(field => {
-                if (field.type === 'select' && field.dynamicTable && !field.dependsOn) {
+                if (field.type === 'select' && field.dynamicTable && (!field.dependsOn || field.name === 'id_direction')) {
                     dynamicFields.push(field);
                 }
             });
@@ -2056,7 +2056,7 @@ const MultiStepForm = ({
         for (const [tableName, fields] of Object.entries(fieldsByTable)) {
             // Ne PAS utiliser le cache pour les services et sous-directions car ils dépendent de la direction
             // Le cache pourrait contenir des données d'une autre direction
-            if (tableName === 'services' || tableName === 'sous-directions' || tableName === 'sous_directions') {
+            if (tableName === 'directions' || tableName === 'services' || tableName === 'sous-directions' || tableName === 'sous_directions') {
                 console.log(`🔍 MultiStepForm - ${tableName}: Ignorer le cache, recharger avec le filtre de direction`);
                 // Ne pas utiliser le cache, continuer pour recharger
             } else if (optionsCache[tableName]) {
@@ -2073,10 +2073,12 @@ const MultiStepForm = ({
                 
                 // Déterminer l'ID du ministère pour le filtrage
                 let ministereId = null;
-                if (['directions', 'services', 'sous-directions'].includes(tableName)) {
-                    // Pour le ministère du tourisme, forcer l'ID 1
-                    ministereId = 1;
-                    console.log(`🔍 MultiStepForm - Filtrage FORCÉ par ministère ${ministereId} pour ${tableName}`);
+                if (['directions', 'services', 'sous-directions', 'directions-generales'].includes(tableName)) {
+                    // Récupérer le ministère de l'utilisateur
+                    const userMinistereId = await getUserMinistereId();
+                    // Fallback sur le ministère 1 (Tourisme) si non trouvé, pour assurer le filtrage
+                    ministereId = userMinistereId || 1;
+                    console.log(`🔍 MultiStepForm - Filtrage de ${tableName} par ministère ${ministereId}${!userMinistereId ? ' (FALLBACK)' : ''}`);
                 } else if (tableName === 'agents') {
                     // Pour les agents, récupérer le ministère de l'utilisateur
                     const userMinistereId = await getUserMinistereId();
@@ -2108,7 +2110,7 @@ const MultiStepForm = ({
                 console.log(`🔍 MultiStepForm - Chargement des champs SANS filtre dynamique pour ${tableName}`);
                 
                 // Pour les tables avec endpoint /select/all
-                if (['directions', 'services', 'sous-directions', 'services-entites'].includes(tableName)) {
+                if (['directions', 'services', 'sous-directions', 'directions-generales', 'services-entites'].includes(tableName)) {
                     apiUrl = `https://tourisme.2ise-groupe.com/api/${tableName}/select/all`;
                 }
                 // Pour les autres tables avec endpoint /select/all (inclut emplois et fonctions)
@@ -2402,22 +2404,21 @@ const MultiStepForm = ({
                 let apiUrl = `https://tourisme.2ise-groupe.com/api/${tableName}`;
                 let filterParams = [];
                 
-                // Pour les directions, utiliser l'endpoint /select/all comme en mode création
-                if (tableName === 'directions') {
+                // Pour les directions et directions générales, utiliser l'endpoint /select/all comme en mode création
+                if (['directions', 'directions-generales'].includes(tableName)) {
                     apiUrl = `https://tourisme.2ise-groupe.com/api/${tableName}/select/all`;
-                    // Ajouter le filtre par ministère pour les directions
-                    // Utiliser le ministère de l'utilisateur connecté ou forcer à 1 pour le ministère du tourisme
+                    // Ajouter le filtre par ministère
                     const userMinistereId = await getUserMinistereId();
                     const ministereId = userMinistereId || 1; // Utiliser le ministère de l'utilisateur ou forcer à 1
                     if (ministereId) {
                         filterParams.push(`id_ministere=${ministereId}`);
-                        console.log(`🔍 MultiStepForm - Chargement des directions avec endpoint /select/all et filtre par ministère (id_ministere=${ministereId})`);
+                        console.log(`🔍 MultiStepForm - Chargement de ${tableName} avec endpoint /select/all et filtre par ministère (id_ministere=${ministereId})`);
                     } else {
-                        console.log(`🔍 MultiStepForm - Chargement de toutes les directions avec endpoint /select/all (sans filtre ministère)`);
+                        console.log(`🔍 MultiStepForm - Chargement de ${tableName} avec endpoint /select/all (sans filtre ministère)`);
                     }
                 }
-                // Pour les tables avec endpoint /select/all (inclut emplois et fonctions)
-                else if (['categories', 'grades', 'echelons', 'civilites', 'nationalites', 'pays', 'situation_matrimonials', 'type_d_agents', 'mode_d_entrees', 'positions', 'niveau_informatiques', 'pathologies', 'handicaps', 'langues', 'niveau_langues', 'logiciels', 'emplois', 'fonctions'].includes(tableName)) {
+                // Pour les autres tables avec endpoint /select/all (inclut emplois et fonctions)
+                else if (['categories', 'grades', 'echelons', 'civilites', 'nationalites', 'pays', 'situation_matrimonials', 'type_d_agents', 'mode_d_entrees', 'positions', 'niveau_informatiques', 'pathologies', 'handicaps', 'langues', 'niveau_langues', 'logiciels', 'emplois', 'fonctions', 'directions-generales'].includes(tableName)) {
                     apiUrl = `https://tourisme.2ise-groupe.com/api/${tableName}/select/all`;
                 }
                 

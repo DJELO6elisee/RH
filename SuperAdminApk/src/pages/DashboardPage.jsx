@@ -3,79 +3,94 @@
 import React from 'react';
 
 import { AnnouncementCard, TodosCard } from 'components/Card';
-import HorizontalAvatarList from 'components/HorizontalAvatarList';
-// import MapWithBubbles from 'components/MapWithBubbles';
 import Page from 'components/Page';
-import ProductMedia from 'components/ProductMedia';
 import SupportTicket from 'components/SupportTicket';
 import UserProgressTable from 'components/UserProgressTable';
 import { IconWidget, NumberWidget } from 'components/Widget';
-import { getStackLineChart, stackLineChartOptions } from 'demos/chartjs';
 import {
     avatarsData,
-    chartjs,
     productsData,
     supportTicketsData,
     todosData,
     userProgressTableData,
 } from 'demos/dashboardPage';
-import { Bar, Line } from 'react-chartjs-2';
 import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-} from 'chart.js';
-import {
-    MdBubbleChart,
-    MdInsertChart,
+    MdPeople,
+    MdPerson,
     MdPersonPin,
-    MdPieChart,
     MdRateReview,
     MdShare,
-    MdShowChart,
     MdThumbUp,
+    MdWork,
+    MdAssignment,
+    MdWoman,
+    MdMan,
 } from 'react-icons/md';
 import {
-    Badge,
     Button,
     Card,
     CardBody,
-    CardDeck,
     CardGroup,
     CardHeader,
-    CardTitle,
     Col,
-    ListGroup,
-    ListGroupItem,
     Row,
 } from 'reactstrap';
-import { getColor } from 'utils/colors';
-import { isValidChartData, createSafeChartData } from 'utils/chartValidation';
 
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend
+// ─── Carte statistique réutilisable ────────────────────────────────────────────
+const StatCard = ({ icon: Icon, iconColor, label, value, sub1Label, sub1Value, sub1Color, sub2Label, sub2Value, sub2Color, accentColor }) => (
+    <Card style={{ borderTop: `4px solid ${accentColor}`, borderRadius: 8, height: '100%' }}>
+        <CardBody>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{
+                    width: 48, height: 48, borderRadius: '50%',
+                    background: `${accentColor}18`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginRight: 14, flexShrink: 0,
+                }}>
+                    <Icon size={26} color={accentColor} />
+                </div>
+                <div>
+                    <div style={{ fontSize: 13, color: '#6c757d', fontWeight: 500, marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: '#212529', lineHeight: 1 }}>
+                        {Number(value || 0).toLocaleString('fr-FR')}
+                    </div>
+                </div>
+            </div>
+            {(sub1Label || sub2Label) && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    {sub1Label && (
+                        <div style={{
+                            flex: 1, minWidth: 90,
+                            background: `${sub1Color || '#6c757d'}12`,
+                            borderRadius: 6, padding: '6px 10px',
+                            borderLeft: `3px solid ${sub1Color || '#6c757d'}`,
+                        }}>
+                            <div style={{ fontSize: 11, color: '#6c757d', marginBottom: 2 }}>{sub1Label}</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: sub1Color || '#6c757d' }}>
+                                {Number(sub1Value || 0).toLocaleString('fr-FR')}
+                            </div>
+                        </div>
+                    )}
+                    {sub2Label && (
+                        <div style={{
+                            flex: 1, minWidth: 90,
+                            background: `${sub2Color || '#6c757d'}12`,
+                            borderRadius: 6, padding: '6px 10px',
+                            borderLeft: `3px solid ${sub2Color || '#6c757d'}`,
+                        }}>
+                            <div style={{ fontSize: 11, color: '#6c757d', marginBottom: 2 }}>{sub2Label}</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: sub2Color || '#6c757d' }}>
+                                {Number(sub2Value || 0).toLocaleString('fr-FR')}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </CardBody>
+    </Card>
 );
 
-const today = new Date();
-const lastWeek = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() - 7,
-);
-
+// ─── Composant principal ────────────────────────────────────────────────────────
 class DashboardPage extends React.Component {
     constructor(props) {
         super(props);
@@ -83,174 +98,205 @@ class DashboardPage extends React.Component {
             stats: {
                 totalAgents: 0,
                 totalMinisteres: 0,
+                totalEntites: 0,
                 totalInstitutions: 0,
-                totalEntites: 0
+                // Genre
+                totalHommes: 0,
+                totalFemmes: 0,
+                // Fonctionnaires
+                totalFonctionnaires: 0,
+                fonctionnairesHommes: 0,
+                fonctionnairesFemmes: 0,
+                // Contractuels (contractuel + BNETD + article 18)
+                totalContractuels: 0,
+                contractuelsHommes: 0,
+                contractuelsFemmes: 0,
             },
-            loading: true
+            loading: true,
         };
     }
 
     componentDidMount() {
-        // this is needed, because InfiniteCalendar forces window scroll
         window.scrollTo(0, 0);
         this.loadGlobalStats();
     }
 
     loadGlobalStats = async () => {
         try {
-            // Charger les statistiques globales
             const response = await fetch('https://tourisme.2ise-groupe.com/api/ministeres/stats/global');
             const result = await response.json();
-            
+
             if (result.success) {
+                const d = result.data;
                 this.setState({
                     stats: {
-                        totalAgents: result.data.total_agents || 0,
-                        totalMinisteres: result.data.total_ministeres || 0,
-                        totalInstitutions: result.data.total_entites || 0,
-                        totalEntites: result.data.total_entites || 0
+                        totalAgents: parseInt(d.total_agents) || 0,
+                        totalMinisteres: parseInt(d.total_ministeres) || 0,
+                        totalEntites: parseInt(d.total_entites) || 0,
+                        totalInstitutions: parseInt(d.total_entites) || 0,
+                        // Genre
+                        totalHommes: parseInt(d.total_hommes) || 0,
+                        totalFemmes: parseInt(d.total_femmes) || 0,
+                        // Fonctionnaires
+                        totalFonctionnaires: parseInt(d.total_fonctionnaires) || 0,
+                        fonctionnairesHommes: parseInt(d.fonctionnaires_hommes) || 0,
+                        fonctionnairesFemmes: parseInt(d.fonctionnaires_femmes) || 0,
+                        // Contractuels
+                        totalContractuels: parseInt(d.total_contractuels) || 0,
+                        contractuelsHommes: parseInt(d.contractuels_hommes) || 0,
+                        contractuelsFemmes: parseInt(d.contractuels_femmes) || 0,
                     },
-                    loading: false
+                    loading: false,
                 });
+            } else {
+                this.setState({ loading: false });
             }
         } catch (error) {
             console.error('Erreur lors du chargement des statistiques:', error);
             this.setState({ loading: false });
         }
-    }
+    };
 
     render() {
-        const primaryColor = getColor('primary');
         const { stats, loading } = this.state;
-
-        // Vérification des données des graphiques
-        const isLineChartValid = chartjs && chartjs.line && isValidChartData(chartjs.line.data);
-        const isBarChartValid = chartjs && chartjs.bar && isValidChartData(chartjs.bar.data);
 
         if (loading) {
             return (
-                <Page className="DashboardPage" title="Dashboard" breadcrumbs={[{ name: 'Dashboard', active: true }]}>
+                <Page className="DashboardPage" title="Tableau de Bord Super Admin" breadcrumbs={[{ name: 'Dashboard', active: true }]}>
                     <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
                         <div className="spinner-border text-primary" role="status">
                             <span className="sr-only">Chargement...</span>
                         </div>
-                        <span className="ms-2">Chargement des statistiques...</span>
+                        <span className="ms-2" style={{ marginLeft: 12 }}>Chargement des statistiques...</span>
                     </div>
                 </Page>
             );
         }
 
-        if (!isLineChartValid || !isBarChartValid) {
-            console.error('Données des graphiques manquantes ou invalides:', { chartjs });
-            return (
-                <Page className="DashboardPage" title="Dashboard" breadcrumbs={[{ name: 'Dashboard', active: true }]}>
-                    <div>Erreur: Données des graphiques non disponibles</div>
-                </Page>
-            );
-        }
-
         return (
-            <Page className="DashboardPage" title="Dashboard Super Admin" breadcrumbs={[{ name: 'Dashboard', active: true }]} style={{ overflowX: 'hidden' }}>
+            <Page
+                className="DashboardPage"
+                title="Tableau de Bord Super Admin"
+                breadcrumbs={[{ name: 'Dashboard', active: true }]}
+                style={{ overflowX: 'hidden' }}
+            >
+
+                {/* ── Ligne 1 : Chiffres globaux ── */}
                 <Row>
                     <Col lg={3} md={6} sm={6} xs={12}>
                         <NumberWidget
                             title="Total Agents"
-                            subtitle="Tous ministères"
+                            subtitle="Pour Tous ministères"
                             number={stats.totalAgents.toString()}
-                            color="primary"
-                            progress={{
-                                value: 100,
-                                label: 'Tous agents',
-                            }}
+                        // color="primary"
+                        // progress={{ value: 100, label: 'Tous agents' }}
                         />
                     </Col>
-
                     <Col lg={3} md={6} sm={6} xs={12}>
                         <NumberWidget
-                            title="Ministères"
+                            title="Tous les Ministères"
                             subtitle="Actifs"
                             number={stats.totalMinisteres.toString()}
-                            color="success"
-                            progress={{
-                                value: 100,
-                                label: 'Tous ministères',
-                            }}
+                        // color="success"
+                        // progress={{ value: 100, label: 'Tous ministères' }}
                         />
                     </Col>
-
                     <Col lg={3} md={6} sm={6} xs={12}>
                         <NumberWidget
-                            title="Entités"
-                            subtitle="Administratives"
+                            title="Autres Entreprises Publiques"
+                            subtitle="et Collectivités Territotiales"
                             number={stats.totalEntites.toString()}
-                            color="info"
-                            progress={{
-                                value: 100,
-                                label: 'Toutes entités',
-                            }}
+                        // color="info"
+                        // progress={{ value: 100, label: 'Toutes entités' }}
                         />
                     </Col>
-
                     <Col lg={3} md={6} sm={6} xs={12}>
                         <NumberWidget
-                            title="Institutions"
+                            title="Toutes les Institutions"
                             subtitle="Publiques"
                             number={stats.totalInstitutions.toString()}
-                            color="warning"
-                            progress={{
-                                value: 100,
-                                label: 'Toutes institutions',
-                            }}
+                        // color="warning"
+                        // progress={{ value: 100, label: 'Toutes institutions' }}
                         />
                     </Col>
                 </Row>
 
-                <Row>
-                    <Col lg="8" md="12" sm="12" xs="12">
-                        <Card>
-                            <CardHeader>
-                                Évolution des Recrutements{' '}
-                                <small className="text-muted text-capitalize">Cette année</small>
-                            </CardHeader>
-                            <CardBody>
-                                <Line data={createSafeChartData(chartjs.line.data)} options={chartjs.line.options} />
-                            </CardBody>
-                        </Card>
+                {/* ── Ligne 2 : Répartition Genre ── */}
+                <div style={{ marginTop: 8, marginBottom: 4 }}>
+                    <h6 style={{ fontWeight: 700, color: '#495057', textTransform: 'uppercase', letterSpacing: 1, fontSize: 12 }}>
+                        Répartition par Genre — Tous Ministères
+                    </h6>
+                </div>
+                <Row style={{ marginBottom: 16 }}>
+                    <Col lg={6} md={6} sm={12} xs={12} style={{ marginBottom: 16 }}>
+                        <StatCard
+                            icon={MdMan}
+                            label="Total Hommes"
+                            value={stats.totalHommes}
+                            accentColor="#1976d2"
+                            sub1Label="Fonctionnaires"
+                            sub1Value={stats.fonctionnairesHommes}
+                            sub1Color="#1976d2"
+                            sub2Label="Contractuels"
+                            sub2Value={stats.contractuelsHommes}
+                            sub2Color="#0288d1"
+                        />
                     </Col>
-
-                    <Col lg="4" md="12" sm="12" xs="12">
-                        <Card>
-                            <CardHeader>Formations par Mois</CardHeader>
-                            <CardBody>
-                                <Bar data={createSafeChartData(chartjs.bar.data)} options={chartjs.bar.options} />
-                            </CardBody>
-                            <ListGroup flush>
-                                <ListGroupItem>
-                                    <MdInsertChart size={25} color={primaryColor} />
-                                    Formation Management{' '}
-                                    <Badge color="secondary">15 agents</Badge>
-                                </ListGroupItem>
-                                <ListGroupItem>
-                                    <MdBubbleChart size={25} color={primaryColor} />
-                                    Formation Sécurité{' '}
-                                    <Badge color="secondary">8 agents</Badge>
-                                </ListGroupItem>
-                                <ListGroupItem>
-                                    <MdShowChart size={25} color={primaryColor} />
-                                    Formation Technique{' '}
-                                    <Badge color="secondary">12 agents</Badge>
-                                </ListGroupItem>
-                                <ListGroupItem>
-                                    <MdPieChart size={25} color={primaryColor} />
-                                    Formation Soft Skills{' '}
-                                    <Badge color="secondary">24 agents</Badge>
-                                </ListGroupItem>
-                            </ListGroup>
-                        </Card>
+                    <Col lg={6} md={6} sm={12} xs={12} style={{ marginBottom: 16 }}>
+                        <StatCard
+                            icon={MdWoman}
+                            label="Total Femmes"
+                            value={stats.totalFemmes}
+                            accentColor="#d81b60"
+                            sub1Label="Fonctionnaires"
+                            sub1Value={stats.fonctionnairesFemmes}
+                            sub1Color="#d81b60"
+                            sub2Label="Contractuelles"
+                            sub2Value={stats.contractuelsFemmes}
+                            sub2Color="#e91e63"
+                        />
                     </Col>
                 </Row>
 
-                <CardGroup style={{ marginBottom: '1rem' }}>
+                {/* ── Ligne 3 : Répartition Type d'agent ── */}
+                <div style={{ marginBottom: 4 }}>
+                    <h6 style={{ fontWeight: 700, color: '#495057', textTransform: 'uppercase', letterSpacing: 1, fontSize: 12 }}>
+                        Répartition par Statut d'Agent
+                    </h6>
+                </div>
+                <Row style={{ marginBottom: 24 }}>
+                    <Col lg={6} md={6} sm={12} xs={12} style={{ marginBottom: 16 }}>
+                        <StatCard
+                            icon={MdWork}
+                            label="Fonctionnaires"
+                            value={stats.totalFonctionnaires}
+                            accentColor="#2e7d32"
+                            sub1Label="Hommes"
+                            sub1Value={stats.fonctionnairesHommes}
+                            sub1Color="#388e3c"
+                            sub2Label="Femmes"
+                            sub2Value={stats.fonctionnairesFemmes}
+                            sub2Color="#66bb6a"
+                        />
+                    </Col>
+                    <Col lg={6} md={6} sm={12} xs={12} style={{ marginBottom: 16 }}>
+                        <StatCard
+                            icon={MdAssignment}
+                            label="Contractuels (incl. BNETD & Art.18)"
+                            value={stats.totalContractuels}
+                            accentColor="#e65100"
+                            sub1Label="Hommes"
+                            sub1Value={stats.contractuelsHommes}
+                            sub1Color="#ef6c00"
+                            sub2Label="Femmes"
+                            sub2Value={stats.contractuelsFemmes}
+                            sub2Color="#ffa726"
+                        />
+                    </Col>
+                </Row>
+
+                {/* ── IconWidgets ── */}
+                {/* <CardGroup style={{ marginBottom: '1rem' }}>
                     <IconWidget
                         bgColor="white"
                         inverse={false}
@@ -272,11 +318,10 @@ class DashboardPage extends React.Component {
                         title="30+ Formations"
                         subtitle="Nouvelles sessions"
                     />
-                </CardGroup>
+                </CardGroup> */}
 
-
-                <Row>
-
+                {/* ── Nouveaux Employés ── */}
+                {/* <Row>
                     <Col md="12" sm="12" xs="12">
                         <Card>
                             <CardHeader>Nouveaux Employés</CardHeader>
@@ -298,9 +343,10 @@ class DashboardPage extends React.Component {
                             </CardBody>
                         </Card>
                     </Col>
-                </Row>
+                </Row> */}
 
-                <Row>
+                {/* ── Annonces / Demandes / Todos ── */}
+                {/* <Row style={{ marginTop: 16 }}>
                     <Col lg="4" md="12" sm="12" xs="12">
                         <AnnouncementCard
                             color="gradient-secondary"
@@ -309,21 +355,16 @@ class DashboardPage extends React.Component {
                             name="DRH"
                             date="il y a 1 heure"
                             text="Nouvelle politique de télétravail mise en place. Tous les employés peuvent désormais bénéficier de 2 jours de télétravail par semaine."
-                            buttonProps={{
-                                children: 'voir',
-                            }}
+                            buttonProps={{ children: 'voir' }}
                             style={{ height: 500 }}
                         />
                     </Col>
-
                     <Col lg="4" md="12" sm="12" xs="12">
                         <Card>
                             <CardHeader>
                                 <div className="d-flex justify-content-between align-items-center">
                                     <span>Demandes RH</span>
-                                    <Button>
-                                        <small>Voir Tout</small>
-                                    </Button>
+                                    <Button><small>Voir Tout</small></Button>
                                 </div>
                             </CardHeader>
                             <CardBody>
@@ -337,7 +378,6 @@ class DashboardPage extends React.Component {
                             </CardBody>
                         </Card>
                     </Col>
-
                     <Col lg="4" md="12" sm="12" xs="12">
                         {todosData && todosData.map ? (
                             <TodosCard todos={todosData} />
@@ -349,7 +389,7 @@ class DashboardPage extends React.Component {
                             </Card>
                         )}
                     </Col>
-                </Row>
+                </Row> */}
             </Page>
         );
     }

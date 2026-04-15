@@ -549,12 +549,12 @@ class MemoryPDFService {
                     (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     '';
 
-                const resolvedDirectionName = headerContext.directionName ||
-                    agent.direction_nom ||
+                const resolvedDirectionName = agent.direction_nom ||
                     agent.service_nom ||
+                    agent.direction_generale_nom ||
+                    headerContext.directionName ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    agent.service_nom ||
                     '';
 
                 if (!agent.direction_nom && resolvedDirectionName) {
@@ -754,6 +754,7 @@ class MemoryPDFService {
                     c.libele as civilite,
                     s.libelle as service_nom,
                     s.libelle as direction_nom,
+                    COALESCE(dg.libelle, dg_via_dir.libelle) as direction_generale_nom,
                     m.nom as ministere_nom,
                     m.sigle as ministere_sigle,
                     ta.libele as type_agent_libele,
@@ -772,6 +773,8 @@ class MemoryPDFService {
                 LEFT JOIN agents a ON d.id_agent = a.id
                 LEFT JOIN civilites c ON a.id_civilite = c.id
                 LEFT JOIN directions s ON a.id_direction = s.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                LEFT JOIN direction_generale dg_via_dir ON s.id_direction_generale = dg_via_dir.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 LEFT JOIN (
@@ -827,6 +830,7 @@ class MemoryPDFService {
                 emploi_designation_poste: row.emploi_designation_poste,
                 service_nom: row.service_nom,
                 direction_nom: row.direction_nom || row.service_nom,
+                direction_generale_nom: row.direction_generale_nom,
                 ministere_nom: row.ministere_nom,
                 ministere_sigle: row.ministere_sigle,
                 date_prise_service_au_ministere: row.date_prise_service_au_ministere,
@@ -2114,9 +2118,10 @@ class MemoryPDFService {
                     (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     '';
 
-                const resolvedDirectionName = headerContext.directionName ||
-                    agent.direction_nom ||
+                const resolvedDirectionName = agent.direction_nom ||
                     agent.service_nom ||
+                    agent.direction_generale_nom ||
+                    headerContext.directionName ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
                     '';
@@ -2124,6 +2129,7 @@ class MemoryPDFService {
                 const headerDirectionName = resolvedDirectionName ||
                     agent.direction_nom ||
                     agent.service_nom ||
+                    agent.direction_generale_nom ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
                     'DIRECTION DES RESSOURCES HUMAINES';
@@ -2349,7 +2355,7 @@ class MemoryPDFService {
                 const agentNameParts = formatAgentName(agent);
                 const validateurNameParts = formatAgentName(validateur);
                 const fonctionActuelle = getAgentPosteOuEmploi(agent);
-                const serviceNom = agent.service_nom || agent.direction_nom || 'Service non renseigné';
+                const serviceNom = agent.service_nom || agent.direction_nom || agent.direction_generale_nom || 'Service non renseigné';
 
                 const dateRepriseValue = demande.date_reprise_service || demande.date_fin_conges || demande.date_fin || demande.date_debut;
                 const dReprise = dateRepriseValue ? new Date(dateRepriseValue) : null;
@@ -3267,8 +3273,16 @@ class MemoryPDFService {
                                 }
                             }
 
-                            // Affectation
-                            const affectation = agent.direction_nom || agent.service_nom || agent.direction_libelle || agent.service_libelle || '';
+                            // Affectation : Direction en priorité, sinon Direction Générale
+                            const resolveAffectation = (a) => {
+                                for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
+                                    if (typeof val === 'string' && val.trim() !== '' && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined') {
+                                        return val.trim();
+                                    }
+                                }
+                                return '';
+                            };
+                            const affectation = resolveAffectation(agent);
 
                             // Référence certificat avec date
                             const certReference = options.cert_reference || options.certificat_reference || '';
@@ -3316,7 +3330,10 @@ class MemoryPDFService {
                             // 6. Affectation (classe retirée selon demande)
                             // Utiliser la fonction utilitaire pour déterminer la bonne préposition
                             const genre = agent.sexe === 'F' ? 'F' : 'M';
-                            texte1Parts.push(formatAffectationPhrase(affectation, genre));
+                            const affectationPhrase = formatAffectationPhrase(affectation, genre);
+                            if (affectationPhrase) {
+                                texte1Parts.push(affectationPhrase);
+                            }
 
                             // 7. Conformément au certificat
                             if (certReference) {
@@ -4047,7 +4064,7 @@ class MemoryPDFService {
                 const matricule = agent.matricule || '';
                 const fonctionActuelle = getAgentPosteOuEmploi(agent);
                 // Direction/Service d'affectation de l'agent (toujours utiliser la direction de l'agent dans le texte)
-                const directionAgent = agent.service_nom || agent.direction_nom || agent.direction_libelle || agent.service_libelle || 'Service non renseigné';
+                const directionAgent = agent.direction_nom || agent.service_nom || agent.direction_generale_nom || agent.direction_libelle || agent.service_libelle || 'Service non renseigné';
                 
                 // Vérifier si l'agent est à la Direction des Ressources Humaines (pour déterminer le signataire et le soulignement)
                 const isDirectionRH = directionAgent && (

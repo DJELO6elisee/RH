@@ -39,6 +39,12 @@ router.get(
 
 // CRUD de base
 router.get(
+    '/select/all',
+    authenticate,
+    directionGeneraleController.getAllForSelect
+);
+
+router.get(
     '/',
     authenticate,
     directionGeneraleController.getAllDirectionsGenerales

@@ -157,13 +157,13 @@ const iconMap = {
 };
 
 const navItems = [
-    { to: '/dashboard', name: 'dashboard', exact: true, Icon: MdDashboard },
+    { to: '/dashboard', name: 'Tableau de Bord', exact: true, Icon: MdDashboard },
 ];
 
 // Fonction pour obtenir les items de navigation personnalisés selon le rôle
 const getCustomNavItems = (user) => {
     const items = [];
-    
+
     // Ajouter l'onglet "Espace Personnel DRH" pour les DRH
     if (user && (user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh') && user.id_agent) {
         items.push({
@@ -173,7 +173,7 @@ const getCustomNavItems = (user) => {
             Icon: MdAssignment
         });
     }
-    
+
     return items;
 };
 
@@ -182,18 +182,18 @@ const loadAssignedRoutes = async (userId) => {
     try {
         const token = localStorage.getItem('token');
         if (!token) return [];
-        
+
         // Utiliser getApiUrl si disponible, sinon utiliser window.location.origin
-        const apiBase = typeof window !== 'undefined' && window.location.origin ? 
+        const apiBase = typeof window !== 'undefined' && window.location.origin ?
             window.location.origin : 'https://tourisme.2ise-groupe.com';
-        
+
         const response = await fetch(`${apiBase}/api/agent-route-assignments/my-routes`, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         if (response.ok) {
             const data = await response.json();
             return data.success ? (data.data || []) : [];
@@ -210,19 +210,19 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
     if (user && user.role === 'super_admin') {
         return backendRoutes.filter(route => !route.isAgentRoute);
     }
-    
+
     // Les DRH voient toutes les routes autorisées selon leur organisation
     const isDRH = user && (user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh');
-    
+
     // Les directeurs doivent aussi avoir accès basé sur leur rôle
     const isDirecteur = user && (user.role === 'directeur' || user.role?.toLowerCase() === 'directeur');
-    
+
     if (!user || !user.organization) {
         return backendRoutes; // Retourner toutes les routes si pas d'organisation
     }
 
     const { organization } = user;
-    
+
     // Routes autorisées selon le type d'organisation
     const allowedRoutes = {
         'ministere': [
@@ -242,7 +242,7 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
             'agent-user-accounts', 'attribution-taches-agents', 'besoins-en-agents', 'auth', 'drh-parametres', 'historique-des-agents', 'jours-conges', 'gestion-mariages',
             // États et Rapports
             'agents_reports', 'projections_retraites', 'agents_by_type_report', 'agents_by_service_report',
-    // Routes de gestion des documents administratifs
+            // Routes de gestion des documents administratifs
             'demande-absence', 'demande-sortie-territoire', 'demande-attestation-travail',
             'autorisation-conges', 'autorisation-retraite',
             'attestation-presence', 'note-service', 'certificat-cessation-service',
@@ -260,7 +260,7 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
     };
 
     const userAllowedRoutes = allowedRoutes[organization.type] || [];
-    
+
     // Fonction pour vérifier si l'utilisateur a accès à une route selon son rôle
     const hasRoleAccess = (route) => {
         if (!route.roles || route.roles.length === 0) {
@@ -272,11 +272,11 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
         const userRoleLower = user.role?.toLowerCase();
         return route.roles.some(role => {
             const roleLower = role?.toLowerCase();
-            return userRoleLower === roleLower || 
-                   (userRoleLower === 'directeur' && roleLower === 'directeur');
+            return userRoleLower === roleLower ||
+                (userRoleLower === 'directeur' && roleLower === 'directeur');
         });
     };
-    
+
     // Si c'est un DRH ou un directeur, retourner toutes les routes autorisées selon leur rôle
     if (isDRH || isDirecteur) {
         return backendRoutes.filter(route => {
@@ -286,29 +286,29 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
             }
             // Pour les directeurs, vérifier aussi si la route est dans les routes autorisées
             if (isDirecteur) {
-                return userAllowedRoutes.includes(route.id) || 
-                       (route.isAgentRoute && user && user.role !== 'super_admin');
+                return userAllowedRoutes.includes(route.id) ||
+                    (route.isAgentRoute && user && user.role !== 'super_admin');
             }
             // Pour les DRH, retourner toutes les routes autorisées
-            return userAllowedRoutes.includes(route.id) || 
-                   (route.isAgentRoute && user && user.role !== 'super_admin');
+            return userAllowedRoutes.includes(route.id) ||
+                (route.isAgentRoute && user && user.role !== 'super_admin');
         });
     }
-    
+
     // Pour les agents non-DRH et non-directeurs, filtrer selon les routes assignées
-    const filtered = backendRoutes.filter(route => 
-        (userAllowedRoutes.includes(route.id) || 
-        assignedRouteIds.includes(route.id) ||
-        (route.isAgentRoute && user && user.role !== 'super_admin')) &&
+    const filtered = backendRoutes.filter(route =>
+        (userAllowedRoutes.includes(route.id) ||
+            assignedRouteIds.includes(route.id) ||
+            (route.isAgentRoute && user && user.role !== 'super_admin')) &&
         hasRoleAccess(route)
     );
-    
+
     // Log pour débogage
     if (assignedRouteIds.length > 0) {
         const assignedRoutesInFiltered = filtered.filter(r => assignedRouteIds.includes(r.id));
         console.log('🔍 Routes assignées dans filteredRoutes:', assignedRoutesInFiltered.map(r => r.name));
     }
-    
+
     return filtered;
 };
 
@@ -321,7 +321,7 @@ const FilteredSidebar = (props) => {
     const [isOpenPages, setIsOpenPages] = useState(true);
     const [assignedRouteIds, setAssignedRouteIds] = useState([]);
     const [loadingRoutes, setLoadingRoutes] = useState(true);
-    
+
     // État pour les catégories de routes RH
     const [categoryStates, setCategoryStates] = useState(
         categories.reduce((acc, category) => {
@@ -333,20 +333,20 @@ const FilteredSidebar = (props) => {
 
     // État spécifique pour le menu déroulant Nomination
     const [isNominationOpen, setIsNominationOpen] = useState(false);
-    
+
     // État spécifique pour le menu déroulant Gestion des demandes
     const [isDemandesOpen, setIsDemandesOpen] = useState(false);
 
     // Charger les routes assignées pour les agents non-DRH et non-directeurs
     useEffect(() => {
         let isMounted = true;
-        
+
         const loadRoutes = async () => {
             if (user && user.id) {
                 const isDRH = user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh';
                 const isDirecteur = user.role === 'directeur' || user.role?.toLowerCase() === 'directeur';
                 const isSuperAdmin = user.role === 'super_admin';
-                
+
                 // Seulement charger les routes assignées pour les agents (pas DRH, pas directeur, pas super_admin)
                 if (!isDRH && !isDirecteur && !isSuperAdmin) {
                     try {
@@ -370,9 +370,9 @@ const FilteredSidebar = (props) => {
                 setLoadingRoutes(false);
             }
         };
-        
+
         loadRoutes();
-        
+
         // Fonction de nettoyage
         return () => {
             isMounted = false;
@@ -408,7 +408,7 @@ const FilteredSidebar = (props) => {
     const uniqueFilteredRoutes = filteredRoutes.filter((route, index, self) =>
         self.findIndex(candidate => candidate.id === route.id) === index
     );
-    
+
     // Grouper les routes filtrées par catégorie
     const filteredRoutesByCategory = uniqueFilteredRoutes.reduce((acc, route) => {
         if (!acc[route.category]) {
@@ -439,15 +439,15 @@ const FilteredSidebar = (props) => {
         'emargement',
         'historiques-demandes'
     ];
-    
+
     // Fallback: Si l'utilisateur est DRH ou directeur et qu'il n'y a pas de routes de gestion des documents administratifs,
     // forcer l'affichage des routes de gestion des documents administratifs
     let finalDemandesRoutes = demandesRoutes;
-    
+
     // Force l'affichage pour tous les utilisateurs DRH et directeurs
     const isDRH = user && (user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh');
     const isDirecteur = user && (user.role === 'directeur' || user.role?.toLowerCase() === 'directeur');
-    
+
     if (isDRH || isDirecteur) {
         // Filtrer les routes selon le rôle de l'utilisateur
         finalDemandesRoutes = backendRoutes.filter(route => {
@@ -461,17 +461,17 @@ const FilteredSidebar = (props) => {
             const userRoleLower = user.role?.toLowerCase();
             return route.roles.some(role => {
                 const roleLower = role?.toLowerCase();
-                return userRoleLower === roleLower || 
-                       (userRoleLower === 'directeur' && roleLower === 'directeur');
+                return userRoleLower === roleLower ||
+                    (userRoleLower === 'directeur' && roleLower === 'directeur');
             });
         });
     }
     // Séparer la catégorie "Paramètres" pour l'afficher en dernier
-    const parametresCategory = Object.entries(filteredRoutesByCategory).find(([category]) => 
+    const parametresCategory = Object.entries(filteredRoutesByCategory).find(([category]) =>
         category === 'Paramètres'
     );
-    const otherCategories = Object.entries(filteredRoutesByCategory).filter(([category]) => 
-        category !== 'PROFIL DE CARRIERE' && 
+    const otherCategories = Object.entries(filteredRoutesByCategory).filter(([category]) =>
+        category !== 'PROFIL DE CARRIERE' &&
         category !== 'Gestions des documents administratifs' &&
         category !== 'Paramètres'
     );
@@ -601,7 +601,7 @@ const FilteredSidebar = (props) => {
                             </BSNavLink>
                         </NavItem>
                     ))}
-                    
+
                     {/* Navigation personnalisée selon le rôle */}
                     {getCustomNavItems(user).map(({ to, name, exact, Icon }, index) => (
                         <NavItem key={`custom-${index}`} className={bem.e('nav-item')}>
@@ -624,7 +624,7 @@ const FilteredSidebar = (props) => {
                     {/* Menu déroulant Nomination */}
                     {nominationRoutes.length > 0 && (
                         <NavItem className={bem.e('nav-item')}>
-                            <BSNavLink 
+                            <BSNavLink
                                 className={bem.e('nav-item-collapse')}
                                 onClick={handleClick('PROFIL DE CARRIERE')}
                             >
@@ -671,7 +671,7 @@ const FilteredSidebar = (props) => {
                     {/* Menu déroulant Gestions des documents administratifs */}
                     {(finalDemandesRoutes.length > 0 || (user && ((user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh') || (user.role === 'directeur' || user.role?.toLowerCase() === 'directeur')))) && (
                         <NavItem className={bem.e('nav-item')}>
-                            <BSNavLink 
+                            <BSNavLink
                                 className={bem.e('nav-item-collapse')}
                                 onClick={handleClick('Demandes')}
                             >
@@ -734,10 +734,10 @@ const FilteredSidebar = (props) => {
                     {otherCategories.map(([category, routes]) => {
                         const categoryKey = category.replace(/\s+/g, '');
                         const isOpen = categoryStates[`isOpen${categoryKey}`];
-                        
+
                         return (
                             <NavItem key={category} className={bem.e('nav-item')}>
-                                <BSNavLink 
+                                <BSNavLink
                                     className={bem.e('nav-item-collapse')}
                                     onClick={handleClick(categoryKey)}
                                 >
@@ -785,10 +785,10 @@ const FilteredSidebar = (props) => {
                         const [category, routes] = parametresCategory;
                         const categoryKey = category.replace(/\s+/g, '');
                         const isOpen = categoryStates[`isOpen${categoryKey}`];
-                        
+
                         return (
                             <NavItem key={category} className={bem.e('nav-item')}>
-                                <BSNavLink 
+                                <BSNavLink
                                     className={bem.e('nav-item-collapse')}
                                     onClick={handleClick(categoryKey)}
                                 >

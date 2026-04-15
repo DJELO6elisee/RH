@@ -1416,42 +1416,59 @@ class AgentsController extends BaseController {
 
             // Remplir les tables de liaison grade / échelon / catégorie (historique carrière)
             const dateEntreeCarriere = filteredAgentData.date_prise_service_au_ministere || filteredAgentData.date_embauche || new Date().toISOString().slice(0, 10);
-            if (filteredAgentData.id_grade) {
+            
+            if (filteredAgentData.id_grade || filteredAgentData.id_echelon || filteredAgentData.id_categorie) {
                 try {
-                    await pool.query(
-                        `INSERT INTO grades_agents (id_agent, id_grade, id_nomination, date_entree, date_sortie)
-                         VALUES ($1, $2, NULL, $3::DATE, NULL)
-                         ON CONFLICT (id_agent, id_grade, date_entree) DO NOTHING`, [agent.id, filteredAgentData.id_grade, dateEntreeCarriere]
-                    );
-                    console.log(`✅ Grade enregistré dans grades_agents pour l'agent ${agent.id}`);
+                    // Créer une nomination pour la carrière (grade/échelon/catégorie) avec un numéro unique
+                    // On utilise le type 'emploi' car autorisé par la contrainte CHECK de la table nominations
+                    const currentYear = new Date().getFullYear();
+                    const timestamp = Date.now();
+                    const numeroNomination = `AUTO-CARRIERE-${agent.id}-${currentYear}-${timestamp}`;
+                    const nominationQuery = `
+                        INSERT INTO nominations (id_agent, type_nomination, nature, numero, date_signature, statut)
+                        VALUES ($1, 'emploi', 'Initiale (Carrière)', $2, CURRENT_DATE, 'active')
+                        RETURNING id
+                    `;
+                    const nominationResult = await pool.query(nominationQuery, [agent.id, numeroNomination]);
+                    const idNominationCarriere = nominationResult.rows[0].id;
+
+                    // Enregistrer le grade
+                    if (filteredAgentData.id_grade) {
+                        await pool.query(
+                            `INSERT INTO grades_agents (id_agent, id_grade, id_nomination, date_entree, date_sortie)
+                             VALUES ($1, $2, $3, $4::DATE, NULL)
+                             ON CONFLICT (id_agent, id_grade, date_entree) DO NOTHING`, 
+                            [agent.id, filteredAgentData.id_grade, idNominationCarriere, dateEntreeCarriere]
+                        );
+                        console.log(`✅ Grade enregistré dans grades_agents pour l'agent ${agent.id}`);
+                    }
+
+                    // Enregistrer l'échelon
+                    if (filteredAgentData.id_echelon) {
+                        await pool.query(
+                            `INSERT INTO echelons_agents (id_agent, id_echelon, id_nomination, date_entree, date_sortie)
+                             VALUES ($1, $2, $3, $4::DATE, NULL)
+                             ON CONFLICT (id_agent, id_echelon, date_entree) DO NOTHING`, 
+                            [agent.id, filteredAgentData.id_echelon, idNominationCarriere, dateEntreeCarriere]
+                        );
+                        console.log(`✅ Échelon enregistré dans echelons_agents pour l'agent ${agent.id}`);
+                    }
+
+                    // Enregistrer la catégorie
+                    if (filteredAgentData.id_categorie) {
+                        await pool.query(
+                            `INSERT INTO categories_agents (id_agent, id_categorie, id_nomination, date_entree, date_sortie)
+                             VALUES ($1, $2, $3, $4::DATE, NULL)
+                             ON CONFLICT (id_agent, id_categorie, date_entree) DO NOTHING`, 
+                            [agent.id, filteredAgentData.id_categorie, idNominationCarriere, dateEntreeCarriere]
+                        );
+                        console.log(`✅ Catégorie enregistrée dans categories_agents pour l'agent ${agent.id}`);
+                    }
                 } catch (err) {
-                    console.error('⚠️ Erreur insertion grades_agents (non bloquante):', err.message);
+                    console.error('⚠️ Erreur insertion carrière (grades/echelons/categories):', err.message);
                 }
             }
-            if (filteredAgentData.id_echelon) {
-                try {
-                    await pool.query(
-                        `INSERT INTO echelons_agents (id_agent, id_echelon, id_nomination, date_entree, date_sortie)
-                         VALUES ($1, $2, NULL, $3::DATE, NULL)
-                         ON CONFLICT (id_agent, id_echelon, date_entree) DO NOTHING`, [agent.id, filteredAgentData.id_echelon, dateEntreeCarriere]
-                    );
-                    console.log(`✅ Échelon enregistré dans echelons_agents pour l'agent ${agent.id}`);
-                } catch (err) {
-                    console.error('⚠️ Erreur insertion echelons_agents (non bloquante):', err.message);
-                }
-            }
-            if (filteredAgentData.id_categorie) {
-                try {
-                    await pool.query(
-                        `INSERT INTO categories_agents (id_agent, id_categorie, id_nomination, date_entree, date_sortie)
-                         VALUES ($1, $2, NULL, $3::DATE, NULL)
-                         ON CONFLICT (id_agent, id_categorie, date_entree) DO NOTHING`, [agent.id, filteredAgentData.id_categorie, dateEntreeCarriere]
-                    );
-                    console.log(`✅ Catégorie enregistrée dans categories_agents pour l'agent ${agent.id}`);
-                } catch (err) {
-                    console.error('⚠️ Erreur insertion categories_agents (non bloquante):', err.message);
-                }
-            }
+
 
             // Gérer les fichiers uploadés
             if (files) {
