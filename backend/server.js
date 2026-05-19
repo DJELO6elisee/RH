@@ -424,6 +424,7 @@ const userAccountsRoutes = require('./routes/userAccounts');
 const mariagesRoutes = require('./routes/mariages');
 const planningPrevisionnelRoutes = require('./routes/planning-previsionnel');
 const agentRouteAssignmentsRoutes = require('./routes/agent-route-assignments');
+const settingsRoutes = require('./routes/settings');
 
 
 // Utilisation des routes
@@ -529,6 +530,7 @@ app.use('/api/demandes', demandesRoutes);
 app.use('/api/conges', congesRoutes);
 app.use('/api/planning-previsionnel', planningPrevisionnelRoutes);
 app.use('/api/agent-route-assignments', agentRouteAssignmentsRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/decisions', require('./routes/decisions'));
 app.use('/api/pdf', pdfRoutes);

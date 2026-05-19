@@ -368,7 +368,7 @@ async function processCrestBuffer(buffer, source = {}) {
 
     if (!containsTransparency) {
       let modified = false;
-      image.scan(0, 0, image.bitmap.width, image.bitmap.height, function(x, y, idx) {
+      image.scan(0, 0, image.bitmap.width, image.bitmap.height, function (x, y, idx) {
         const red = this.bitmap.data[idx];
         const green = this.bitmap.data[idx + 1];
         const blue = this.bitmap.data[idx + 2];
@@ -604,7 +604,7 @@ async function drawOfficialHeaderPDF(doc, {
   await ensureCrestAssetsLoaded();
   const crestBuffer = getCrestBuffer();
   const crestStartY = topY - 5;
-  
+
   if (crestBuffer) {
     // Dessiner l'armoirie
     doc.image(crestBuffer, centerX, crestStartY, { width: crestWidth, height: crestWidth, fit: [crestWidth, crestWidth] });
@@ -646,7 +646,7 @@ async function drawOfficialHeaderPDF(doc, {
   const referenceText = documentNumber && documentNumber.trim() ? `N° ${documentNumber.trim()}` : 'N° 00000';
   doc.text(referenceText, leftX, commonLineY, { width: sectionWidth, align: 'left' });
   const referenceHeight = doc.heightOfString(referenceText, { width: sectionWidth });
-  
+
   // Dessiner la date à droite à la même Y commune
   let formattedDate = formatFullFrenchDate(dateString ?? generatedAt, generatedAt ?? null);
   if (!formattedDate) {

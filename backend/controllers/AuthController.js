@@ -127,7 +127,7 @@ class AuthController {
                             AND a.id_ministere = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents a 
                                 WHERE a.id = u.id_agent 
@@ -146,7 +146,7 @@ class AuthController {
                             AND a.id_institution = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents_institutions_main a 
                                 WHERE a.id = u.id_agent 
@@ -166,7 +166,7 @@ class AuthController {
                             AND e.id = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents a 
                                 WHERE a.id = u.id_agent 

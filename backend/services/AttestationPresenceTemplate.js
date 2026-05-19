@@ -4,6 +4,7 @@ const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel 
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
+const pool = require('../config/database');
 
 function toTitleCase(value = '') {
     return value
@@ -116,7 +117,7 @@ class AttestationPresenceTemplate {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
-        }) : dateGeneration;
+        }) : 'Date non spécifiée';
 
         const signatureInfo = await resolveSignature(validateur);
         const signatureBlock = (signatureInfo.role || signatureInfo.name || signatureInfo.signatureImage)
@@ -129,6 +130,37 @@ class AttestationPresenceTemplate {
                     </div>
                 </div>`
             : '';
+
+        // Récupération des textes dynamiques depuis la base de données
+        let bodyTemplate = "Je soussigné{validateurGenre}, <strong>{validateurNomComplet}</strong>, <strong>{validateurFonction}</strong>, atteste que {civilite} <strong>{prenoms} {nom}</strong>, <strong>{fonctionAvecService}</strong>, est en service dans ledit Ministère, depuis le <strong>{dateDebut}</strong>.";
+        let footerTemplate = "En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.";
+
+        try {
+            const configResult = await pool.query("SELECT value FROM configurations WHERE key = 'template_attestation_presence'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.footer) footerTemplate = config.footer;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        // Remplacer les placeholders
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{validateurGenre}/g, validateurGenre || '')
+                .replace(/{validateurNomComplet}/g, validateurNomComplet || '')
+                .replace(/{validateurFonction}/g, validateurFonction || '')
+                .replace(/{civilite}/g, civilite || '')
+                .replace(/{prenoms}/g, nameParts.prenoms || '')
+                .replace(/{nom}/g, nameParts.nom || '')
+                .replace(/{fonctionAvecService}/g, fonctionAvecService || '')
+                .replace(/{dateDebut}/g, dateDebut || '');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedFooter = replacePlaceholders(footerTemplate);
 
         return `
         <!DOCTYPE html>
@@ -194,14 +226,14 @@ class AttestationPresenceTemplate {
         <body>
             <div class="document-container">
                 ${headerHTML}
-
+ 
                 <div class="document-title">ATTESTATION DE PRÉSENCE</div>
-
+ 
                 <div class="content-text">
-                    <p>Je soussigné${validateurGenre}, <strong>${validateurNomComplet}</strong>, <strong>${validateurFonction}</strong>, atteste que ${civilite} <strong>${nameParts.prenoms} ${nameParts.nom}</strong>, <strong>${fonctionAvecService}</strong>, est en service dans ledit Ministère, depuis le <strong>${dateDebut}</strong>.</p>
-                    <p>En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.</p>
+                    <p>${resolvedBody}</p>
+                    <p>${resolvedFooter}</p>
                 </div>
-
+ 
                 ${signatureBlock}
             </div>
         </body>

@@ -33,7 +33,8 @@ const ProtectedRoute = ({
   // Vérification rapide pour DRH et super_admin
   const isSuperAdmin = user?.role === 'super_admin';
   const isDRH = user?.role === 'drh' || user?.role === 'DRH' || user?.role?.toLowerCase() === 'drh';
-  const isPrivilegedUser = isSuperAdmin || isDRH;
+  const isInformaticien = user?.role === 'informaticien';
+  const isPrivilegedUser = isSuperAdmin || isDRH || isInformaticien;
 
   useEffect(() => {
     // Ne vérifier l'autorisation que si c'est la route actuelle
@@ -192,7 +193,7 @@ const ProtectedRoute = ({
     }
     
     // Rediriger vers le dashboard approprié selon le rôle
-    const isAgent = user && !['drh', 'DRH', 'super_admin'].includes(user.role?.toLowerCase());
+    const isAgent = user && !['drh', 'DRH', 'super_admin', 'informaticien'].includes(user.role?.toLowerCase());
     if (isAgent) {
       console.log('🔄 ProtectedRoute - Redirection agent vers /agent-dashboard car accès refusé pour path:', path);
       return <Redirect to="/agent-dashboard" />;

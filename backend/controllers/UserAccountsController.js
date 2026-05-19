@@ -163,7 +163,7 @@ class UserAccountsController {
         try {
             const ministereFilter = this.getMinistereFilter(req);
             const params = [];
-            const conditions = ['u.id IS NULL'];
+            const conditions = [];
 
             if (ministereFilter) {
                 params.push(ministereFilter);
@@ -180,7 +180,6 @@ class UserAccountsController {
                     a.telephone2,
                     m.nom AS ministere_nom
                 FROM agents a
-                LEFT JOIN utilisateurs u ON u.id_agent = a.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
                 ORDER BY a.nom ASC, a.prenom ASC
@@ -214,16 +213,16 @@ class UserAccountsController {
                 });
             }
 
-            // Vérifier si l'agent dispose déjà d'un compte
-            const existingAgentAccount = await pool.query(
-                'SELECT id FROM utilisateurs WHERE id_agent = $1',
-                [id_agent]
+            // Vérifier si l'agent dispose déjà d'un compte avec ce rôle
+            const existingAgentRoleAccount = await pool.query(
+                'SELECT id FROM utilisateurs WHERE id_agent = $1 AND id_role = $2',
+                [id_agent, id_role]
             );
 
-            if (existingAgentAccount.rows.length > 0) {
+            if (existingAgentRoleAccount.rows.length > 0) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Cet agent dispose déjà d\'un compte utilisateur.'
+                    message: 'Cet agent dispose déjà d\'un compte utilisateur avec ce rôle.'
                 });
             }
 

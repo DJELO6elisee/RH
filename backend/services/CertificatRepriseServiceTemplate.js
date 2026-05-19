@@ -549,6 +549,35 @@ class CertificatRepriseServiceTemplate {
         const fonctionActuelle = getAgentPosteOuEmploi(agent);
         const serviceNom = agent.service_nom || agent.direction_nom || directionName || 'Service non renseigné';
 
+        // Récupération des textes dynamiques depuis la base de données
+        let bodyTemplate = "<strong>{fullWithCivilite}</strong><br/>Matricule: <strong>{matricule}</strong><br/><strong>{fonctionActuelle}</strong><br/>{classeInfo}<br/>a repris le service à la <strong>{serviceNom}</strong> le <strong>{dateReprise}</strong>.";
+        let motifTitleTemplate = "MOTIF DE LA REPRISE DE SERVICE";
+
+        try {
+            const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_certificat_reprise_service'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.motif_title) motifTitleTemplate = config.motif_title;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        // Remplacer les placeholders
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{fullWithCivilite}/g, agentNameParts.fullWithCivilite || '')
+                .replace(/{matricule}/g, agent.matricule || '')
+                .replace(/{fonctionActuelle}/g, fonctionActuelle ? fonctionActuelle.toUpperCase() : '')
+                .replace(/{classeInfo}/g, classeInfo ? `<p>${classeInfo}</p>` : '')
+                .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
+                .replace(/{dateReprise}/g, dateReprise || '');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedMotifTitle = replacePlaceholders(motifTitleTemplate);
+
         return `
         <!DOCTYPE html>
         <html lang="fr">
@@ -648,15 +677,11 @@ class CertificatRepriseServiceTemplate {
 
             <div class="content">
                 <div class="agent-info">
-                    <p><strong>${agentNameParts.fullWithCivilite}</strong></p>
-                    <p>Matricule: <strong>${agent.matricule}</strong></p>
-                    <p><strong>${fonctionActuelle.toUpperCase()}</strong></p>
-                    ${classeInfo ? `<p>${classeInfo}</p>` : ''}
-                    <p>a repris le service à la <strong>${serviceNom.toUpperCase()}</strong> le <strong>${dateReprise}</strong>.</p>
+                    <p>${resolvedBody}</p>
                 </div>
 
                 <div class="motif-section">
-                    <div class="motif-title">MOTIF DE LA REPRISE DE SERVICE</div>
+                    <div class="motif-title">${resolvedMotifTitle}</div>
                     <p>${motif}</p>
                 </div>
             </div>
@@ -680,4 +705,3 @@ class CertificatRepriseServiceTemplate {
 }
 
 module.exports = CertificatRepriseServiceTemplate;
-

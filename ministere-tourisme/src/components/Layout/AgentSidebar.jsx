@@ -51,8 +51,38 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
     const location = useLocation();
     const [assignedRoutes, setAssignedRoutes] = useState([]);
     const [loadingAssignedRoutes, setLoadingAssignedRoutes] = useState(false);
-    const [agentData, setAgentData] = useState(null);
     const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
+    const [disabledTabIds, setDisabledTabIds] = useState([]);
+    const [agentData, setAgentData] = useState(null);
+
+    // Charger les configurations (onglets désactivés)
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+                
+                const apiBase = getApiUrl();
+                const response = await fetch(`${apiBase}/api/settings`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        const tabs = result.data.find(s => s.key === 'sidebar_disabled_tabs');
+                        if (tabs) setDisabledTabIds(tabs.value || []);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des paramètres de la sidebar:', error);
+            }
+        };
+
+        loadSettings();
+    }, []);
 
     // Charger les routes assignées
     useEffect(() => {
@@ -121,15 +151,17 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
     // Grouper les routes assignées par catégorie
     const assignedRoutesByCategory = useMemo(() => {
         const grouped = {};
-        assignedRoutes.forEach(route => {
-            const category = route.category || 'Autres';
-            if (!grouped[category]) {
-                grouped[category] = [];
-            }
-            grouped[category].push(route);
-        });
+        assignedRoutes
+            .filter(route => !disabledTabIds.includes(route.id))
+            .forEach(route => {
+                const category = route.category || 'Autres';
+                if (!grouped[category]) {
+                    grouped[category] = [];
+                }
+                grouped[category].push(route);
+            });
         return grouped;
-    }, [assignedRoutes]);
+    }, [assignedRoutes, disabledTabIds]);
 
     const handleLogout = async () => {
         try {

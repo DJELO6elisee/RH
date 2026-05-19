@@ -173,6 +173,16 @@ const getCustomNavItems = (user) => {
             Icon: MdAssignment
         });
     }
+
+    // Ajouter l'onglet "Dashboard Informaticien" pour les informaticiens
+    if (user && user.role === 'informaticien') {
+        items.push({
+            to: '/informaticien-dashboard',
+            name: 'Dashboard Informaticien',
+            exact: true,
+            Icon: MdSettings
+        });
+    }
     
     return items;
 };
@@ -209,6 +219,11 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
     // Les super_admin voient toutes les routes
     if (user && user.role === 'super_admin') {
         return backendRoutes.filter(route => !route.isAgentRoute);
+    }
+    
+    // Les informaticiens ne voient aucune route dynamique dans la sidebar
+    if (user && user.role === 'informaticien') {
+        return [];
     }
     
     // Les DRH voient toutes les routes autorisées selon leur organisation
@@ -321,6 +336,38 @@ const FilteredSidebar = (props) => {
     const [isOpenPages, setIsOpenPages] = useState(true);
     const [assignedRouteIds, setAssignedRouteIds] = useState([]);
     const [loadingRoutes, setLoadingRoutes] = useState(true);
+    const [disabledTabIds, setDisabledTabIds] = useState([]);
+    
+    // Charger les configurations (onglets désactivés)
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+                
+                const apiBase = typeof window !== 'undefined' && window.location.origin ? 
+                    window.location.origin : 'https://tourisme.2ise-groupe.com';
+                
+                const response = await fetch(`${apiBase}/api/settings`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        const tabs = result.data.find(s => s.key === 'sidebar_disabled_tabs');
+                        if (tabs) setDisabledTabIds(tabs.value || []);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des paramètres de la sidebar:', error);
+            }
+        };
+
+        loadSettings();
+    }, []);
     
     // État pour les catégories de routes RH
     const [categoryStates, setCategoryStates] = useState(
@@ -404,9 +451,10 @@ const FilteredSidebar = (props) => {
     // Filtrer les routes selon l'organisation de l'utilisateur
     const filteredRoutes = getFilteredRoutesBase(user, assignedRouteIds);
 
-    // Dédupliquer les routes pour éviter les clés en double
+    // Dédupliquer et masquer les routes désactivées par l'informaticien
     const uniqueFilteredRoutes = filteredRoutes.filter((route, index, self) =>
-        self.findIndex(candidate => candidate.id === route.id) === index
+        self.findIndex(candidate => candidate.id === route.id) === index &&
+        !disabledTabIds.includes(route.id)
     );
     
     // Grouper les routes filtrées par catégorie
@@ -586,21 +634,27 @@ const FilteredSidebar = (props) => {
                 </Navbar>
                 <Nav vertical>
                     {/* Navigation principale */}
-                    {navItems.map(({ to, name, exact, Icon }, index) => (
-                        <NavItem key={index} className={bem.e('nav-item')}>
-                            <BSNavLink
-                                id={`navItem-${name}-${index}`}
-                                className="text-uppercase"
-                                tag={NavLink}
-                                to={to}
-                                activeClassName="active"
-                                exact={exact}
-                            >
-                                <Icon className={bem.e('nav-item-icon')} />
-                                <span className="" style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{name.toUpperCase()}</span>
-                            </BSNavLink>
-                        </NavItem>
-                    ))}
+                    {navItems.map(({ to, name, exact, Icon }, index) => {
+                        // Masquer le dashboard principal pour l'informaticien
+                        if (user && user.role === 'informaticien' && to === '/dashboard') {
+                            return null;
+                        }
+                        return (
+                            <NavItem key={index} className={bem.e('nav-item')}>
+                                <BSNavLink
+                                    id={`navItem-${name}-${index}`}
+                                    className="text-uppercase"
+                                    tag={NavLink}
+                                    to={to}
+                                    activeClassName="active"
+                                    exact={exact}
+                                >
+                                    <Icon className={bem.e('nav-item-icon')} />
+                                    <span className="" style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{name.toUpperCase()}</span>
+                                </BSNavLink>
+                            </NavItem>
+                        );
+                    })}
                     
                     {/* Navigation personnalisée selon le rôle */}
                     {getCustomNavItems(user).map(({ to, name, exact, Icon }, index) => (

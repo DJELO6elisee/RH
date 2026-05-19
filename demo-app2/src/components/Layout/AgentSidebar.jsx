@@ -51,8 +51,38 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
     const location = useLocation();
     const [assignedRoutes, setAssignedRoutes] = useState([]);
     const [loadingAssignedRoutes, setLoadingAssignedRoutes] = useState(false);
-    const [agentData, setAgentData] = useState(null);
     const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
+    const [disabledTabIds, setDisabledTabIds] = useState([]);
+    const [agentData, setAgentData] = useState(null);
+
+    // Charger les configurations (onglets désactivés)
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+
+                const apiBase = getApiUrl();
+                const response = await fetch(`${apiBase}/api/settings`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        const tabs = result.data.find(s => s.key === 'sidebar_disabled_tabs');
+                        if (tabs) setDisabledTabIds(tabs.value || []);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des paramètres de la sidebar:', error);
+            }
+        };
+
+        loadSettings();
+    }, []);
 
     // Charger les routes assignées
     useEffect(() => {
@@ -121,15 +151,17 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
     // Grouper les routes assignées par catégorie
     const assignedRoutesByCategory = useMemo(() => {
         const grouped = {};
-        assignedRoutes.forEach(route => {
-            const category = route.category || 'Autres';
-            if (!grouped[category]) {
-                grouped[category] = [];
-            }
-            grouped[category].push(route);
-        });
+        assignedRoutes
+            .filter(route => !disabledTabIds.includes(route.id))
+            .forEach(route => {
+                const category = route.category || 'Autres';
+                if (!grouped[category]) {
+                    grouped[category] = [];
+                }
+                grouped[category].push(route);
+            });
         return grouped;
-    }, [assignedRoutes]);
+    }, [assignedRoutes, disabledTabIds]);
 
     const handleLogout = async () => {
         try {
@@ -149,8 +181,8 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
     };
 
     return (
-        <div className="agent-sidebar text-white" style={{ 
-            width: '250px', 
+        <div className="agent-sidebar text-white" style={{
+            width: '250px',
             minHeight: '100vh',
             backgroundColor: '#2c3e50',
             position: 'fixed',
@@ -173,7 +205,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                 {/* Navigation principale */}
                 <Nav vertical>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => onNavigateToDashboard ? onNavigateToDashboard() : history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -182,10 +214,10 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                             Tableau de bord
                         </NavLink>
                     </NavItem>
-                    
+
                     {/* Onglets personnels de l'agent - Redirection vers AgentDashboard */}
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -195,7 +227,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -205,7 +237,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -215,7 +247,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -225,7 +257,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className="text-white"
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', background: 'transparent', border: 'none' }}
@@ -235,7 +267,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -245,7 +277,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className="text-white"
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', background: 'transparent', border: 'none' }}
@@ -255,7 +287,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -265,7 +297,7 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                         </NavLink>
                     </NavItem>
                     <NavItem>
-                        <NavLink 
+                        <NavLink
                             onClick={() => history.push('/agent-dashboard')}
                             className={`text-white ${location.pathname === '/agent-dashboard' ? 'bg-white text-primary' : ''}`}
                             style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px' }}
@@ -319,28 +351,28 @@ const AgentSidebar = ({ onNavigateToDashboard }) => {
                     <div className="mt-4 pt-3 border-top border-light">
                         <div className="text-center">
                             {profilePhotoUrl ? (
-                                <img 
+                                <img
                                     src={profilePhotoUrl}
-                                    alt="Photo de profil" 
+                                    alt="Photo de profil"
                                     className="rounded-circle mb-2"
                                     style={{ width: '60px', height: '60px', objectFit: 'cover' }}
                                     onError={() => setProfilePhotoUrl(null)}
                                 />
                             ) : (
-                                <div className="bg-white text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-2" 
-                                     style={{ width: '60px', height: '60px' }}>
+                                <div className="bg-white text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-2"
+                                    style={{ width: '60px', height: '60px' }}>
                                     <i className="fa fa-user fa-2x"></i>
                                 </div>
                             )}
                             <h6 className="text-white mb-1">{agentData.prenom} {agentData.nom}</h6>
                             <small className="text-light">{agentData.matricule}</small>
                         </div>
-                        
+
                         {/* Bouton de déconnexion */}
                         <div className="mt-3">
-                            <Button 
-                                color="danger" 
-                                size="sm" 
+                            <Button
+                                color="danger"
+                                size="sm"
                                 onClick={handleLogout}
                                 className="w-100"
                             >

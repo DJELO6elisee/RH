@@ -7094,7 +7094,7 @@ class AgentsController extends BaseController {
 
 
     // Fonction pour générer un PDF simple avec PDFKit
-    async generateFicheSignaletiquePDFKit(agent) {
+    async generateFicheSignaletiquePDFKit(agent, userInfo = null) {
         const PDFDocument = require('pdfkit');
         const doc = new PDFDocument({ margin: 50 });
 
@@ -7131,18 +7131,37 @@ class AgentsController extends BaseController {
                 const margin = 50;
                 const headerY = 50;
 
-                // Bloc gauche - Ministère
-                doc.fontSize(12).font('Helvetica-Bold').text('MINISTERE DU TOURISME', margin, headerY);
-                doc.fontSize(12).font('Helvetica-Bold').text('ET DES LOISIRS', margin, headerY + 15);
+                // Bloc gauche - Ministère dynamiquement via l'agent
+                const ministryName = agent.ministere_nom || 'MINISTERE NON RENSEIGNE';
+                
+                // La direction doit être celle du DRH (utilisateur connecté) s'il y en a une, sinon celle de l'agent
+                let directionName = 'DIRECTION NON RENSEIGNEE';
+                if (userInfo && userInfo.id_direction) {
+                    try {
+                        const dirQuery = await pool.query('SELECT libelle FROM directions WHERE id = $1', [userInfo.id_direction]);
+                        if (dirQuery.rows.length > 0) {
+                            directionName = dirQuery.rows[0].libelle;
+                        }
+                    } catch (e) {
+                        console.error("Erreur lors de la récupération de la direction du DRH:", e);
+                    }
+                }
+                if (directionName === 'DIRECTION NON RENSEIGNEE') {
+                    directionName = agent.direction_nom || agent.service_nom || 'DIRECTION NON RENSEIGNEE';
+                }
 
-                // Ligne horizontale sous "ET DES LOISIRS"
-                doc.moveTo(margin, headerY + 30).lineTo(margin + 80, headerY + 30).stroke();
+                doc.fontSize(12).font('Helvetica-Bold').text(ministryName.toUpperCase(), margin, headerY, { width: 250 });
+                const ministryHeight = doc.heightOfString(ministryName.toUpperCase(), { width: 250 });
 
-                doc.fontSize(12).font('Helvetica-Bold').text('DIRECTION DES RESSOURCES', margin, headerY + 40);
-                doc.fontSize(12).font('Helvetica-Bold').text('HUMAINES', margin, headerY + 55);
+                // Ligne horizontale sous le ministère
+                doc.moveTo(margin, headerY + ministryHeight + 5).lineTo(margin + 80, headerY + ministryHeight + 5).stroke();
 
-                // Ligne horizontale sous "HUMAINES"
-                doc.moveTo(margin, headerY + 70).lineTo(margin + 80, headerY + 70).stroke();
+                const dirY = headerY + ministryHeight + 15;
+                doc.fontSize(12).font('Helvetica-Bold').text(directionName.toUpperCase(), margin, dirY, { width: 250 });
+                const dirHeight = doc.heightOfString(directionName.toUpperCase(), { width: 250 });
+
+                // Ligne horizontale sous la direction
+                doc.moveTo(margin, dirY + dirHeight + 5).lineTo(margin + 80, dirY + dirHeight + 5).stroke();
 
                 // Bloc droit - République (déplacé plus à gauche pour éviter l'entremêlement)
                 const rightBlockX = pageWidth - margin - 200; // Augmenté de 80 pixels vers la gauche
@@ -7161,7 +7180,7 @@ class AgentsController extends BaseController {
                 }
 
                 // Titre central dans une boîte grise
-                const titleBoxY = headerY + 90;
+                const titleBoxY = Math.max(headerY + 90, dirY + dirHeight + 20);
                 const titleBoxWidth = 200;
                 const titleBoxHeight = 40;
                 const titleBoxX = (pageWidth - titleBoxWidth) / 2;
@@ -8313,7 +8332,7 @@ class AgentsController extends BaseController {
             console.log('🚀 Début de la génération PDF pour l\'agent:', id);
             console.log('📦 Génération du PDF avec PDFKit...');
 
-            const pdfBuffer = await this.generateFicheSignaletiquePDFKit(agent);
+            const pdfBuffer = await this.generateFicheSignaletiquePDFKit(agent, req.user);
             console.log('✅ PDF généré avec PDFKit, taille:', pdfBuffer.length, 'bytes');
 
             // Retourner le PDF

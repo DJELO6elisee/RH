@@ -90,18 +90,27 @@
 -- ALTER TABLE public.workflow_demandes
 --     ALTER COLUMN niveau_validation TYPE VARCHAR(50);
     
-DELETE FROM demandes
-WHERE id_agent = 1848;
-DELETE FROM documents_autorisation
-WHERE id_agent_destinataire = 1848;
+-- DELETE FROM demandes
+-- WHERE id_agent = 1848;
+-- DELETE FROM documents_autorisation
+-- WHERE id_agent_destinataire = 1848;
 -- DELETE FROM decisions
 -- WHERE created_by IN (1082, 3);
 
-DELETE FROM agents
-WHERE matricule = '5461515';
+-- DELETE FROM agents
+-- WHERE matricule = '5461515';
 
-DELETE FROM utilisateurs
-WHERE username = '5461515';
+-- DELETE FROM utilisateurs
+-- WHERE username = '5461515';
+
+UPDATE utilisateurs
+SET 
+    is_active = TRUE, 
+    updated_at = CURRENT_TIMESTAMP
+WHERE username = 'DRHMINTEST01'; 
+-- Ou utilisez : WHERE email = 'l_emal@agent.com';
+
+
 
 -- UPDATE agents
 -- SET date_de_naissance = '1970-03-09'

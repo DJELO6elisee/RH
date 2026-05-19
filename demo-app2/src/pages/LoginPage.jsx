@@ -25,6 +25,7 @@ import {
 import { Link, useHistory, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getOrganizationByDomain, getHomeUrl } from '../utils/domainMapping';
+import { getApiUrl } from '../config/api';
 import { 
   authenticateWithFingerprint, 
   hasRegisteredFingerprints, 
@@ -88,7 +89,7 @@ const LoginPage = () => {
         try {
           const endpoint = `/api/ministeres/${organizationId}`;
             
-          const response = await fetch(`https://tourisme.2ise-groupe.com${endpoint}`);
+          const response = await fetch(`${getApiUrl()}${endpoint}`);
           const result = await response.json();
           
           if (result.success && result.data) {
@@ -184,6 +185,13 @@ const LoginPage = () => {
             ? `/dashboard?organization=${organizationType}&id=${organizationId}`
             : '/dashboard';
           history.push(dashboardUrl);
+        } else if (userRole === 'informaticien') {
+          // Redirection spécifique pour l'informaticien
+          const informaticienDashboardUrl = organizationId && organizationType 
+            ? `/informaticien-dashboard?organization=${organizationType}&id=${organizationId}`
+            : '/informaticien-dashboard';
+          console.log(`🔀 Redirection ${userRole} vers:`, informaticienDashboardUrl);
+          history.push(informaticienDashboardUrl);
         } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central'].includes(userRole)) {
           // Les agents, chefs de service, directeurs, sous-directeurs, directeurs de cabinet et ministres sont redirigés vers leur tableau de bord personnel
           const agentDashboardUrl = organizationId && organizationType 

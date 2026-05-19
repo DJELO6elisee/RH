@@ -2044,7 +2044,7 @@ class DocumentGenerationService {
         
         if (agent.id) {
             try {
-                const db = require('../config/database');
+
                 // Récupérer le grade le plus récent
                 const gradeQuery = `
                     SELECT g.libele as grade_libelle
@@ -2470,7 +2470,7 @@ class DocumentGenerationService {
         
         if (agent.id) {
             try {
-                const db = require('../config/database');
+
                 // Récupérer le grade le plus récent
                 const gradeQuery = `
                     SELECT g.libele as grade_libelle
@@ -2895,7 +2895,7 @@ class DocumentGenerationService {
      * @returns {Promise<String>} - Le contenu HTML du document
      */
     static async generateCertificatPriseServiceHTML(agent, validateur, options = {}) {
-        const db = require('../config/database');
+
         
         // Date de génération
         const generationDate = new Date();

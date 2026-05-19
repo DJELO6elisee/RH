@@ -10,6 +10,7 @@ import { BrowserRouter, Redirect, Route, Switch } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { DRHLanguageProvider } from './contexts/DRHLanguageContext';
 import InactivityHandler from './components/InactivityHandler';
+import { getApiUrl } from './config/api';
 import './styles/reduction.scss';
 import './styles/ivory-coast-theme.scss';
 
@@ -173,6 +174,8 @@ const ParametresPage = React.lazy(() =>
     import('./pages/ParametresPage.jsx'));
 const ParametresDRHPage = React.lazy(() =>
     import('./pages/ParametresDRHPage.jsx'));
+const InformaticienDashboard = React.lazy(() =>
+    import('./pages/InformaticienDashboard.jsx'));
 
 // Pages de gestion des demandes
 const DemandeAbsencePage = React.lazy(() =>
@@ -213,6 +216,58 @@ const getBasename = () => {
 };
 
 class App extends React.Component {
+    componentDidMount() {
+        this.applyThemeColors();
+    }
+
+    applyThemeColors = async () => {
+        try {
+            const apiBase = getApiUrl();
+                
+            const response = await fetch(`${apiBase}/api/settings/colors`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data) {
+                    const colors = result.data;
+                    const style = document.createElement('style');
+                    style.id = 'dynamic-theme-colors';
+                    style.innerHTML = `
+                        :root {
+                            --primary: ${colors.primary};
+                            --secondary: ${colors.secondary};
+                            --success: ${colors.success};
+                            --danger: ${colors.danger};
+                            --warning: ${colors.warning};
+                            --info: ${colors.info};
+                        }
+                        
+                        /* Override specific classes if needed */
+                        .bg-primary { background-color: ${colors.primary} !important; }
+                        .text-primary { color: ${colors.primary} !important; }
+                        .btn-primary { background-color: ${colors.primary} !important; border-color: ${colors.primary} !important; }
+                        
+                        .bg-secondary { background-color: ${colors.secondary} !important; }
+                        .text-secondary { color: ${colors.secondary} !important; }
+                        .btn-secondary { background-color: ${colors.secondary} !important; border-color: ${colors.secondary} !important; }
+                        
+                        /* For sidebar background if needed */
+                        .cr-sidebar__background {
+                            background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%) !important;
+                        }
+                    `;
+                    
+                    const existingStyle = document.getElementById('dynamic-theme-colors');
+                    if (existingStyle) {
+                        existingStyle.remove();
+                    }
+                    document.head.appendChild(style);
+                }
+            }
+        } catch (error) {
+            console.error('Erreur lors de l\'application des couleurs du thème:', error);
+        }
+    };
+
     render() {
         return (
             <AuthProvider>
@@ -305,6 +360,7 @@ class App extends React.Component {
                                 <ProtectedRoute exact path="/" render={() => <Redirect to="/dashboard" />} />
                                 <ProtectedRoute exact path="/dashboard" component={DashboardWrapper} />
                                 <ProtectedRoute exact path="/parametres" component={ParametresPage} />
+                                <ProtectedRoute exact path="/informaticien-dashboard" component={InformaticienDashboard} />
                                 <ProtectedRoute exact path="/login-modal" component={AuthModalPage} />
                                 <ProtectedRoute exact path="/buttons" component={ButtonPage} />
                                 <ProtectedRoute exact path="/cards" component={CardPage} />

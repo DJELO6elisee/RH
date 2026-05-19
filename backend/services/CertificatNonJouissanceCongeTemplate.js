@@ -181,7 +181,7 @@ class CertificatNonJouissanceCongeTemplate {
             if (anneeMatch) {
                 anneeTexte = `l'année ${anneeMatch[1]}`;
             } else {
-                anneeTexte = demande.description;
+                anneeTexte = 'l\'année concernée';
             }
         }
 
@@ -193,6 +193,38 @@ class CertificatNonJouissanceCongeTemplate {
                         ${signatureInfo.name ? `<div>${signatureInfo.name}</div>` : ''}
                     </div>
                 </div>`;
+
+        // Récupération des textes dynamiques depuis la base de données
+        let bodyTemplate = "Je soussigné{validateurGenre}, <strong>{validateurNomComplet}</strong>, <strong>{validateurFonction}</strong>, certifie que {civilite} <strong>{prenoms} {nom}</strong>, Matricule <strong>{matricule}</strong>, <strong>{designationPoste}</strong>, n'a pas jouie de ses congés annuels au titre de {anneeTexte}.";
+        let footerTemplate = "En foi de quoi, le présent Certificat lui est délivré pour servir et valoir ce que de droit.";
+
+        try {
+            const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_certificat_non_jouissance_conge'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.footer) footerTemplate = config.footer;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        // Remplacer les placeholders
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{validateurGenre}/g, validateurGenre || '')
+                .replace(/{validateurNomComplet}/g, validateurNomComplet || '')
+                .replace(/{validateurFonction}/g, validateurFonction || '')
+                .replace(/{civilite}/g, civilite || '')
+                .replace(/{prenoms}/g, nameParts.prenoms || '')
+                .replace(/{nom}/g, nameParts.nom || '')
+                .replace(/{matricule}/g, matricule || '')
+                .replace(/{designationPoste}/g, designationPoste || '')
+                .replace(/{anneeTexte}/g, anneeTexte || '');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedFooter = replacePlaceholders(footerTemplate);
 
         return `
         <!DOCTYPE html>
@@ -259,14 +291,14 @@ class CertificatNonJouissanceCongeTemplate {
         <body>
             <div class="document-container">
                 ${headerHTML}
-
+ 
                 <div class="document-title">CERTIFICAT DE NON JOUISSANCE DE CONGÉ</div>
-
+ 
                 <div class="content-text">
-                    <p>Je soussigné${validateurGenre}, <strong>${validateurNomComplet}</strong>, <strong>${validateurFonction}</strong>, certifie que ${civilite} <strong>${nameParts.prenoms} ${nameParts.nom}</strong>, Matricule <strong>${matricule}</strong>, <strong>${designationPoste}</strong>, n'a pas jouie de ses congés annuels au titre de ${anneeTexte}.</p>
-                    <p>En foi de quoi, le présent Certificat lui est délivré pour servir et valoir ce que de droit.</p>
+                    <p>${resolvedBody}</p>
+                    <p>${resolvedFooter}</p>
                 </div>
-
+ 
                 ${signatureBlockHTML}
             </div>
         </body>

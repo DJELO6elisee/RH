@@ -21,7 +21,6 @@ function getPrepositionForDirection(direction) {
         'CABINET',
         'BUREAU',
         'DIRECTEUR',
-        'DIRECTION',
         'SERVICE',
         'DÉPARTEMENT',
         'MINISTÈRE',

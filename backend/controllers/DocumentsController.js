@@ -907,8 +907,9 @@ class DocumentsController {
                     a.id as agent_id,
                     a.prenom as agent_prenom, a.nom as agent_nom, a.matricule, a.email, a.sexe,
                     a.fonction_actuelle, a.date_de_naissance, a.lieu_de_naissance,
-                    a.id_direction, a.id_sous_direction,
+                    a.id_direction, a.id_sous_direction, a.id_direction_generale,
                     a.id_ministere as id_ministere,
+                    dg.libelle as direction_generale_nom,
                     s.libelle as service_nom,
                     m.nom as ministere_nom,
                     m.sigle as ministere_sigle,
@@ -918,6 +919,7 @@ class DocumentsController {
                 LEFT JOIN demandes d ON da.id_demande = d.id
                 LEFT JOIN agents a ON da.id_agent_destinataire = a.id
                 LEFT JOIN directions s ON a.id_direction = s.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN agents generateur ON da.id_agent_generateur = generateur.id
                 WHERE da.id = $1
@@ -987,6 +989,7 @@ class DocumentsController {
                 sexe: document.sexe,
                 fonction_actuelle: document.fonction_actuelle || 'Agent',
                 service_nom: document.service_nom,
+                direction_generale_nom: document.direction_generale_nom,
                 ministere_nom: document.ministere_nom,
                 ministere_sigle: document.ministere_sigle,
                 date_prise_service_au_ministere: document.date_prise_service_au_ministere,
@@ -1089,9 +1092,10 @@ class DocumentsController {
                     a.prenom as agent_prenom, a.nom as agent_nom, a.matricule, a.email, a.sexe,
                     a.fonction_actuelle, a.date_de_naissance, a.lieu_de_naissance,
                     a.date_prise_service_au_ministere, a.date_prise_service_dans_la_direction,
-                    a.id_direction, a.id_sous_direction, a.id_ministere,
+                    a.id_direction, a.id_sous_direction, a.id_ministere, a.id_direction_generale,
                     c.libele as civilite,
                     s.libelle as service_nom, s.libelle as direction_nom,
+                    dg.libelle as direction_generale_nom,
                     m.nom as ministere_nom,
                     m.sigle as ministere_sigle,
                     cat.libele as classe_libelle,
@@ -1110,6 +1114,7 @@ class DocumentsController {
                 LEFT JOIN agents a ON da.id_agent_destinataire = a.id
                 LEFT JOIN civilites c ON a.id_civilite = c.id
                 LEFT JOIN directions s ON a.id_direction = s.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN categories cat ON a.id_categorie = cat.id
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
@@ -1261,6 +1266,7 @@ class DocumentsController {
                 lieu_de_naissance: document.lieu_de_naissance,
                 service_nom: document.service_nom,
                 direction_nom: document.direction_nom || document.service_nom,
+                direction_generale_nom: document.direction_generale_nom,
                 ministere_nom: document.ministere_nom,
                 ministere_sigle: document.ministere_sigle,
                 grade_libele: document.grade_libele,
@@ -1375,7 +1381,10 @@ class DocumentsController {
             } else if (document.type_document === 'attestation_travail') {
                 // Utiliser le nouveau service MemoryPDFService pour l'attestation de travail
                 const MemoryPDFService = require('../services/MemoryPDFService');
-                pdfBuffer = await MemoryPDFService.generateAttestationTravailPDFBuffer(demande, agent, validateur);
+                pdfBuffer = await MemoryPDFService.generateAttestationTravailPDFBuffer(demande, agent, validateur, null, {
+                    documentId: document.id,
+                    typeDocument: document.type_document
+                });
             } else if (document.type_document === 'note_de_service') {
                 // Utiliser le service MemoryPDFService pour la note de service
                 const MemoryPDFService = require('../services/MemoryPDFService');

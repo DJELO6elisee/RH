@@ -4,6 +4,7 @@ const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel 
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
+const pool = require('../config/database');
 
 /**
  * Template pour l'autorisation d'absence
@@ -164,6 +165,44 @@ class AutorisationAbsenceTemplate {
                 </div>`
             : '';
 
+        // Récupération des textes dynamiques depuis la base de données
+        let bodyTemplate = "Une autorisation d'absence de <strong>{diffDays} jour{pluralS}</strong> valable du <strong>{dateDebut}</strong> au <strong>{dateFin}</strong> inclus est accordée à <strong>{fullWithCivilite}</strong> matricule <strong>{matricule}</strong>, <strong>{fonctionActuelle}</strong> en service à la <strong>{serviceNom}</strong> pour se rendre à <strong>{lieu}</strong>.";
+        let motifHeaderTemplate = "Motif de l'absence :";
+        let motifTemplate = "<strong>{description}</strong>";
+
+        try {
+            const configResult = await pool.query("SELECT value FROM configurations WHERE key = 'template_autorisation_absence'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.motif_header) motifHeaderTemplate = config.motif_header;
+                if (config.motif) motifTemplate = config.motif;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        const pluralS = diffDays > 1 ? 's' : '';
+
+        // Remplacer les placeholders
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{diffDays}/g, diffDays || '')
+                .replace(/{pluralS}/g, pluralS)
+                .replace(/{dateDebut}/g, dateDebut || '')
+                .replace(/{dateFin}/g, dateFin || '')
+                .replace(/{fullWithCivilite}/g, nameParts.fullWithCivilite || '')
+                .replace(/{matricule}/g, agent.matricule || '')
+                .replace(/{fonctionActuelle}/g, fonctionActuelle ? fonctionActuelle.toUpperCase() : '')
+                .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
+                .replace(/{lieu}/g, demande.lieu || 'DESTINATION')
+                .replace(/{description}/g, demande.description || 'Pour affaires personnelles.');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedMotifHeader = replacePlaceholders(motifHeaderTemplate);
+        const resolvedMotif = replacePlaceholders(motifTemplate);
+
         return `
         <!DOCTYPE html>
         <html lang="fr">
@@ -231,20 +270,15 @@ class AutorisationAbsenceTemplate {
         <body>
             <div class="document-container">
                 ${headerHTML}
-
+ 
                 <div class="main-title">Autorisation d'Absence</div>
-
+ 
                 <div class="content-text">
-                    <p>Une autorisation d'absence de <strong>${diffDays} jour${diffDays > 1 ? 's' : ''}</strong></p>
-                    <p>valable du <strong>${dateDebut}</strong> au <strong>${dateFin}</strong> inclus</p>
-                    <p>est accordée à <strong>${nameParts.fullWithCivilite}</strong></p>
-                    <p>matricule <strong>${agent.matricule}</strong>, <strong>${fonctionActuelle.toUpperCase()}</strong></p>
-                    <p>en service à la <strong>${serviceNom.toUpperCase()}</strong></p>
-                    <p>pour se rendre à <strong>${demande.lieu || 'DESTINATION'}</strong></p>
-                    <p><strong>Motif de l'absence :</strong></p>
-                    <p><strong>${demande.description || 'Pour affaires personnelles.'}</strong></p>
+                    <p>${resolvedBody}</p>
+                    <p><strong>${resolvedMotifHeader}</strong></p>
+                    <p>${resolvedMotif}</p>
                 </div>
-
+ 
                 ${signatureBlock}
             </div>
         </body>

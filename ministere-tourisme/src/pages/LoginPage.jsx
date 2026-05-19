@@ -25,6 +25,7 @@ import {
 import { Link, useHistory, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getOrganizationByDomain, getHomeUrl } from '../utils/domainMapping';
+import { getApiUrl } from '../config/api';
 import { 
   authenticateWithFingerprint, 
   hasRegisteredFingerprints, 
@@ -70,7 +71,7 @@ const LoginPage = () => {
             ? `/api/ministeres/${organizationId}`
             : `/api/institutions/${organizationId}`;
             
-          const response = await fetch(`https://tourisme.2ise-groupe.com${endpoint}`);
+          const response = await fetch(`${getApiUrl()}${endpoint}`);
           const result = await response.json();
           
           if (result.success && result.data) {
@@ -155,6 +156,12 @@ const LoginPage = () => {
             ? `/dashboard?organization=${organizationType}&id=${organizationId}`
             : '/dashboard';
           history.push(dashboardUrl);
+        } else if (userRole === 'informaticien') {
+          const informaticienDashboardUrl = organizationId && organizationType 
+            ? `/informaticien-dashboard?organization=${organizationType}&id=${organizationId}`
+            : '/informaticien-dashboard';
+          console.log(`🔀 Redirection ${userRoleRaw} (normalisé: ${userRole}) vers:`, informaticienDashboardUrl);
+          history.push(informaticienDashboardUrl);
         } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'directeur_service_exterieur', 'inspecteur_general', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'admin_entite'].includes(userRole)) {
           // Chef de cabinet et Dir cabinet → même tableau de bord agent (espace cabinet) ; idem directeurs, agents, etc.
           const agentDashboardUrl = organizationId && organizationType 
@@ -226,6 +233,11 @@ const LoginPage = () => {
             ? `/agent-dashboard?organization=${organizationType}&id=${organizationId}`
             : '/agent-dashboard';
           history.push(agentDashboardUrl);
+        } else if (userRole === 'informaticien') {
+          const informaticienDashboardUrl = organizationId && organizationType 
+            ? `/informaticien-dashboard?organization=${organizationType}&id=${organizationId}`
+            : '/informaticien-dashboard';
+          history.push(informaticienDashboardUrl);
         } else {
           const homeUrl = organizationId && organizationType 
             ? `/${organizationType}/${organizationId}`

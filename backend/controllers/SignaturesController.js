@@ -17,6 +17,23 @@ const buildSignatureDiskPath = (relativePath = '') => {
 class SignaturesController {
     static async list(req, res) {
         try {
+            // Déterminer le ministère
+            let ministereId = req.query.id_ministere;
+            if (!ministereId && req.user && req.user.id_ministere) {
+                ministereId = req.user.id_ministere;
+            }
+            if (req.user && req.user.role === 'super_admin' && !req.query.id_ministere) {
+                ministereId = null;
+            }
+
+            let whereClause = 'WHERE sig.id IS NOT NULL';
+            const params = [];
+
+            if (ministereId) {
+                params.push(ministereId);
+                whereClause += ` AND a.id_ministere = $${params.length}`;
+            }
+
             const query = `
                 SELECT 
                     a.id,
@@ -43,7 +60,7 @@ class SignaturesController {
                 LEFT JOIN utilisateurs u ON u.id_agent = a.id
                 LEFT JOIN roles r ON r.id = u.id_role
                 LEFT JOIN agent_signatures sig ON sig.id_agent = a.id
-                WHERE sig.id IS NOT NULL
+                ${whereClause}
                 GROUP BY 
                     a.id,
                     a.matricule,
@@ -54,7 +71,7 @@ class SignaturesController {
                 ORDER BY LOWER(a.nom), LOWER(a.prenom)
             `;
 
-            const result = await pool.query(query);
+            const result = await pool.query(query, params);
             return res.json({
                 success: true,
                 data: result.rows
@@ -123,6 +140,23 @@ class SignaturesController {
 
     static async listAgents(req, res) {
         try {
+            // Déterminer le ministère
+            let ministereId = req.query.id_ministere;
+            if (!ministereId && req.user && req.user.id_ministere) {
+                ministereId = req.user.id_ministere;
+            }
+            if (req.user && req.user.role === 'super_admin' && !req.query.id_ministere) {
+                ministereId = null;
+            }
+
+            let whereClause = '';
+            const params = [];
+
+            if (ministereId) {
+                params.push(ministereId);
+                whereClause = `WHERE a.id_ministere = $${params.length}`;
+            }
+
             const query = `
                 SELECT 
                     a.id,
@@ -143,10 +177,11 @@ class SignaturesController {
                 LEFT JOIN agent_signatures sig 
                     ON sig.id_agent = a.id 
                     AND sig.is_active = true
+                ${whereClause}
                 ORDER BY LOWER(a.nom), LOWER(a.prenom)
             `;
 
-            const result = await pool.query(query);
+            const result = await pool.query(query, params);
             return res.json({
                 success: true,
                 data: result.rows

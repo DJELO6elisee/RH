@@ -7,6 +7,7 @@ const { formatDocumentReference, getDocumentReference, generateNoteDeServiceNumb
 const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName } = require('./utils/agentFunction');
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
 const { formatAffectationPhrase } = require('./utils/frenchGrammar');
+const db = require('../config/database');
 
 const BASE_FONT = 'Times-Roman';
 const BOLD_FONT = 'Times-Bold';
@@ -453,7 +454,7 @@ class PDFKitGenerationService {
                 let generatedAt = resolveGenerationDate(demande, options);
                 if (!hasExistingGeneration && demande && demande.id) {
                     try {
-                        const db = require('../config/database');
+
                         const result = await db.query(`
                             SELECT date_generation
                             FROM documents_autorisation
@@ -575,11 +576,37 @@ class PDFKitGenerationService {
                 const nomComplet = agentNameParts.fullWithCivilite || `${agent.prenom || ''} ${agent.nom || ''}`.trim();
                 const poste = getAgentPosteOuEmploi(agent);
 
+
+                let bodyText = `Une autorisation d'absence de ${jours} jour${jours > 1 ? 's' : ''} valable du ${dateDebutStr} au ${dateFinStr} inclus est accordée à ${nomComplet}, matricule ${agent.matricule}, ${poste}, en service à la ${displayDirectionName}.`;
+                let motifHeaderText = 'Motif de l\'absence : ';
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_autorisation_absence'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            bodyText = template.body
+                                .replace('{jours}', jours)
+                                .replace('{dateDebut}', dateDebutStr)
+                                .replace('{dateFin}', dateFinStr)
+                                .replace('{nom}', nomComplet)
+                                .replace('{matricule}', agent.matricule)
+                                .replace('{poste}', poste)
+                                .replace('{direction}', displayDirectionName);
+                        }
+                        if (template && template.motif_header) {
+                            motifHeaderText = template.motif_header;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'autorisation d\'absence:', error);
+                }
+
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
                     .fillColor(primaryColor)
                     .text(
-                        `Une autorisation d'absence de ${jours} jour${jours > 1 ? 's' : ''} valable du ${dateDebutStr} au ${dateFinStr} inclus est accordée à ${nomComplet}, matricule ${agent.matricule}, ${poste}, en service à la ${displayDirectionName}.`,
+                        bodyText,
                         50,
                         yPosition, { align: 'justify', width: 500 }
                     );
@@ -588,7 +615,7 @@ class PDFKitGenerationService {
 
                 doc.font(BOLD_FONT)
                     .fontSize(BODY_FONT_SIZE)
-                    .text('Motif de l\'absence : ', 50, yPosition, { align: 'left', width: 500, continued: true });
+                    .text(motifHeaderText, 50, yPosition, { align: 'left', width: 500, continued: true });
                 doc.font(BASE_FONT)
                     .text(`${demande.description || 'affaires personnelles'}.`, { align: 'justify', width: 500 });
 
@@ -697,7 +724,7 @@ class PDFKitGenerationService {
     static async generatePDFForDocument(document, userInfo = null) {
         try {
             // Récupérer les données nécessaires depuis la base de données
-            const db = require('../config/database');
+
 
             const query = `
                 SELECT d.*, 
@@ -1105,8 +1132,32 @@ class PDFKitGenerationService {
                     day: 'numeric'
                 });
 
-                // Texte principal selon le modèle de l'image
-                const textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, atteste que ${civilite} ${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}, ${fonctionAvecService}, est en service dans ledit Ministère, depuis le ${dateDebutStr}.`;
+    
+                let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, atteste que ${civilite} ${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}, ${fonctionAvecService}, est en service dans ledit Ministère, depuis le ${dateDebutStr}.`;
+                let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_presence'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{validateurGenre}', validateurGenre)
+                                .replace('{validateurNomComplet}', validateurNomComplet)
+                                .replace('{validateurFonction}', validateurFonction)
+                                .replace('{civilite}', civilite)
+                                .replace('{prenoms}', agentNamePartsPresence.prenoms)
+                                .replace('{nom}', agentNamePartsPresence.nom)
+                                .replace('{fonctionAvecService}', fonctionAvecService)
+                                .replace('{dateDebut}', dateDebutStr);
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = template.footer;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'attestation de présence:', error);
+                }
 
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
@@ -1118,10 +1169,9 @@ class PDFKitGenerationService {
 
                 yPosition = doc.y + 22;
 
-                // Phrase de clôture
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text('En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.', 50, yPosition, {
+                    .text(phraseCloture, 50, yPosition, {
                         align: 'justify',
                         width: 500
                     });
@@ -1329,41 +1379,54 @@ class PDFKitGenerationService {
                     agent.service_nom = displayDirectionName;
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor('#000000')
-                    .text('Le Directeur soussigné(e), atteste que ', 50, yPosition, { continued: true });
-                doc.font(BOLD_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`${agentNamePartsTravail.fullWithCivilite},`);
-
-                yPosition = doc.y;
-                yPosition += 20;
-                doc.font(BASE_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, grade,`, 50, yPosition, { align: 'left' });
-
-                yPosition += 20;
-                if (displayDirectionName) {
-                    doc.font(BASE_FONT)
-                        .fontSize(BODY_FONT_SIZE)
-                        .text(`à la ${displayDirectionName}`, 50, yPosition, { align: 'left' });
-                    yPosition += 20;
-                }
                 const dateDebut = new Date(demande.date_debut);
                 const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                 });
-                doc.font(BASE_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`, 50, yPosition, { align: 'left' });
 
-                yPosition += 30;
-                doc.font(BASE_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text('En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.', 50, yPosition, { align: 'left' });
+    
+                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravail.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${displayDirectionName || ''} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
+                let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_travail'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{fullWithCivilite}', agentNamePartsTravail.fullWithCivilite)
+                                .replace('{matricule}', agent.matricule)
+                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
+                                .replace('{classeInfo}', '')
+                                .replace('{direction}', displayDirectionName || '')
+                                .replace('{dateDebut}', dateDebutStr);
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = template.footer;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
+                }
+
+                doc.fontSize(BODY_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .fillColor('#000000')
+                    .text(textePrincipal, 50, yPosition, {
+                        align: 'justify',
+                        width: 500
+                    });
+
+                yPosition = doc.y + 30;
+
+                doc.fontSize(BODY_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .text(phraseCloture, 50, yPosition, {
+                        align: 'justify',
+                        width: 500
+                    });
 
                 yPosition += 70;
                 // Signature descendue et décalée à droite
@@ -1551,8 +1614,34 @@ class PDFKitGenerationService {
 
                 yPosition += 15;
 
-                // Texte principal justifié comme dans l'image
-                const textePrincipal = `autorise ${agentNamePartsSortie.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, en service à la ${agent.service_nom || 'DIRECTION'}, à se rendre ${demande.lieu || 'en France'} du ${dateDebutStr} au ${dateFinStr}, ${demande.description || 'pour ses vacances'}.`;
+    
+                let textePrincipal = `autorise ${agentNamePartsSortie.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, en service à la ${agent.service_nom || 'DIRECTION'}, à se rendre ${demande.lieu || 'en France'} du ${dateDebutStr} au ${dateFinStr}, ${demande.description || 'pour ses vacances'}.`;
+                let phraseCloture = 'En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.';
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_autorisation_sortie_territoire'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{civilite}', agentNamePartsSortie.civilite)
+                                .replace('{prenoms}', agentNamePartsSortie.prenoms)
+                                .replace('{nom}', agentNamePartsSortie.nom)
+                                .replace('{matricule}', agent.matricule)
+                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
+                                .replace('{direction}', agent.service_nom || 'DIRECTION')
+                                .replace('{lieu}', demande.lieu || 'en France')
+                                .replace('{dateDebut}', dateDebutStr)
+                                .replace('{dateFin}', dateFinStr)
+                                .replace('{motif}', demande.description || 'pour ses vacances');
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = template.footer;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'autorisation de sortie du territoire:', error);
+                }
 
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
@@ -1561,13 +1650,11 @@ class PDFKitGenerationService {
                         width: 500
                     });
 
-                // Utiliser doc.y pour obtenir la position réelle après le texte (qui peut faire plusieurs lignes)
-                yPosition = doc.y + 15; // Espacement réduit après le texte principal
+                yPosition = doc.y + 15;
 
-                // Phrase de clôture
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text('En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.', 50, yPosition, {
+                    .text(phraseCloture, 50, yPosition, {
                         align: 'justify',
                         width: 500
                     });
@@ -1780,7 +1867,7 @@ class PDFKitGenerationService {
             const PDFDocument = require('pdfkit');
             const fs = require('fs');
             const path = require('path');
-            const db = require('../config/database');
+
 
 
             // Récupérer toutes les données nécessaires depuis la base de données
@@ -2196,8 +2283,36 @@ class PDFKitGenerationService {
             // Déterminer "l'intéressé" ou "l'intéressée"
             const interesseGenre = row.sexe === 'F' ? 'e' : '';
 
-            // Texte principal avec le nouveau format
-            const textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.prenoms} ${agentNameParts.nom}, matricule ${row.matricule}, ${designationPoste}, a cessé le service à la ${serviceNom} le ${dateCessation}.`;
+
+            let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.prenoms} ${agentNameParts.nom}, matricule ${row.matricule}, ${designationPoste}, a cessé le service à la ${serviceNom} le ${dateCessation}.`;
+            let phraseCloture = `A l'issue de son congé, l'intéressé${interesseGenre} reprendra le service à son poste le ${dateRepriseFormatee}.`;
+
+            try {
+                const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_certificat_cessation'");
+                if (configResult.rows.length > 0) {
+                    const template = configResult.rows[0].value;
+                    if (template && template.body) {
+                        textePrincipal = template.body
+                            .replace('{validateurGenre}', validateurGenre)
+                            .replace('{validateurNomComplet}', validateurNomComplet)
+                            .replace('{validateurFonction}', validateurFonction)
+                            .replace('{civilite}', civilite)
+                            .replace('{prenoms}', agentNameParts.prenoms)
+                            .replace('{nom}', agentNameParts.nom)
+                            .replace('{matricule}', row.matricule)
+                            .replace('{poste}', designationPoste)
+                            .replace('{direction}', serviceNom)
+                            .replace('{dateCessation}', dateCessation);
+                    }
+                    if (template && template.footer) {
+                        phraseCloture = template.footer
+                            .replace('{interesseGenre}', interesseGenre)
+                            .replace('{dateReprise}', dateRepriseFormatee);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement du template de certificat de cessation:', error);
+            }
 
             doc.fontSize(BODY_FONT_SIZE)
                 .font(BASE_FONT)
@@ -2236,7 +2351,7 @@ class PDFKitGenerationService {
                 yPosition = doc.y + 15;
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text(`A l'issue de son congé, l'intéressé${interesseGenre} reprendra le service à son poste le ${dateRepriseFormatee}.`, 50, yPosition, { width: 500 });
+                    .text(phraseCloture, 50, yPosition, { width: 500 });
             }
 
             // Signature + footer fixes (méthode robuste)
@@ -2453,7 +2568,7 @@ class PDFKitGenerationService {
                                 // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
                                 if (documentId && !documentDateGeneration) {
                                     try {
-                                        const db = require('../config/database');
+                            
                                         const docQuery = await db.query(
                                             'SELECT date_generation, created_at FROM documents_autorisation WHERE id = $1', [documentId]
                                         );
@@ -2476,7 +2591,7 @@ class PDFKitGenerationService {
                                 }
 
                                 try {
-                                    const db = require('../config/database');
+                        
                                     const idMinistere = (agent && agent.id_ministere) || null;
                                     if (documentId) {
                                         // Si le document existe déjà, calculer sa position en comptant les notes antérieures (par ministère)
@@ -2632,7 +2747,7 @@ class PDFKitGenerationService {
                             let emploiRecent = '';
                             if (agent.id) {
                                 try {
-                                    const db = require('../config/database');
+                        
                                     const emploiQuery = `
                             SELECT e.libele as emploi_libele, ea.designation_poste
                             FROM emploi_agents ea
@@ -2660,7 +2775,7 @@ class PDFKitGenerationService {
 
                             if (agent.id) {
                                 try {
-                                    const db = require('../config/database');
+                        
                                     // Récupérer le grade le plus récent
                                     const gradeQuery = `
                             SELECT g.libele as grade_libelle
@@ -2990,7 +3105,7 @@ class PDFKitGenerationService {
                     // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
                     if (documentId && !documentDateGeneration) {
                         try {
-                            const db = require('../config/database');
+                
                             const docQuery = await db.query(
                                 'SELECT date_debut FROM demandes WHERE id = $1',
                                 [documentId]
@@ -3014,7 +3129,7 @@ class PDFKitGenerationService {
                     }
                     
                     try {
-                        const db = require('../config/database');
+            
                         const idMinistere = agent?.id_ministere ?? null;
                         if (documentId) {
                             // Si le document existe déjà, calculer sa position en comptant les notes antérieures (par ministère)
@@ -3179,7 +3294,7 @@ class PDFKitGenerationService {
                 const lieuNaissance = agent.lieu_de_naissance || '';
 
                 // Récupérer l'emploi le plus récent de l'agent
-                const db = require('../config/database');
+    
                 let emploiRecent = '';
                 try {
                     const emploiQuery = `
@@ -3502,7 +3617,7 @@ class PDFKitGenerationService {
 
     static async generateMissingPDFsWithPDFKit() {
         try {
-            const db = require('../config/database');
+
 
             console.log('🔍 Recherche des documents sans PDF (PDFKit)...');
 

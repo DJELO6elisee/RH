@@ -10,6 +10,7 @@ const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel 
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
+const pool = require('../config/database');
 
 function toTitleCase(value = '') {
     return value
@@ -462,7 +463,6 @@ class CertificatCessationTemplate {
             day: 'numeric'
         }) : '';
         
-        // Déterminer "l'intéressé" ou "l'intéressée" selon le genre de l'agent
         const interesseGenre = agent.sexe === 'F' ? 'e' : '';
         
         const signatureBlockHTML = `
@@ -473,6 +473,42 @@ class CertificatCessationTemplate {
                         ${signatureInfo.name ? `<div class="signature-name">${signatureInfo.name}</div>` : ''}
                     </div>
                 </div>`;
+
+        let bodyTemplate = "Je soussigné{validateurGenre}, <strong>{validateurNomComplet}</strong>, <strong>{validateurFonction}</strong>, certifie que {civilite} <strong>{prenoms} {nom}</strong>, matricule <strong>{matricule}</strong>, <strong>{designationPoste}</strong>, a cessé le service à la <strong>{serviceNom}</strong> le <strong>{dateCessation}</strong>.";
+        let motifTitleTemplate = "MOTIF DE LA CESSATION";
+        let repriseTextTemplate = "A l'issue de son congé, l'intéressé{interesseGenre} reprendra le service à son poste le <strong>{dateRepriseFormatee}</strong>.";
+
+        try {
+            const configResult = await pool.query("SELECT value FROM configurations WHERE key = 'template_certificat_cessation'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.motif_title) motifTitleTemplate = config.motif_title;
+                if (config.reprise_text) repriseTextTemplate = config.reprise_text;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{validateurGenre}/g, validateurGenre || '')
+                .replace(/{validateurNomComplet}/g, validateurNomComplet || '')
+                .replace(/{validateurFonction}/g, validateurFonction || '')
+                .replace(/{civilite}/g, civilite || '')
+                .replace(/{prenoms}/g, nameParts.prenoms || '')
+                .replace(/{nom}/g, nameParts.nom || '')
+                .replace(/{matricule}/g, agent.matricule || '')
+                .replace(/{designationPoste}/g, designationPoste || '')
+                .replace(/{serviceNom}/g, serviceNom || '')
+                .replace(/{dateCessation}/g, dateCessation || '')
+                .replace(/{interesseGenre}/g, interesseGenre || '')
+                .replace(/{dateRepriseFormatee}/g, dateRepriseFormatee || '');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedMotifTitle = replacePlaceholders(motifTitleTemplate);
+        const resolvedRepriseText = replacePlaceholders(repriseTextTemplate);
 
         return `
         <!DOCTYPE html>
@@ -567,13 +603,13 @@ class CertificatCessationTemplate {
                 <div class="document-title">CERTIFICAT DE CESSATION DE SERVICE</div>
 
                 <div class="content-text">
-                    <p>Je soussigné${validateurGenre}, <strong>${validateurNomComplet}</strong>, <strong>${validateurFonction}</strong>, certifie que ${civilite} <strong>${nameParts.prenoms} ${nameParts.nom}</strong>, matricule <strong>${agent.matricule}</strong>, <strong>${designationPoste}</strong>, a cessé le service à la <strong>${serviceNom}</strong> le <strong>${dateCessation}</strong>.</p>
+                    <p>${resolvedBody}</p>
                 </div>
 
                 <div class="motif-section">
-                    <div class="motif-title">MOTIF DE LA CESSATION</div>
+                    <div class="motif-title">${resolvedMotifTitle}</div>
                     <p>${motif}</p>
-                    ${dateRepriseFormatee && demande.id ? `<p>A l'issue de son congé, l'intéressé${interesseGenre} reprendra le service à son poste le <strong>${dateRepriseFormatee}</strong>.</p>` : ''}
+                    ${dateRepriseFormatee && demande.id ? `<p>${resolvedRepriseText}</p>` : ''}
                 </div>
 
                 ${signatureBlockHTML}

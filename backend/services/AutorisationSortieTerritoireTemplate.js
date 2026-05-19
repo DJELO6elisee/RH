@@ -9,6 +9,7 @@ const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel 
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
+const pool = require('../config/database');
 
 function toTitleCase(value = '') {
     return value
@@ -137,6 +138,36 @@ class AutorisationSortieTerritoireTemplate {
                 </div>`
             : '';
 
+        // Récupération des textes dynamiques depuis la base de données
+        let bodyTemplate = "Le Ministre de l'Economie et des Finances autorise <strong>{fullWithCivilite}</strong> matricule <strong>{matricule}</strong>, <strong>{fonctionActuelle}</strong> en service à la <strong>{serviceNom}</strong> à se rendre en <strong>{lieu}</strong> du <strong>{dateDebut}</strong> au <strong>{dateFin}</strong>, pour ses congés annuels.";
+        let footerTemplate = "En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.";
+
+        try {
+            const configResult = await pool.query("SELECT value FROM configurations WHERE key = 'template_autorisation_sortie_territoire'");
+            if (configResult.rows.length > 0) {
+                const config = configResult.rows[0].value;
+                if (config.body) bodyTemplate = config.body;
+                if (config.footer) footerTemplate = config.footer;
+            }
+        } catch (error) {
+            console.error('Erreur lors de la récupération du template:', error);
+        }
+
+        // Remplacer les placeholders
+        const replacePlaceholders = (text) => {
+            return text
+                .replace(/{fullWithCivilite}/g, nameParts.fullWithCivilite || '')
+                .replace(/{matricule}/g, agent.matricule || '')
+                .replace(/{fonctionActuelle}/g, fonctionActuelle ? fonctionActuelle.toUpperCase() : '')
+                .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
+                .replace(/{lieu}/g, demande.lieu || 'PAYS DE DESTINATION')
+                .replace(/{dateDebut}/g, dateDebut || '')
+                .replace(/{dateFin}/g, dateFin || '');
+        };
+
+        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const resolvedFooter = replacePlaceholders(footerTemplate);
+
         return `
         <!DOCTYPE html>
         <html lang="fr">
@@ -207,20 +238,14 @@ class AutorisationSortieTerritoireTemplate {
         <body>
             <div class="document-container">
                 ${headerHTML}
-
+ 
                 <div class="document-title">Autorisation de Sortie du Territoire</div>
-
+ 
                 <div class="content-text">
-                    <p>Le Ministre de l'Economie et des Finances autorise <strong>${nameParts.fullWithCivilite}</strong></p>
-                    <p>matricule <strong>${agent.matricule}</strong>, <strong>${fonctionActuelle.toUpperCase()}</strong></p>
-                    <p>en service à la <strong>${serviceNom.toUpperCase()}</strong></p>
-                    <p>à se rendre en <strong>${demande.lieu || 'PAYS DE DESTINATION'}</strong></p>
-                    <p>du <strong>${dateDebut}</strong> au <strong>${dateFin}</strong>,</p>
-                    <p>pour ses congés annuels.</p>
-
-                    <p style="margin-top: 10px;">En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.</p>
+                    <p>${resolvedBody}</p>
+                    <p style="margin-top: 10px;">${resolvedFooter}</p>
                 </div>
-
+ 
                 ${signatureBlock}
             </div>
         </body>

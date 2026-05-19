@@ -2187,42 +2187,6 @@ class MemoryPDFService {
                 const agentNamePartsTravailMemory = formatAgentName(agent);
 
                 // Texte principal de l'attestation de travail
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text('Le Directeur soussigné(e), atteste que ', 50, yPosition, {
-                        continued: true
-                    });
-                doc.font(BOLD_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`${agentNamePartsTravailMemory.fullWithCivilite},`);
-
-                yPosition = doc.y;
-                yPosition += 20;
-
-                // Matricule et fonction
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(`matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, grade,`, 50, yPosition, {
-                        align: 'left'
-                    });
-
-                yPosition += 20;
-
-                // Service
-                const servicePresenceDisplay = resolvedDirectionName;
-
-                if (servicePresenceDisplay) {
-                    doc.fontSize(BODY_FONT_SIZE)
-                        .font(BASE_FONT)
-                        .text(`à la ${servicePresenceDisplay}`, 50, yPosition, {
-                            align: 'left'
-                        });
-
-                    yPosition += 20;
-                }
-
-                // Période d'emploi - depuis la date de début jusqu'à aujourd'hui
                 const dateDebut = new Date(demande.date_debut);
                 const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
                     year: 'numeric',
@@ -2230,19 +2194,46 @@ class MemoryPDFService {
                     day: 'numeric'
                 });
 
+                const db = require('../config/database');
+                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravailMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${servicePresenceDisplay || ''} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
+                let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_travail'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{fullWithCivilite}', agentNamePartsTravailMemory.fullWithCivilite)
+                                .replace('{matricule}', agent.matricule)
+                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
+                                .replace('{classeInfo}', '')
+                                .replace('{direction}', servicePresenceDisplay || '')
+                                .replace('{dateDebut}', dateDebutStr);
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = template.footer;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
+                }
+
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text(`travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`, 50, yPosition, {
-                        align: 'left'
+                    .fillColor(primaryColor)
+                    .text(textePrincipal, 50, yPosition, {
+                        align: 'justify',
+                        width: 500
                     });
 
-                yPosition += 30;
+                yPosition = doc.y + 30;
 
-                // Phrase de clôture
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text('En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.', 50, yPosition, {
-                        align: 'left'
+                    .text(phraseCloture, 50, yPosition, {
+                        align: 'justify',
+                        width: 500
                     });
 
                 // === SIGNATURE ===
@@ -2521,40 +2512,33 @@ class MemoryPDFService {
                 let yPosition = titleYReprise + 50;
 
                 // Texte principal selon le format de l'image
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(agentNameParts.fullWithCivilite, 50, yPosition, {
-                        align: 'left'
-                    });
+                const db = require('../config/database');
+                let textePrincipal = `${agentNameParts.fullWithCivilite}, matricule ${agent.matricule}, ${fonctionActuelle.toUpperCase()}, ${classeInfo || ''}, a repris le service à la ${serviceNom.toUpperCase()} le ${dateReprise}.`;
 
-                yPosition += 25;
-                doc.font(BASE_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`Matricule: ${agent.matricule}`, 50, yPosition, {
-                        align: 'left'
-                    });
-
-                yPosition += 25;
-                doc.font(BOLD_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(fonctionActuelle.toUpperCase(), 50, yPosition, {
-                        align: 'left'
-                    });
-
-                if (classeInfo) {
-                    yPosition += 25;
-                    doc.font(BASE_FONT)
-                        .fontSize(BODY_FONT_SIZE)
-                        .text(classeInfo, 50, yPosition, {
-                            align: 'left'
-                        });
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_certificat_reprise_service'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{civilite}', agentNameParts.civilite)
+                                .replace('{prenoms}', agentNameParts.prenoms)
+                                .replace('{nom}', agentNameParts.nom)
+                                .replace('{matricule}', agent.matricule)
+                                .replace('{poste}', fonctionActuelle.toUpperCase())
+                                .replace('{classeInfo}', classeInfo || '')
+                                .replace('{direction}', serviceNom.toUpperCase())
+                                .replace('{dateReprise}', dateReprise);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template de certificat de reprise de service:', error);
                 }
 
-                yPosition += 25;
-                doc.font(BASE_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(`a repris le service à la ${serviceNom.toUpperCase()} le ${dateReprise}.`, 50, yPosition, {
-                        align: 'left',
+                doc.fontSize(BODY_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .text(textePrincipal, 50, yPosition, {
+                        align: 'justify',
                         width: 500
                     });
 
@@ -2846,8 +2830,33 @@ class MemoryPDFService {
                 const validateurGenre = validateur && validateur.sexe === 'F' ? 'e' : '';
                 const civilite = agentNameParts.civilite;
 
-                // Texte principal selon le modèle de l'image
-                const textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.prenoms} ${agentNameParts.nom}, Matricule ${agent.matricule || 'Non spécifié'}, ${emploiRecent}, n'a pas jouie de ses congés annuels au titre de ${anneeTexte}.`;
+                const db = require('../config/database');
+                let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.prenoms} ${agentNameParts.nom}, Matricule ${agent.matricule || 'Non spécifié'}, ${emploiRecent}, n'a pas jouie de ses congés annuels au titre de ${anneeTexte}.`;
+                let phraseCloture = `En foi de quoi, le présent Certificat lui est délivré pour servir et valoir ce que de droit.`;
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_certificat_non_jouissance_conge'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = template.body
+                                .replace('{validateurGenre}', validateurGenre)
+                                .replace('{validateurNomComplet}', validateurNomComplet)
+                                .replace('{validateurFonction}', validateurFonction)
+                                .replace('{civilite}', civilite)
+                                .replace('{prenoms}', agentNameParts.prenoms)
+                                .replace('{nom}', agentNameParts.nom)
+                                .replace('{matricule}', agent.matricule || 'Non spécifié')
+                                .replace('{poste}', emploiRecent)
+                                .replace('{annee}', anneeTexte);
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = template.footer;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template de certificat de non jouissance de congé:', error);
+                }
 
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
@@ -2859,11 +2868,9 @@ class MemoryPDFService {
 
                 yPosition = doc.y + 30;
 
-                // Phrase de clôture
-                const interesseGenre = agent.sexe === 'F' ? 'e' : '';
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
-                    .text(`En foi de quoi, le présent Certificat lui est délivré pour servir et valoir ce que de droit.`, 50, yPosition, {
+                    .text(phraseCloture, 50, yPosition, {
                         align: 'justify',
                         width: 500
                     });
