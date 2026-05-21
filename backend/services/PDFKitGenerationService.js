@@ -8,13 +8,30 @@ const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteO
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
 const { formatAffectationPhrase } = require('./utils/frenchGrammar');
 const db = require('../config/database');
-
+const { writeRichText, replaceTemplatePlaceholders } = require('./utils/pdfRichText');
 const BASE_FONT = 'Times-Roman';
 const BOLD_FONT = 'Times-Bold';
 const TITLE_FONT_SIZE = 18;
 const SUBTITLE_FONT_SIZE = 16;
 const BODY_FONT_SIZE = 16;
 const FOOTER_FONT_SIZE = 8;
+
+function applyUserInfoFallback(agent, validateur, userInfo) {
+    if (!userInfo) return;
+    if (agent) {
+        agent.service_nom = agent.service_nom || userInfo.service_nom;
+        agent.direction_nom = agent.direction_nom || userInfo.direction_nom || userInfo.service_nom;
+        agent.ministere_nom = agent.ministere_nom || userInfo.ministere_nom;
+        agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
+    }
+    if (validateur) {
+        validateur.ministere_nom = validateur.ministere_nom || userInfo.ministere_nom;
+        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
+        validateur.direction_nom = validateur.direction_nom || userInfo.direction_nom || userInfo.service_nom;
+        validateur.service_nom = validateur.service_nom || userInfo.service_nom;
+        validateur.structure_nom = validateur.structure_nom || userInfo.structure_nom;
+    }
+}
 
 function drawStandardSignature(doc, startY = 0, signatureInfo = {}, options = {}) {
     const { role, name, imagePath } = signatureInfo || {};
@@ -482,20 +499,7 @@ class PDFKitGenerationService {
                         sigle: resolvedSigle
                     });
 
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.direction_nom = userInfo.direction_nom || agent.direction_nom || userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                    agent.ministere_sigle = userInfo.ministere_sigle || agent.ministere_sigle;
-
-                    if (validateur) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                        validateur.direction_nom = userInfo.direction_nom || userInfo.service_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
                 const headerContext = resolveOfficialHeaderContext({ agent, validateur, userInfo });
@@ -585,39 +589,73 @@ class PDFKitGenerationService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            bodyText = template.body
-                                .replace('{jours}', jours)
-                                .replace('{dateDebut}', dateDebutStr)
-                                .replace('{dateFin}', dateFinStr)
-                                .replace('{nom}', nomComplet)
-                                .replace('{matricule}', agent.matricule)
-                                .replace('{poste}', poste)
-                                .replace('{direction}', displayDirectionName);
+                            bodyText = replaceTemplatePlaceholders(template.body, {
+                                jours: jours,
+                                diffDays: jours,
+                                pluralS: jours > 1 ? 's' : '',
+                                dateDebut: dateDebutStr,
+                                dateDebutStr: dateDebutStr,
+                                dateFin: dateFinStr,
+                                dateFinStr: dateFinStr,
+                                nom: nomComplet,
+                                nomComplet: nomComplet,
+                                fullWithCivilite: nomComplet,
+                                matricule: agent.matricule,
+                                poste: poste,
+                                fonctionActuelle: poste,
+                                direction: displayDirectionName,
+                                serviceNom: displayDirectionName,
+                                displayDirectionName: displayDirectionName,
+                                lieu: demande.lieu,
+                                description: demande.description
+                            });
                         }
                         if (template && template.motif_header) {
-                            motifHeaderText = template.motif_header;
+                            motifHeaderText = replaceTemplatePlaceholders(template.motif_header, {
+                                jours: jours,
+                                diffDays: jours,
+                                pluralS: jours > 1 ? 's' : '',
+                                dateDebut: dateDebutStr,
+                                dateDebutStr: dateDebutStr,
+                                dateFin: dateFinStr,
+                                dateFinStr: dateFinStr,
+                                nom: nomComplet,
+                                nomComplet: nomComplet,
+                                fullWithCivilite: nomComplet,
+                                matricule: agent.matricule,
+                                poste: poste,
+                                fonctionActuelle: poste,
+                                direction: displayDirectionName,
+                                serviceNom: displayDirectionName,
+                                displayDirectionName: displayDirectionName,
+                                lieu: demande.lieu,
+                                description: demande.description
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template d\'autorisation d\'absence:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text(
-                        bodyText,
-                        50,
-                        yPosition, { align: 'justify', width: 500 }
-                    );
+                doc.fillColor(primaryColor);
+                yPosition = writeRichText(doc, bodyText, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 18;
+                yPosition += 18;
 
-                doc.font(BOLD_FONT)
-                    .fontSize(BODY_FONT_SIZE)
-                    .text(motifHeaderText, 50, yPosition, { align: 'left', width: 500, continued: true });
-                doc.font(BASE_FONT)
-                    .text(`${demande.description || 'affaires personnelles'}.`, { align: 'justify', width: 500 });
+                // Afficher le motif
+                yPosition = writeRichText(doc, `<strong>${motifHeaderText}</strong>${demande.description || 'affaires personnelles'}.`, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 yPosition = doc.y + 30;
 
@@ -906,17 +944,7 @@ class PDFKitGenerationService {
             };
 
             // Utiliser les informations de l'utilisateur connecté pour le ministère et service
-            if (userInfo) {
-                agent.service_nom = userInfo.service_nom || agent.service_nom;
-                agent.direction_nom = userInfo.service_nom || agent.direction_nom;
-                agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                agent.ministere_sigle = userInfo.ministere_sigle || agent.ministere_sigle;
-                validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                validateur.direction_nom = userInfo.service_nom || userInfo.direction_nom || validateur.direction_nom;
-                validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-            }
+            applyUserInfoFallback(agent, validateur, userInfo);
 
             const typeDocument = row.type_document;
             // Sur tous les documents sauf le certificat de prise de service : utiliser la signature de la DRH
@@ -925,13 +953,7 @@ class PDFKitGenerationService {
                 if (drh) {
                     Object.assign(validateur, drh);
                     validateur.signatureRoleOverride = 'Le Directeur';
-                    if (userInfo) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                        validateur.direction_nom = userInfo.service_nom || userInfo.direction_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
+                    applyUserInfoFallback(null, validateur, userInfo);
                 }
             }
 
@@ -1141,40 +1163,55 @@ class PDFKitGenerationService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{validateurGenre}', validateurGenre)
-                                .replace('{validateurNomComplet}', validateurNomComplet)
-                                .replace('{validateurFonction}', validateurFonction)
-                                .replace('{civilite}', civilite)
-                                .replace('{prenoms}', agentNamePartsPresence.prenoms)
-                                .replace('{nom}', agentNamePartsPresence.nom)
-                                .replace('{fonctionAvecService}', fonctionAvecService)
-                                .replace('{dateDebut}', dateDebutStr);
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNamePartsPresence.prenoms,
+                                nom: agentNamePartsPresence.nom,
+                                fonctionAvecService: fonctionAvecService,
+                                dateDebut: dateDebutStr,
+                                // Also support fullWithCivilite in case it is used
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite
+                            });
                         }
                         if (template && template.footer) {
-                            phraseCloture = template.footer;
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNamePartsPresence.prenoms,
+                                nom: agentNamePartsPresence.nom,
+                                fonctionAvecService: fonctionAvecService,
+                                dateDebut: dateDebutStr,
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template d\'attestation de présence:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                doc.fillColor(primaryColor);
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 22;
+                yPosition += 22;
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(phraseCloture, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 // === SIGNATURE === (position fixe, remontée pour réduire l'espace avec le texte)
                 const pageHeight = doc.page.height;
@@ -1395,39 +1432,51 @@ class PDFKitGenerationService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{fullWithCivilite}', agentNamePartsTravail.fullWithCivilite)
-                                .replace('{matricule}', agent.matricule)
-                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
-                                .replace('{classeInfo}', '')
-                                .replace('{direction}', displayDirectionName || '')
-                                .replace('{dateDebut}', dateDebutStr);
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                fullWithCivilite: agentNamePartsTravail.fullWithCivilite,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                classeInfo: '',
+                                direction: displayDirectionName || '',
+                                dateDebut: dateDebutStr,
+                                // fallback for other templates
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                            });
                         }
                         if (template && template.footer) {
-                            phraseCloture = template.footer;
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                fullWithCivilite: agentNamePartsTravail.fullWithCivilite,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                classeInfo: '',
+                                direction: displayDirectionName || '',
+                                dateDebut: dateDebutStr,
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor('#000000')
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                doc.fillColor('#000000');
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 30;
+                yPosition += 30;
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(phraseCloture, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
-
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
                 yPosition += 70;
                 // Signature descendue et décalée à droite
                 await attachActiveSignature(validateur);
@@ -1623,41 +1672,61 @@ class PDFKitGenerationService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{civilite}', agentNamePartsSortie.civilite)
-                                .replace('{prenoms}', agentNamePartsSortie.prenoms)
-                                .replace('{nom}', agentNamePartsSortie.nom)
-                                .replace('{matricule}', agent.matricule)
-                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
-                                .replace('{direction}', agent.service_nom || 'DIRECTION')
-                                .replace('{lieu}', demande.lieu || 'en France')
-                                .replace('{dateDebut}', dateDebutStr)
-                                .replace('{dateFin}', dateFinStr)
-                                .replace('{motif}', demande.description || 'pour ses vacances');
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                civilite: agentNamePartsSortie.civilite,
+                                prenoms: agentNamePartsSortie.prenoms,
+                                nom: agentNamePartsSortie.nom,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                direction: agent.service_nom || 'DIRECTION',
+                                lieu: demande.lieu || 'en France',
+                                dateDebut: dateDebutStr,
+                                dateFin: dateFinStr,
+                                motif: demande.description || 'pour ses vacances',
+                                fullWithCivilite: agentNamePartsSortie.fullWithCivilite,
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                serviceNom: agent.service_nom || 'DIRECTION'
+                            });
                         }
                         if (template && template.footer) {
-                            phraseCloture = template.footer;
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                civilite: agentNamePartsSortie.civilite,
+                                prenoms: agentNamePartsSortie.prenoms,
+                                nom: agentNamePartsSortie.nom,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                direction: agent.service_nom || 'DIRECTION',
+                                lieu: demande.lieu || 'en France',
+                                dateDebut: dateDebutStr,
+                                dateFin: dateFinStr,
+                                motif: demande.description || 'pour ses vacances',
+                                fullWithCivilite: agentNamePartsSortie.fullWithCivilite,
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                serviceNom: agent.service_nom || 'DIRECTION'
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template d\'autorisation de sortie du territoire:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 15;
+                yPosition += 15;
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(phraseCloture, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 // === SIGNATURE ===
                 // Positionner la signature un peu plus à droite, nom sur une ligne, image agrandie
@@ -2292,34 +2361,57 @@ class PDFKitGenerationService {
                 if (configResult.rows.length > 0) {
                     const template = configResult.rows[0].value;
                     if (template && template.body) {
-                        textePrincipal = template.body
-                            .replace('{validateurGenre}', validateurGenre)
-                            .replace('{validateurNomComplet}', validateurNomComplet)
-                            .replace('{validateurFonction}', validateurFonction)
-                            .replace('{civilite}', civilite)
-                            .replace('{prenoms}', agentNameParts.prenoms)
-                            .replace('{nom}', agentNameParts.nom)
-                            .replace('{matricule}', row.matricule)
-                            .replace('{poste}', designationPoste)
-                            .replace('{direction}', serviceNom)
-                            .replace('{dateCessation}', dateCessation);
+                        textePrincipal = replaceTemplatePlaceholders(template.body, {
+                            validateurGenre: validateurGenre,
+                            validateurNomComplet: validateurNomComplet,
+                            validateurFonction: validateurFonction,
+                            civilite: civilite,
+                            prenoms: agentNameParts.prenoms,
+                            nom: agentNameParts.nom,
+                            matricule: row.matricule,
+                            poste: designationPoste,
+                            direction: serviceNom,
+                            dateCessation: dateCessation,
+                            interesseGenre: interesseGenre,
+                            dateReprise: dateRepriseFormatee,
+                            fullWithCivilite: agentNameParts.fullWithCivilite,
+                            fonctionActuelle: designationPoste,
+                            serviceNom: serviceNom,
+                            designationPoste: designationPoste
+                        });
                     }
                     if (template && template.footer) {
-                        phraseCloture = template.footer
-                            .replace('{interesseGenre}', interesseGenre)
-                            .replace('{dateReprise}', dateRepriseFormatee);
+                        phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                            validateurGenre: validateurGenre,
+                            validateurNomComplet: validateurNomComplet,
+                            validateurFonction: validateurFonction,
+                            civilite: civilite,
+                            prenoms: agentNameParts.prenoms,
+                            nom: agentNameParts.nom,
+                            matricule: row.matricule,
+                            poste: designationPoste,
+                            direction: serviceNom,
+                            dateCessation: dateCessation,
+                            interesseGenre: interesseGenre,
+                            dateReprise: dateRepriseFormatee,
+                            fullWithCivilite: agentNameParts.fullWithCivilite,
+                            fonctionActuelle: designationPoste,
+                            serviceNom: serviceNom,
+                            designationPoste: designationPoste
+                        });
                     }
                 }
             } catch (error) {
                 console.error('Erreur lors du chargement du template de certificat de cessation:', error);
             }
 
-            doc.fontSize(BODY_FONT_SIZE)
-                .font(BASE_FONT)
-                .text(textePrincipal, 50, yPosition, {
-                    align: 'justify',
-                    width: 500
-                });
+            yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                align: 'justify',
+                width: 500,
+                fontSize: BODY_FONT_SIZE,
+                baseFont: BASE_FONT,
+                boldFont: BOLD_FONT
+            });
 
             yPosition = doc.y + 30;
 

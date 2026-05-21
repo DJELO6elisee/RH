@@ -652,9 +652,14 @@ async function drawOfficialHeaderPDF(doc, {
   if (!formattedDate) {
     formattedDate = formatFullFrenchDate(new Date());
   }
-  // Capitaliser seulement la première lettre de la ville, le reste en minuscule
-  const cityCapitalized = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
-  const dateLine = `${cityCapitalized}, le ${formattedDate}`;
+  let resolvedCity = city;
+  if (!city || city.toUpperCase() === 'ABIDJAN') {
+    const directionNameForCity = validatorDirectionName || agentDirectionName;
+    resolvedCity = extractCityFromDirectionName(directionNameForCity);
+  } else {
+    resolvedCity = resolvedCity.charAt(0).toUpperCase() + resolvedCity.slice(1).toLowerCase();
+  }
+  const dateLine = `${resolvedCity}, le ${formattedDate}`;
   doc.font('Times-Roman').fontSize(11);
   doc.text(dateLine, rightX, commonLineY, { width: sectionWidth, align: 'right' });
   const dateHeight = doc.heightOfString(dateLine, { width: sectionWidth });
@@ -804,6 +809,183 @@ const HEADER_CSS = `
   }
 `;
 
+const accentMap = {
+  'ABJ': 'Abidjan',
+  'ABIDJAN': 'Abidjan',
+  'YAMOUSSOUKRO': 'Yamoussoukro',
+  'GRAND-BASSAM': 'Grand-Bassam',
+  'GRAND BASSAM': 'Grand-Bassam',
+  'SAN-PEDRO': 'San-Pedro',
+  'SAN PEDRO': 'San-Pedro',
+  'BOUAKE': 'Bouaké',
+  'BOUAKÉ': 'Bouaké',
+  'KORHOGO': 'Korhogo',
+  'MAN': 'Man',
+  'DALOA': 'Daloa',
+  'SOUBRE': 'Soubré',
+  'SOUBRÉ': 'Soubré',
+  'FERKE': 'Ferkessédougou',
+  'FERKESSEDOUGOU': 'Ferkessédougou',
+  'FERKESSÉDOUGOU': 'Ferkessédougou',
+  'SEGUELA': 'Séguéla',
+  'SÉGUÉLA': 'Séguéla',
+  'ODIENNE': 'Odienné',
+  'ODIENNÉ': 'Odienné',
+  'GENEVE': 'Genève',
+  'GENÈVE': 'Genève',
+  'BEIJING': 'Beijing',
+  'BERLIN': 'Berlin',
+  'DOHA': 'Doha',
+  'LAGOS': 'Lagos',
+  'LONDRES': 'Londres',
+  'MADRID': 'Madrid',
+  'MILAN': 'Milan',
+  'OTTAWA': 'Ottawa',
+  'PARIS': 'Paris',
+  'ABOISSO': 'Aboisso',
+  'ADZOPE': 'Adzopé',
+  'ADZOPÉ': 'Adzopé',
+  'AGBOVILLE': 'Agboville',
+  'BONDOUKOU': 'Bondoukou',
+  'BONGOUANOU': 'Bongouanou',
+  'DIVO': 'Divo',
+  'DUEKOUE': 'Duékoué',
+  'DUÉKOUÉ': 'Duékoué',
+  'GAGNOA': 'Gagnoa',
+  'GUIGLO': 'Guiglo',
+  'ABENGOUROU': 'Abengourou',
+  'SASSANDRA': 'Sassandra',
+  'SINFRA': 'Sinfra',
+  'KATIOLA': 'Katiola',
+  'MINIGNAN': 'Minignan',
+  'TANDA': 'Tanda',
+  'TOUBA': 'Touba',
+  'BOUNA': 'Bouna',
+  'DIMBOKRO': 'Dimbokro',
+  'BOUAFLE': 'Bouaflé',
+  'BOUAFLÉ': 'Bouaflé',
+  'MANKONO': 'Mankono',
+  'BOUNDIALI': 'Boundiali',
+  'DANANE': 'Danané',
+  'DANANÉ': 'Danané',
+  'ANYAMA': 'Anyama',
+  'BINGERVILLE': 'Bingerville',
+  'SONGON': 'Songon',
+  'TIEBISSOU': 'Tiébissou',
+  'TIÉBISSOU': 'Tiébissou',
+  'OUAGADOUGOU': 'Ouagadougou',
+  'COTONOU': 'Cotonou',
+  'LOME': 'Lomé',
+  'LOMÉ': 'Lomé',
+  'ACCRA': 'Accra',
+  'ABUJA': 'Abuja',
+  'DAKAR': 'Dakar',
+  'YAOUNDE': 'Yaoundé',
+  'YAOUNDÉ': 'Yaoundé',
+  'LIBREVILLE': 'Libreville',
+  'BRAZZAVILLE': 'Brazzaville',
+  'KINSHASA': 'Kinshasa',
+  'KIGALI': 'Kigali',
+  'ADDIS ABEBA': 'Addis-Abeba',
+  'ADDIS-ABEBA': 'Addis-Abeba',
+  'TUNIS': 'Tunis',
+  'ALGER': 'Alger',
+  'CASABLANCA': 'Casablanca',
+  'NEW YORK': 'New York',
+  'BRUXELLES': 'Bruxelles',
+  'ROME': 'Rome',
+  'TOKYO': 'Tokyo',
+  'RIO DE JANEIRO': 'Rio de Janeiro',
+  'WASHINGTON': 'Washington',
+  'RABAT': 'Rabat',
+  'PRETORIA': 'Pretoria'
+};
+
+const SORTED_CITY_KEYS = Object.keys(accentMap).sort((a, b) => b.length - a.length);
+
+function extractCityFromDirectionName(directionName) {
+  if (!directionName || typeof directionName !== 'string') {
+    return 'Abidjan';
+  }
+
+  // 1. Convert to uppercase and normalize spaces for scan
+  const upperName = directionName.replace(/\s+/g, ' ').toUpperCase();
+
+  // Helper to determine if a character is a letter or digit (accented or standard)
+  const isWordChar = (char) => {
+    if (!char) return false;
+    return /[A-Z0-9\u00C0-\u017F]/.test(char);
+  };
+
+  // Helper to find a boundary-safe match
+  const findSafeWordMatch = (source, target) => {
+    let index = source.indexOf(target);
+    while (index !== -1) {
+      const charBefore = index > 0 ? source[index - 1] : null;
+      const charAfter = index + target.length < source.length ? source[index + target.length] : null;
+      
+      if (!isWordChar(charBefore) && !isWordChar(charAfter)) {
+        return true;
+      }
+      index = source.indexOf(target, index + 1);
+    }
+    return false;
+  };
+
+  // 2. Scan using the sorted lookup keys
+  for (const key of SORTED_CITY_KEYS) {
+    if (findSafeWordMatch(upperName, key)) {
+      return accentMap[key];
+    }
+  }
+
+  // 3. Fallback: Prefix-matching logic
+  // Strip parentheses first to isolate candidate suffix
+  let cleaned = directionName;
+  const openParenIndex = cleaned.indexOf('(');
+  if (openParenIndex !== -1) {
+    cleaned = cleaned.substring(0, openParenIndex);
+  }
+  cleaned = cleaned.trim().replace(/\s+/g, ' ');
+
+  const prefixRegex = /^(?:direction\s+regionale|direction\s+departementale|dir\.\s+regionale|dir\.\s+departementale|direct°\s+regionale|direct°\s+departementale|bureau|delegation|district)\s*(?:de\s+|d['’]|du\s+|des\s+)?/i;
+  
+  let cityCandidate = '';
+  const match = cleaned.match(prefixRegex);
+  if (match) {
+    cityCandidate = cleaned.substring(match[0].length).trim();
+  } else {
+    return 'Abidjan';
+  }
+
+  if (!cityCandidate) {
+    return 'Abidjan';
+  }
+
+  // Clean candidate from suffixes
+  cityCandidate = cityCandidate.replace(/\b(?:nord|sud|est|ouest|centre)\b\s*\d*$/i, '').trim();
+  cityCandidate = cityCandidate.replace(/\s+\d+$/, '').trim(); // Remove trailing numbers
+
+  if (!cityCandidate || cityCandidate.length < 2) {
+    return 'Abidjan';
+  }
+
+  const upperCandidate = cityCandidate.toUpperCase();
+  if (accentMap[upperCandidate]) {
+    return accentMap[upperCandidate];
+  }
+
+  // Format general words
+  return cityCandidate
+    .toLowerCase()
+    .split(/([\s\-])/)
+    .map(word => {
+      if (word === ' ' || word === '-') return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join('');
+}
+
 // documentNumber doit être fourni par le caller (getDocumentReference) ; ce module n'effectue aucun calcul, il affiche uniquement la valeur reçue.
 function buildHeaderHTML({ documentNumber = '', dateString = '', generatedAt = null, city = 'ABIDJAN', ministryName = '', directionName = '', numeroActeDecision = null } = {}) {
   const crestDataUri = getCrestDataUri();
@@ -823,8 +1005,12 @@ function buildHeaderHTML({ documentNumber = '', dateString = '', generatedAt = n
   if (!formattedDate) {
     formattedDate = formatFullFrenchDate(new Date());
   }
-  // Capitaliser seulement la première lettre de la ville, le reste en minuscule
-  const cityCapitalized = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+  let resolvedCity = city;
+  if (!city || city.toUpperCase() === 'ABIDJAN') {
+    resolvedCity = extractCityFromDirectionName(directionName);
+  } else {
+    resolvedCity = resolvedCity.charAt(0).toUpperCase() + resolvedCity.slice(1).toLowerCase();
+  }
 
   return `
     <div class="official-header">
@@ -849,7 +1035,7 @@ function buildHeaderHTML({ documentNumber = '', dateString = '', generatedAt = n
         <span class="official-header__reference">${referenceText}</span>
         ${numeroActeDecision ? `<div class="official-header__decision-number">${numeroActeDecision}</div>` : ''}
       </div>
-      <span class="official-header__right-location-aligned">${cityCapitalized}, le ${formattedDate}</span>
+      <span class="official-header__right-location-aligned">${resolvedCity}, le ${formattedDate}</span>
     </div>
   `;
 }
@@ -863,6 +1049,7 @@ module.exports = {
   resolveOfficialHeaderContext,
   pickFirstNonEmptyString,
   formatFullFrenchDate,
+  extractCityFromDirectionName,
 };
 
 

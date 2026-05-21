@@ -174,6 +174,8 @@ const ParametresPage = React.lazy(() =>
     import('./pages/ParametresPage.jsx'));
 const ParametresDRHPage = React.lazy(() =>
     import('./pages/ParametresDRHPage.jsx'));
+const EvaluationsPage = React.lazy(() =>
+    import('./pages/EvaluationsPage'));
 const InformaticienDashboard = React.lazy(() =>
     import('./pages/InformaticienDashboard.jsx'));
 
@@ -239,6 +241,14 @@ class App extends React.Component {
                             --danger: ${colors.danger};
                             --warning: ${colors.warning};
                             --info: ${colors.info};
+                            
+                            /* Mapping des couleurs ivoiriennes vers le thème dynamique */
+                            --ivory-green: ${colors.success};
+                            --ivory-green-dark: ${colors.success};
+                            --ivory-green-light: ${colors.success};
+                            --ivory-orange: ${colors.warning};
+                            --ivory-orange-dark: ${colors.warning};
+                            --ivory-orange-light: ${colors.warning};
                         }
                         
                         /* Override specific classes if needed */
@@ -250,9 +260,18 @@ class App extends React.Component {
                         .text-secondary { color: ${colors.secondary} !important; }
                         .btn-secondary { background-color: ${colors.secondary} !important; border-color: ${colors.secondary} !important; }
                         
-                        /* For sidebar background if needed */
-                        .cr-sidebar__background {
-                            background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%) !important;
+                        /* For sidebar background (agressive override) */
+                        .cr-sidebar::after,
+                        .cr-sidebar__background,
+                        .sidebar .sidebar__background,
+                        .sidebar__background {
+                            background: linear-gradient(135deg, ${colors.success} 0%, ${colors.success} 100%) !important;
+                        }
+                        
+                        /* Override active nav link */
+                        .cr-sidebar .nav .nav-link.active,
+                        .sidebar .nav .nav-item .nav-link.active {
+                            background: linear-gradient(135deg, ${colors.warning} 0%, ${colors.warning} 100%) !important;
                         }
                     `;
 
@@ -380,6 +399,7 @@ class App extends React.Component {
                                             {/* Routes de gestion RH */}
                                             <ProtectedRoute exact path="/drh-dashboard" component={DRHDashboardPage} />
                                             <ProtectedRoute exact path="/besoins-en-agents" component={DRHBesoinAgentsPage} />
+                                            <ProtectedRoute exact path="/evaluations" component={EvaluationsPage} />
                                             <ProtectedRoute exact path="/notes-de-service" component={NotesDeServicePage} />
                                             <ProtectedRoute exact path="/drh-parametres" component={ParametresDRHPage} />
                                             <ProtectedRoute exact path="/agents" component={AgentsPage} />

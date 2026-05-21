@@ -415,6 +415,14 @@ export const backendRoutes = [
         // roles: ['drh', 'DRH']
     },
     {
+        id: 'evaluations',
+        name: 'Évaluations des Agents',
+        path: '/evaluations',
+        icon: 'MdRateReview',
+        description: 'Gestion des évaluations annuelles des agents',
+        category: 'Gestion du Personnel'
+    },
+    {
         id: 'agent-user-accounts',
         name: 'Gestion des comptes utilisateur des agents',
         path: '/agent-user-accounts',

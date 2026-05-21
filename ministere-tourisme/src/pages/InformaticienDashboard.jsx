@@ -22,6 +22,7 @@ import {
 import { useAuth } from 'contexts/AuthContext';
 import { MdColorLens, MdViewList, MdDescription, MdSave } from 'react-icons/md';
 import { backendRoutes } from '../config/routes';
+import { getApiUrl } from '../config/api';
 
 const InformaticienDashboard = () => {
     const { token } = useAuth();
@@ -59,7 +60,8 @@ const InformaticienDashboard = () => {
 
     const loadSettings = async () => {
         try {
-            const response = await fetch('https://tourisme.2ise-groupe.com/api/settings', {
+            const apiBase = getApiUrl();
+            const response = await fetch(`${apiBase}/api/settings`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -139,7 +141,8 @@ const InformaticienDashboard = () => {
         ];
 
         try {
-            const response = await fetch('https://tourisme.2ise-groupe.com/api/settings/multiple', {
+            const apiBase = getApiUrl();
+            const response = await fetch(`${apiBase}/api/settings/multiple`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

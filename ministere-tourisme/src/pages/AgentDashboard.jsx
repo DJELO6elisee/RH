@@ -7907,51 +7907,7 @@ const AgentDashboard = () => {
                                                                 </td>
                                                                 <td>
                                                                     <div className="d-flex gap-2">
-                                                                        <Button
-                                                                            color="info"
-                                                                            size="sm"
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    const token = localStorage.getItem('token');
-                                                                                    const response = await fetch(`${getApiUrl()}/api/documents/${certificat.id}/html`, {
-                                                                                        headers: {
-                                                                                            'Authorization': `Bearer ${token}`,
-                                                                                            'Content-Type': 'application/json'
-                                                                                        }
-                                                                                    });
-                                                                                    
-                                                                                    if (response.ok) {
-                                                                                        const data = await response.json();
-                                                                                        const htmlContent = data.data?.html || data.html || '';
-                                                                                        const newWindow = window.open('', '_blank');
-                                                                                        if (newWindow) {
-                                                                                            newWindow.document.write(`
-                                                                                                <!DOCTYPE html>
-                                                                                                <html lang="fr">
-                                                                                                <head>
-                                                                                                    <meta charset="UTF-8">
-                                                                                                    <title>${certificat.titre || 'Certificat de Prise de Service'}</title>
-                                                                                                    <style>
-                                                                                                        body { font-family: 'Times New Roman', serif; padding: 20px; }
-                                                                                                    </style>
-                                                                                                </head>
-                                                                                                <body>${htmlContent}</body>
-                                                                                                </html>
-                                                                                            `);
-                                                                                            newWindow.document.close();
-                                                                                        }
-                                                                                    } else {
-                                                                                        alert('Erreur lors de la récupération du document');
-                                                                                    }
-                                                                                } catch (error) {
-                                                                                    console.error('Erreur:', error);
-                                                                                    alert('Erreur lors de l\'ouverture du document');
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            <i className="fa fa-eye me-1"></i>
-                                                                            Voir
-                                                                        </Button>
+
                                                                         <Button
                                                                             color="success"
                                                                             size="sm"

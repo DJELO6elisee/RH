@@ -1,19 +1,35 @@
 const PDFDocument = require('pdfkit');
 const db = require('../config/database');
-const { drawOfficialHeaderPDF, resolveOfficialHeaderContext, pickFirstNonEmptyString } = require('./officialHeader');
+const { drawOfficialHeaderPDF, resolveOfficialHeaderContext, pickFirstNonEmptyString, extractCityFromDirectionName } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference, generateNoteDeServiceNumber, generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
 const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName } = require('./utils/agentFunction');
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
 const { formatAffectationPhrase, formatDirecteurFromDirection } = require('./utils/frenchGrammar');
 const path = require('path');
 const fs = require('fs');
-
+const { writeRichText, replaceTemplatePlaceholders } = require('./utils/pdfRichText');
 const BASE_FONT = 'Times-Roman';
 const BOLD_FONT = 'Times-Bold';
 const TITLE_FONT_SIZE = 18;
 const SUBTITLE_FONT_SIZE = 16;
 const BODY_FONT_SIZE = 16;
 const FOOTER_FONT_SIZE = 8;
+function applyUserInfoFallback(agent, validateur, userInfo) {
+    if (!userInfo) return;
+    if (agent) {
+        agent.service_nom = agent.service_nom || userInfo.service_nom;
+        agent.direction_nom = agent.direction_nom || userInfo.direction_nom || userInfo.service_nom;
+        agent.ministere_nom = agent.ministere_nom || userInfo.ministere_nom;
+        agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
+    }
+    if (validateur) {
+        validateur.ministere_nom = validateur.ministere_nom || userInfo.ministere_nom;
+        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
+        validateur.direction_nom = validateur.direction_nom || userInfo.direction_nom || userInfo.service_nom;
+        validateur.service_nom = validateur.service_nom || userInfo.service_nom;
+        validateur.structure_nom = validateur.structure_nom || userInfo.structure_nom;
+    }
+}
 
 function drawStandardSignature(doc, startY = 0, signatureInfo = {}, options = {}) {
     const { role, name, imagePath } = signatureInfo || {};
@@ -498,19 +514,7 @@ class MemoryPDFService {
                 const titleColor = '#000000';
                 const borderColor = '#000000';
 
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.direction_nom = userInfo.direction_nom || agent.direction_nom || userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = agent.ministere_nom || userInfo.ministere_nom;
-                    agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
-                    if (validateur) {
-                        validateur.ministere_nom = validateur.ministere_nom || userInfo.ministere_nom;
-                        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-                        validateur.direction_nom = userInfo.direction_nom || userInfo.service_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
 
@@ -619,11 +623,6 @@ class MemoryPDFService {
                 const dateDebutStr = dateDebut.toLocaleDateString('fr-FR');
                 const dateFinStr = dateFin.toLocaleDateString('fr-FR');
 
-                // Utiliser les informations de l'utilisateur connecté pour le ministère et service
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                }
 
                 // Texte principal sans bordure
                 doc.fontSize(BODY_FONT_SIZE)
@@ -763,6 +762,7 @@ class MemoryPDFService {
                     fa_actuel.fonction_libele as fonction_actuelle_libele,
                     drh.id as validateur_id,
                     drh.prenom as validateur_prenom, drh.nom as validateur_nom,
+                    drh.sexe as validateur_sexe, drh.nom_epoux as validateur_nom_epoux,
                     drh.fonction_actuelle as validateur_fonction,
                     fa.designation_poste as validateur_fonction_designation,
                     drh_dir.libelle as validateur_direction_nom,
@@ -841,6 +841,8 @@ class MemoryPDFService {
                 id: row.validateur_id,
                 prenom: row.validateur_prenom,
                 nom: row.validateur_nom,
+                sexe: row.validateur_sexe,
+                nom_epoux: row.validateur_nom_epoux,
                 fonction: row.validateur_fonction_designation || row.validateur_fonction,
                 ministere_sigle: row.validateur_ministere_sigle,
                 ministere_nom: row.validateur_ministere_nom,
@@ -850,14 +852,7 @@ class MemoryPDFService {
                 civilite: row.validateur_civilite
             };
 
-            // Utiliser les informations de l'utilisateur connecté pour le ministère et service
-            if (userInfo) {
-                agent.service_nom = userInfo.service_nom || row.service_nom;
-                agent.direction_nom = userInfo.service_nom || agent.direction_nom;
-                agent.ministere_nom = userInfo.ministere_nom || row.ministere_nom;
-                validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                validateur.direction_nom = userInfo.service_nom || validateur.direction_nom;
-            }
+            applyUserInfoFallback(agent, validateur, userInfo);
 
             await hydrateAgentWithLatestFunction(validateur);
             await attachActiveSignature(validateur);
@@ -906,6 +901,7 @@ class MemoryPDFService {
                     val.fonction_actuelle as validateur_fonction,
                     fa.designation_poste as validateur_fonction_designation,
                     val_dir.libelle as validateur_direction_nom,
+                    val.sexe as validateur_sexe, val.nom_epoux as validateur_nom_epoux,
                     m_val.nom as validateur_ministere_nom,
                     m_val.sigle as validateur_ministere_sigle,
                     val_civ.libele as validateur_civilite,
@@ -985,6 +981,7 @@ class MemoryPDFService {
                 emploi_libele: row.emploi_libele,
                 emploi_designation_poste: row.emploi_designation_poste,
                 service_nom: row.service_nom,
+                direction_nom: row.direction_nom || row.service_nom,
                 ministere_nom: row.ministere_nom,
                 ministere_sigle: row.ministere_sigle,
                 date_prise_service_au_ministere: row.date_prise_service_au_ministere,
@@ -1009,6 +1006,8 @@ class MemoryPDFService {
                 id: validateurId,
                 prenom: row.validateur_prenom,
                 nom: row.validateur_nom,
+                sexe: row.validateur_sexe,
+                nom_epoux: row.validateur_nom_epoux,
                 fonction: row.validateur_fonction_designation || row.validateur_fonction,
                 ministere_sigle: row.validateur_ministere_sigle,
                 ministere_nom: row.validateur_ministere_nom,
@@ -1019,14 +1018,7 @@ class MemoryPDFService {
             };
 
             // Utiliser les informations de l'utilisateur connecté pour le ministère et service
-            if (userInfo) {
-                agent.service_nom = userInfo.service_nom || row.service_nom;
-                agent.ministere_nom = userInfo.ministere_nom || row.ministere_nom;
-                validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                validateur.direction_nom = userInfo.service_nom || validateur.direction_nom;
-                validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-            }
+            applyUserInfoFallback(agent, validateur, userInfo);
 
             const typeDocument = row.type_document;
             // Sur tous les documents sauf le certificat de prise de service : utiliser la signature de la DRH
@@ -1035,13 +1027,7 @@ class MemoryPDFService {
                 if (drh) {
                     Object.assign(validateur, drh);
                     validateur.signatureRoleOverride = 'Le Directeur';
-                    if (userInfo) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                        validateur.direction_nom = userInfo.service_nom || userInfo.direction_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
+                    applyUserInfoFallback(null, validateur, userInfo);
                 }
             }
 
@@ -1114,20 +1100,7 @@ class MemoryPDFService {
                 const primaryColor = '#000000';
                 const borderColor = '#000000';
 
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.direction_nom = userInfo.direction_nom || agent.direction_nom || userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                    agent.ministere_sigle = userInfo.ministere_sigle || agent.ministere_sigle;
-
-                    if (validateur) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                        validateur.direction_nom = userInfo.direction_nom || userInfo.service_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 const resolvedSigle = ensureMinistereSigle({ demande, agent, validateur, userInfo });
                 const documentNumber = (options && options.documentId != null && options && options.typeDocument) ?
@@ -1292,12 +1265,7 @@ class MemoryPDFService {
                 const borderColor = '#000000';
 
                 // === DONNÉES DYNAMIQUES ===
-                if (userInfo) {
-                    agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
-                    if (validateur) {
-                        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
@@ -1817,12 +1785,7 @@ class MemoryPDFService {
                 doc.fontSize(12);
 
                 // === EN-TÊTE DU DOCUMENT ===
-                if (userInfo) {
-                    agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
-                    if (validateur) {
-                        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
@@ -1889,9 +1852,11 @@ class MemoryPDFService {
                 // Date et lieu
                 const generatedAt = resolveGenerationDate(demande, { generatedAt: demande && demande.date_generation });
                 const dateGeneration = generatedAt.toLocaleDateString('fr-FR');
+                const headerContext = resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                const docCity = extractCityFromDirectionName(headerContext.directionName).toUpperCase();
                 doc.fontSize(9)
                     .font('Helvetica')
-                    .text(`ABIDJAN, le ${dateGeneration}`, 350, 85, {
+                    .text(`${docCity}, le ${dateGeneration}`, 350, 85, {
                         align: 'left'
                     });
 
@@ -2089,17 +2054,7 @@ class MemoryPDFService {
                 const primaryColor = '#000000';
                 const borderColor = '#000000';
 
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.direction_nom = userInfo.direction_nom || agent.direction_nom || userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                    if (validateur) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.direction_nom = userInfo.direction_nom || userInfo.service_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
@@ -2194,8 +2149,8 @@ class MemoryPDFService {
                     day: 'numeric'
                 });
 
-                const db = require('../config/database');
-                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravailMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${servicePresenceDisplay || ''} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
+                const directionToDisplay = agent.service_nom || agent.direction_nom || '';
+                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravailMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${directionToDisplay} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
                 let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
 
                 try {
@@ -2203,38 +2158,50 @@ class MemoryPDFService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{fullWithCivilite}', agentNamePartsTravailMemory.fullWithCivilite)
-                                .replace('{matricule}', agent.matricule)
-                                .replace('{poste}', getAgentPosteOuEmploi(agent).toUpperCase())
-                                .replace('{classeInfo}', '')
-                                .replace('{direction}', servicePresenceDisplay || '')
-                                .replace('{dateDebut}', dateDebutStr);
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                fullWithCivilite: agentNamePartsTravailMemory.fullWithCivilite,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                classeInfo: '',
+                                direction: directionToDisplay,
+                                dateDebut: dateDebutStr,
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                            });
                         }
                         if (template && template.footer) {
-                            phraseCloture = template.footer;
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                fullWithCivilite: agentNamePartsTravailMemory.fullWithCivilite,
+                                matricule: agent.matricule,
+                                poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                classeInfo: '',
+                                direction: servicePresenceDisplay || '',
+                                dateDebut: dateDebutStr,
+                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                doc.fillColor(primaryColor);
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 30;
+                yPosition += 30;
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(phraseCloture, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 // === SIGNATURE ===
                 yPosition += 70;
@@ -2332,12 +2299,7 @@ class MemoryPDFService {
                 const borderColor = '#000000';
 
                 // === DONNÉES DYNAMIQUES ===
-                if (userInfo) {
-                    agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
-                    if (validateur) {
-                        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
@@ -2520,27 +2482,31 @@ class MemoryPDFService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{civilite}', agentNameParts.civilite)
-                                .replace('{prenoms}', agentNameParts.prenoms)
-                                .replace('{nom}', agentNameParts.nom)
-                                .replace('{matricule}', agent.matricule)
-                                .replace('{poste}', fonctionActuelle.toUpperCase())
-                                .replace('{classeInfo}', classeInfo || '')
-                                .replace('{direction}', serviceNom.toUpperCase())
-                                .replace('{dateReprise}', dateReprise);
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                civilite: agentNameParts.civilite,
+                                prenoms: agentNameParts.prenoms,
+                                nom: agentNameParts.nom,
+                                matricule: agent.matricule,
+                                poste: fonctionActuelle.toUpperCase(),
+                                classeInfo: classeInfo || '',
+                                direction: serviceNom.toUpperCase(),
+                                dateReprise: dateReprise,
+                                fullWithCivilite: agentNameParts.fullWithCivilite,
+                                fonctionActuelle: fonctionActuelle.toUpperCase()
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template de certificat de reprise de service:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 yPosition += 40;
 
@@ -2690,20 +2656,7 @@ class MemoryPDFService {
                 const borderColor = '#000000';
 
                 // === DONNÉES DYNAMIQUES ===
-                if (userInfo) {
-                    agent.service_nom = userInfo.service_nom || agent.service_nom;
-                    agent.direction_nom = userInfo.direction_nom || agent.direction_nom || userInfo.service_nom || agent.service_nom;
-                    agent.ministere_nom = userInfo.ministere_nom || agent.ministere_nom;
-                    agent.ministere_sigle = userInfo.ministere_sigle || agent.ministere_sigle;
-
-                    if (validateur) {
-                        validateur.ministere_nom = userInfo.ministere_nom || validateur.ministere_nom;
-                        validateur.ministere_sigle = userInfo.ministere_sigle || validateur.ministere_sigle;
-                        validateur.direction_nom = userInfo.direction_nom || userInfo.service_nom || validateur.direction_nom;
-                        validateur.service_nom = userInfo.service_nom || validateur.service_nom;
-                        validateur.structure_nom = userInfo.structure_nom || validateur.structure_nom;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);
@@ -2839,41 +2792,58 @@ class MemoryPDFService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = template.body
-                                .replace('{validateurGenre}', validateurGenre)
-                                .replace('{validateurNomComplet}', validateurNomComplet)
-                                .replace('{validateurFonction}', validateurFonction)
-                                .replace('{civilite}', civilite)
-                                .replace('{prenoms}', agentNameParts.prenoms)
-                                .replace('{nom}', agentNameParts.nom)
-                                .replace('{matricule}', agent.matricule || 'Non spécifié')
-                                .replace('{poste}', emploiRecent)
-                                .replace('{annee}', anneeTexte);
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNameParts.prenoms,
+                                nom: agentNameParts.nom,
+                                matricule: agent.matricule || 'Non spécifié',
+                                poste: emploiRecent,
+                                annee: anneeTexte,
+                                fullWithCivilite: agentNameParts.fullWithCivilite,
+                                fonctionActuelle: emploiRecent
+                            });
                         }
                         if (template && template.footer) {
-                            phraseCloture = template.footer;
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNameParts.prenoms,
+                                nom: agentNameParts.nom,
+                                matricule: agent.matricule || 'Non spécifié',
+                                poste: emploiRecent,
+                                annee: anneeTexte,
+                                fullWithCivilite: agentNameParts.fullWithCivilite,
+                                fonctionActuelle: emploiRecent
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement du template de certificat de non jouissance de congé:', error);
                 }
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                doc.fillColor(primaryColor);
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
-                yPosition = doc.y + 30;
+                yPosition += 30;
 
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text(phraseCloture, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 // === SIGNATURE ===
                 yPosition = doc.y + 60;
@@ -4029,12 +3999,7 @@ class MemoryPDFService {
                 const borderColor = '#000000';
 
                 // === DONNÉES DYNAMIQUES ===
-                if (userInfo) {
-                    agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
-                    if (validateur) {
-                        validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-                    }
-                }
+                applyUserInfoFallback(agent, validateur, userInfo);
 
                 await hydrateAgentWithLatestFunction(validateur);
                 await attachActiveSignature(validateur);

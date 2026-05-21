@@ -71,6 +71,7 @@ import {
     MdNote,
     MdHistory,
     MdVisibility,
+    MdRateReview,
 } from 'react-icons/md';
 import {
     Collapse,
@@ -94,7 +95,6 @@ const capitalizeFirstLetter = (str) => {
 };
 
 const sidebarBackground = {
-    background: 'linear-gradient(135deg, #009639 0%, #007A2E 100%)',
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat',
 };
@@ -153,7 +153,8 @@ const iconMap = {
     'MdCheckCircle': MdCheckCircle,
     'MdNote': MdNote,
     'MdHistory': MdHistory,
-    'MdVisibility': MdVisibility
+    'MdVisibility': MdVisibility,
+    'MdRateReview': MdRateReview
 };
 
 const navItems = [
@@ -254,7 +255,7 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
             'classeurs', 'tiers', 'civilites', 'entites', 'ministeres',
             // Nomination
             'agent-fonctions', 'agent-emplois', 'agent-grades', 'agent-echelons', 'agent-categories',
-            'agent-user-accounts', 'attribution-taches-agents', 'besoins-en-agents', 'auth', 'drh-parametres', 'historique-des-agents', 'jours-conges', 'gestion-mariages',
+            'agent-user-accounts', 'attribution-taches-agents', 'besoins-en-agents', 'auth', 'drh-parametres', 'historique-des-agents', 'jours-conges', 'gestion-mariages', 'evaluations',
             // États et Rapports
             'agents_reports', 'projections_retraites', 'agents_by_type_report', 'agents_by_service_report',
             // Routes de gestion des documents administratifs
@@ -635,6 +636,10 @@ const FilteredSidebar = (props) => {
                 <Nav vertical>
                     {/* Navigation principale */}
                     {navItems.map(({ to, name, exact, Icon }, index) => {
+                        // Masquer si désactivé par l'informaticien (Tableau de bord = agent-dashboard)
+                        if (to === '/dashboard' && disabledTabIds.includes('agent-dashboard')) {
+                            return null;
+                        }
                         // Masquer le dashboard principal pour l'informaticien
                         if (user && user.role === 'informaticien' && to === '/dashboard') {
                             return null;
@@ -657,7 +662,12 @@ const FilteredSidebar = (props) => {
                     })}
 
                     {/* Navigation personnalisée selon le rôle */}
-                    {getCustomNavItems(user).map(({ to, name, exact, Icon }, index) => (
+                    {getCustomNavItems(user).map(({ to, name, exact, Icon }, index) => {
+                        // Masquer Espace Personnel DRH s'il est désactivé
+                        if (to === '/drh-dashboard' && disabledTabIds.includes('drh-dashboard')) {
+                            return null;
+                        }
+                        return (
                         <NavItem key={`custom-${index}`} className={bem.e('nav-item')}>
                             <BSNavLink
                                 id={`navItem-${name}-${index}`}
@@ -673,7 +683,7 @@ const FilteredSidebar = (props) => {
                                 </span>
                             </BSNavLink>
                         </NavItem>
-                    ))}
+                    )})}
 
                     {/* Menu déroulant Nomination */}
                     {nominationRoutes.length > 0 && (
