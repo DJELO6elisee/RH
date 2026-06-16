@@ -73,10 +73,11 @@ const MutationsPage = () => {
     loadDirectionsGenerales();
   }, []);
 
-  // Charger les agents quand on ouvre le modal
+  // Charger les agents et directions quand on ouvre le modal
   useEffect(() => {
     if (modalOpen) {
       loadAgents();
+      loadDirections();
     }
   }, [modalOpen]);
 
@@ -247,15 +248,18 @@ const MutationsPage = () => {
   };
 
   const loadDirections = async (idDirectionGenerale) => {
-    if (!idDirectionGenerale) {
-      setDirections([]);
-      return;
-    }
-
     setLoadingDirections(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/api/directions?limit=1000&id_direction_generale=${idDirectionGenerale}`, {
+      let url = `${API_BASE_URL}/api/directions?limit=1000`;
+      
+      if (idDirectionGenerale) {
+        url += `&id_direction_generale=${idDirectionGenerale}`;
+      } else if (ministereId) {
+        url += `&id_ministere=${ministereId}`;
+      }
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -363,11 +367,6 @@ const MutationsPage = () => {
 
     // Validation selon le type de mutation
     if (formData.type_mutation === 'complete') {
-      if (!formData.id_direction_generale) {
-        setError('Veuillez sélectionner une direction générale');
-        setSaving(false);
-        return;
-      }
       if (!formData.id_direction_destination) {
         setError('Veuillez sélectionner une direction de destination');
         setSaving(false);
@@ -489,7 +488,18 @@ const MutationsPage = () => {
           });
 
           if (htmlResponse.ok) {
-            const htmlContent = await htmlResponse.text();
+            const rawText = await htmlResponse.text();
+            let htmlContent = rawText;
+            try {
+              const jsonData = JSON.parse(rawText);
+              if (jsonData.success && jsonData.data && jsonData.data.html) {
+                htmlContent = jsonData.data.html;
+              } else if (jsonData.html) {
+                htmlContent = jsonData.html;
+              }
+            } catch (e) {
+              // Not JSON, it's raw HTML, use rawText
+            }
             const newWindow = window.open('', '_blank');
             newWindow.document.write(htmlContent);
             newWindow.document.close();
@@ -844,7 +854,7 @@ const MutationsPage = () => {
               <Row>
                 <Col md="6">
                   <FormGroup>
-                    <Label for="id_direction_generale">Direction générale *</Label>
+                    <Label for="id_direction_generale">Direction générale (optionnel)</Label>
                   {loadingDirectionsGenerales ? (
                     <>
                       <Input
@@ -901,15 +911,10 @@ const MutationsPage = () => {
                         id: direction.id,
                         label: direction.libelle
                       }))}
-                      placeholder={formData.id_direction_generale ? "Rechercher une direction..." : "Sélectionnez d'abord une direction générale"}
+                      placeholder="Rechercher une direction..."
                       invalid={false}
-                      disabled={!formData.id_direction_generale}
+                      disabled={false}
                     />
-                  )}
-                  {!formData.id_direction_generale && (
-                    <small className="text-muted d-block mt-1">
-                      Veuillez d'abord sélectionner une direction générale
-                    </small>
                   )}
                   </FormGroup>
                 </Col>

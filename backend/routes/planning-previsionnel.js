@@ -38,5 +38,8 @@ router.get('/verifier-notifications', requireRoleOrAssigned, PlanningPrevisionne
 // Récupérer le rapport des agents en congés groupés par organisation
 router.get('/rapport-organisation/:annee', requireRoleOrAssigned, PlanningPrevisionnelController.getRapportParOrganisation);
 
+// Vérifier les agents en retard de reprise et alerter le DRH
+router.get('/verifier-retards-reprise', requireRoleOrAssigned, PlanningPrevisionnelController.verifierEtAlerterRetardReprise);
+
 module.exports = router;
 

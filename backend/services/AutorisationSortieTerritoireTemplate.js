@@ -139,7 +139,7 @@ class AutorisationSortieTerritoireTemplate {
             : '';
 
         // Récupération des textes dynamiques depuis la base de données
-        let bodyTemplate = "Le Ministre de l'Economie et des Finances autorise <strong>{fullWithCivilite}</strong> matricule <strong>{matricule}</strong>, <strong>{fonctionActuelle}</strong> en service à la <strong>{serviceNom}</strong> à se rendre en <strong>{lieu}</strong> du <strong>{dateDebut}</strong> au <strong>{dateFin}</strong>, pour ses congés annuels.";
+        let bodyTemplate = "Le Ministre de l'Economie et des Finances autorise <strong>{fullWithCivilite}</strong> matricule <strong>{matricule}</strong>, <strong>{fonctionActuelle}</strong> en service à la <strong>{serviceNom}</strong> à se rendre en <strong>{lieu}</strong> du <strong>{dateDebut}</strong> au <strong>{dateFin}</strong>, {motif}.";
         let footerTemplate = "En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.";
 
         try {
@@ -162,10 +162,12 @@ class AutorisationSortieTerritoireTemplate {
                 .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
                 .replace(/{lieu}/g, demande.lieu || 'PAYS DE DESTINATION')
                 .replace(/{dateDebut}/g, dateDebut || '')
-                .replace(/{dateFin}/g, dateFin || '');
+                .replace(/{dateFin}/g, dateFin || '')
+                .replace(/{motif}/g, demande.motif || demande.description || 'motif non précisé');
         };
 
-        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
+        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
         const resolvedFooter = replacePlaceholders(footerTemplate);
 
         return `

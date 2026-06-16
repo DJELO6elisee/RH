@@ -641,11 +641,22 @@ class DocumentGenerationService {
         const formattedGenerationDate = formatFullFrenchDate(generationDate);
         const generationTime = generationDate.toLocaleTimeString('fr-FR');
 
-        const dateDebut = new Date(demande.date_debut).toLocaleDateString('fr-FR', {
+        let dateDebutValue = null;
+        if (agent && agent.date_prise_service_au_ministere) {
+            dateDebutValue = agent.date_prise_service_au_ministere;
+        } else if (agent && agent.date_prise_service_dans_la_direction) {
+            dateDebutValue = agent.date_prise_service_dans_la_direction;
+        } else if (agent && agent.date_prise_service) {
+            dateDebutValue = agent.date_prise_service;
+        } else if (agent && agent.date_embauche) {
+            dateDebutValue = agent.date_embauche;
+        }
+
+        const dateDebut = dateDebutValue ? new Date(dateDebutValue).toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
-        });
+        }) : 'Date non spécifiée';
 
         const dateFin = new Date(demande.date_fin).toLocaleDateString('fr-FR', {
             year: 'numeric',

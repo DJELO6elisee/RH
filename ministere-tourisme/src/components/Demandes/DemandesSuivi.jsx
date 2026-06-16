@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Card, CardBody, CardHeader, CardTitle, Table, Badge, Button, 
+    Card, CardBody, CardHeader, CardTitle, Table, Badge, Button,
     Row, Col, Alert, Spinner, Modal, ModalHeader, ModalBody, ModalFooter,
     Pagination, PaginationItem, PaginationLink, Input
 } from 'reactstrap';
@@ -30,7 +30,7 @@ const DemandesSuivi = () => {
             setLoading(true);
             const token = localStorage.getItem('token');
             const queryParams = new URLSearchParams();
-            
+
             Object.keys(filters).forEach(key => {
                 if (filters[key] !== '') {
                     queryParams.append(key, filters[key]);
@@ -85,14 +85,14 @@ const DemandesSuivi = () => {
         if (status === 'rejete') {
             return <Badge color="danger" style={{ color: '#fff', fontWeight: 'bold' }}>Rejetée</Badge>;
         }
-        
+
         // Badge pour les autorisations en cours selon la phase
         if (phase === 'aller') {
             return <Badge color="info" style={{ color: '#fff', fontWeight: 'bold' }}>En cours (Aller)</Badge>;
         } else if (phase === 'retour') {
             return <Badge color="warning" style={{ color: '#000', fontWeight: 'bold' }}>En cours (Retour)</Badge>;
         }
-        
+
         return <Badge color="secondary" style={{ color: '#000', fontWeight: 'bold' }}>En attente</Badge>;
     };
 
@@ -118,9 +118,9 @@ const DemandesSuivi = () => {
             'critique': { color: 'danger', text: 'Exceptionnelle' }
         };
         const config = priorites[priorite] || { color: 'secondary', text: priorite };
-        return <Badge color={config.color} style={{ 
-            color: config.color === 'warning' ? '#000' : '#fff', 
-            fontWeight: 'bold' 
+        return <Badge color={config.color} style={{
+            color: config.color === 'warning' ? '#000' : '#fff',
+            fontWeight: 'bold'
         }}>{config.text}</Badge>;
     };
 
@@ -274,52 +274,52 @@ const DemandesSuivi = () => {
                                 </thead>
                                 <tbody>
                                     {getPaginatedDemandes().map((demande) => (
-                                    <tr key={demande.id}>
-                                        <td>{getTypeBadge(demande.type_demande)}</td>
-                                        <td>
-                                            <div style={{ maxWidth: '200px', overflow: 'hidden' }}>
-                                                {demande.description || 'Aucun motif'}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {(demande.type_demande || '').toLowerCase() === 'certificat_reprise_service' ? (
-                                                <div>
-                                                    <div><strong>Reprise:</strong> {demande.date_reprise_service ? formatDate(demande.date_reprise_service) : 'Non renseignée'}</div>
+                                        <tr key={demande.id}>
+                                            <td>{getTypeBadge(demande.type_demande)}</td>
+                                            <td>
+                                                <div style={{ maxWidth: '200px', overflow: 'hidden' }}>
+                                                    {demande.description || 'Aucun motif'}
                                                 </div>
-                                            ) : demande.date_debut && demande.date_fin ? (
-                                                <div>
-                                                    <div><strong>Du:</strong> {formatDate(demande.date_debut)}</div>
-                                                    <div><strong>Au:</strong> {formatDate(demande.date_fin)}</div>
-                                                </div>
-                                            ) : (
-                                                'N/A'
-                                            )}
-                                        </td>
-                                        <td>{getPrioriteBadge(demande.priorite)}</td>
-                                        <td>{getStatusBadge(demande.status, demande.phase, demande.niveau_evolution_demande)}</td>
-                                        <td>
-                                            <Badge color={demande.phase === 'aller' ? 'info' : 'warning'}>
-                                                {demande.phase === 'aller' ? 'Aller' : 'Retour'}
-                                            </Badge>
-                                        </td>
-                                        <td>
-                                            <small className="text-muted">
-                                                {demande.statut_detaille || 'Statut inconnu'}
-                                            </small>
-                                        </td>
-                                        <td>{formatDate(demande.date_creation)}</td>
-                                        <td>
-                                            <Button
-                                                color="info"
-                                                size="sm"
-                                                className="me-1"
-                                                title="Voir les détails"
-                                                onClick={() => handleVoirDetails(demande)}
-                                            >
-                                                <i className="fa fa-eye"></i> Voir
-                                            </Button>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                            <td>
+                                                {(demande.type_demande || '').toLowerCase() === 'certificat_reprise_service' ? (
+                                                    <div>
+                                                        <div><strong>Reprise:</strong> {demande.date_reprise_service ? formatDate(demande.date_reprise_service) : 'Non renseignée'}</div>
+                                                    </div>
+                                                ) : demande.date_debut && demande.date_fin ? (
+                                                    <div>
+                                                        <div><strong>Du:</strong> {formatDate(demande.date_debut)}</div>
+                                                        <div><strong>Au:</strong> {formatDate(demande.date_fin)}</div>
+                                                    </div>
+                                                ) : (
+                                                    'N/A'
+                                                )}
+                                            </td>
+                                            <td>{getPrioriteBadge(demande.priorite)}</td>
+                                            <td>{getStatusBadge(demande.status, demande.phase, demande.niveau_evolution_demande)}</td>
+                                            <td>
+                                                <Badge color={demande.phase === 'aller' ? 'info' : 'warning'}>
+                                                    {demande.phase === 'aller' ? 'Aller' : 'Retour'}
+                                                </Badge>
+                                            </td>
+                                            <td>
+                                                <small className="text-muted">
+                                                    {demande.statut_detaille || 'Statut inconnu'}
+                                                </small>
+                                            </td>
+                                            <td>{formatDate(demande.date_creation)}</td>
+                                            <td>
+                                                <Button
+                                                    color="info"
+                                                    size="sm"
+                                                    className="me-1"
+                                                    title="Voir les détails"
+                                                    onClick={() => handleVoirDetails(demande)}
+                                                >
+                                                    <i className="fa fa-eye"></i> Voir
+                                                </Button>
+                                            </td>
+                                        </tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -334,7 +334,7 @@ const DemandesSuivi = () => {
                                                 onClick={() => handlePageChange(getClientPagination().current_page - 1)}
                                             />
                                         </PaginationItem>
-                                        
+
                                         {Array.from({ length: getClientPagination().total_pages }, (_, i) => i + 1).map(page => (
                                             <PaginationItem key={page} active={page === getClientPagination().current_page}>
                                                 <PaginationLink onClick={() => handlePageChange(page)}>
@@ -342,7 +342,7 @@ const DemandesSuivi = () => {
                                                 </PaginationLink>
                                             </PaginationItem>
                                         ))}
-                                        
+
                                         <PaginationItem disabled={getClientPagination().current_page === getClientPagination().total_pages}>
                                             <PaginationLink
                                                 next

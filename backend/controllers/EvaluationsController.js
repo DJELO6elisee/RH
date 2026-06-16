@@ -28,7 +28,18 @@ class EvaluationsController extends BaseController {
     // Récupérer toutes les évaluations (ou agents non notés) avec les détails des agents
     async getAll(req, res) {
         try {
-            const { page = 1, limit = 10, search, annee, sortBy, sortOrder = 'ASC' } = req.query;
+            const { 
+                page = 1, 
+                limit = 10, 
+                search, 
+                annee, 
+                sortBy, 
+                sortOrder = 'ASC',
+                id_direction_generale,
+                id_direction,
+                id_sous_direction,
+                id_service
+            } = req.query;
             const offset = (page - 1) * limit;
 
             const selectedAnnee = annee ? parseInt(annee, 10) : new Date().getFullYear();
@@ -41,6 +52,10 @@ class EvaluationsController extends BaseController {
                     a.nom AS agent_nom,
                     a.prenom AS agent_prenom,
                     a.matricule AS agent_matricule,
+                    dg.libelle AS direction_generale_libelle,
+                    d.libelle AS direction_libelle,
+                    sd.libelle AS sous_direction_libelle,
+                    srv.libelle AS service_libelle,
                     e.id,
                     COALESCE(e.annee, $1)::integer AS annee,
                     COALESCE(e.note_assiduite, 0.0) AS note_assiduite,
@@ -60,6 +75,10 @@ class EvaluationsController extends BaseController {
                 FROM agents a
                 LEFT JOIN module_evaluation e ON e.id_agent = a.id AND e.annee = $1
                 LEFT JOIN grades g ON a.id_grade = g.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                LEFT JOIN directions d ON a.id_direction = d.id
+                LEFT JOIN sous_directions sd ON a.id_sous_direction = sd.id
+                LEFT JOIN services srv ON a.id_service = srv.id
             `;
 
             let countQuery = `
@@ -78,6 +97,24 @@ class EvaluationsController extends BaseController {
                 )`;
                 whereConditions.push(searchCondition);
                 params.push(`%${search}%`);
+            }
+
+            // Filtres hiérarchiques
+            if (id_direction_generale) {
+                whereConditions.push(`a.id_direction_generale = $${params.length + 1}`);
+                params.push(id_direction_generale);
+            }
+            if (id_direction) {
+                whereConditions.push(`a.id_direction = $${params.length + 1}`);
+                params.push(id_direction);
+            }
+            if (id_sous_direction) {
+                whereConditions.push(`a.id_sous_direction = $${params.length + 1}`);
+                params.push(id_sous_direction);
+            }
+            if (id_service) {
+                whereConditions.push(`a.id_service = $${params.length + 1}`);
+                params.push(id_service);
             }
 
             // Récupérer le ministère de l'utilisateur connecté

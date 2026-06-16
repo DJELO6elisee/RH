@@ -108,16 +108,30 @@ class AttestationPresenceTemplate {
         const validateurNomComplet = validateurNameParts.fullWithCivilite || 'Le Directeur';
         const validateurFonction = normalizeFunctionLabel(getResolvedFunctionLabel(validateur), 'Directeur des Ressources Humaines');
         const validateurGenre = validateur && validateur.sexe === 'F' ? 'e' : '';
-        
+
         const fonctionActuelle = getAgentPosteOuEmploi(agent);
         const serviceNom = agent.service_nom || agent.direction_nom || 'Service non renseigné';
-        const fonctionAvecService = serviceNom ? `${fonctionActuelle} à ${serviceNom}` : fonctionActuelle;
-        
-        const dateDebut = demande.date_debut ? new Date(demande.date_debut).toLocaleDateString('fr-FR', {
+        const fonctionAvecService = serviceNom ? `${fonctionActuelle} à la ${serviceNom}` : fonctionActuelle;
+
+        let dateDebutValue = null;
+        if (agent && agent.date_prise_service_au_ministere) {
+            dateDebutValue = agent.date_prise_service_au_ministere;
+        } else if (agent && agent.date_prise_service_dans_la_direction) {
+            dateDebutValue = agent.date_prise_service_dans_la_direction;
+        } else if (agent && agent.date_prise_service) {
+            dateDebutValue = agent.date_prise_service;
+        } else if (agent && agent.date_embauche) {
+            dateDebutValue = agent.date_embauche;
+        } else if (demande && demande.date_debut) {
+            dateDebutValue = demande.date_debut;
+        }
+
+        const parsedDateDebut = dateDebutValue ? new Date(dateDebutValue) : null;
+        const dateDebut = (parsedDateDebut && !isNaN(parsedDateDebut.getTime())) ? parsedDateDebut.toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
-        }) : 'Date non spécifiée';
+        }) : '......................';
 
         const signatureInfo = await resolveSignature(validateur);
         const signatureBlock = (signatureInfo.role || signatureInfo.name || signatureInfo.signatureImage)
@@ -159,7 +173,8 @@ class AttestationPresenceTemplate {
                 .replace(/{dateDebut}/g, dateDebut || '');
         };
 
-        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
+        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
         const resolvedFooter = replacePlaceholders(footerTemplate);
 
         return `

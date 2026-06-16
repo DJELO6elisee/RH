@@ -1,6 +1,6 @@
 const { HEADER_CSS, buildHeaderHTML, resolveOfficialHeaderContext, pickFirstNonEmptyString } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference } = require('./utils/documentReference');
-const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel } = require('./utils/agentFunction');
+const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
@@ -150,7 +150,8 @@ class AutorisationAbsenceTemplate {
         });
 
         // Récupérer le service/direction pour le corps
-        const serviceNom = directionResolved || agent.service_nom || 'Service non renseigné';
+        let serviceNom = directionResolved || agent.service_nom || 'Service non renseigné';
+        serviceNom = getAgentDirectionToDisplay(agent, serviceNom);
 
         const signatureInfo = await resolveSignature(validateurWithSigle || validateur);
 
@@ -199,7 +200,8 @@ class AutorisationAbsenceTemplate {
                 .replace(/{description}/g, demande.description || 'Pour affaires personnelles.');
         };
 
-        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
+        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
         const resolvedMotifHeader = replacePlaceholders(motifHeaderTemplate);
         const resolvedMotif = replacePlaceholders(motifTemplate);
 

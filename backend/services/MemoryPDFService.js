@@ -1,10 +1,11 @@
 const PDFDocument = require('pdfkit');
+const { drawQRCode } = require('./utils/qrCodeService');
 const db = require('../config/database');
 const { drawOfficialHeaderPDF, resolveOfficialHeaderContext, pickFirstNonEmptyString, extractCityFromDirectionName } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference, generateNoteDeServiceNumber, generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
-const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName } = require('./utils/agentFunction');
+const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
-const { formatAffectationPhrase, formatDirecteurFromDirection } = require('./utils/frenchGrammar');
+const { formatAffectationPhrase, formatDirecteurFromDirection, correctDocumentPrepositions } = require('./utils/frenchGrammar');
 const path = require('path');
 const fs = require('fs');
 const { writeRichText, replaceTemplatePlaceholders } = require('./utils/pdfRichText');
@@ -727,6 +728,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -881,12 +934,13 @@ class MemoryPDFService {
                     doc.motif_cessation, doc.date_cessation,
                     d.date_debut, d.date_fin, d.description, d.commentaire_drh,
                     d.agree_motif, d.agree_date_cessation,
-                    d.motif_conge, d.motif, d.annee_au_titre_conge,
+                    d.motif_conge, d.motif, d.annee_au_titre_conge, d.lieu,
                     a.id as agent_id,
                     a.prenom as agent_prenom, a.nom as agent_nom, a.matricule, a.sexe, 
                     a.fonction_actuelle, a.fonction_actuelle as poste,
                     a.id_direction, a.id_sous_direction,
                     a.id_ministere as id_ministere,
+                    a.id_grade, a.id_echelon, a.grade_prefectoral,
                     c.libele as civilite,
                     s.libelle as service_nom,
                     s.libelle as direction_nom,
@@ -896,6 +950,8 @@ class MemoryPDFService {
                     ea_actuel.emploi_libele as emploi_libele,
                     ea_actuel.designation_poste as emploi_designation_poste,
                     fa_actuel.fonction_libele as fonction_actuelle_libele,
+                    COALESCE(ga_actuelle.grade_libele, g_pref.libele, a.grade_prefectoral) as grade_libele,
+                    ech_actuelle.echelon_libelle as echelon_libelle,
                     COALESCE(val.id, doc.id_agent_generateur) as validateur_id,
                     val.prenom as validateur_prenom, val.nom as validateur_nom,
                     val.fonction_actuelle as validateur_fonction,
@@ -923,6 +979,17 @@ class MemoryPDFService {
                     FROM fonction_agents fa LEFT JOIN fonctions f ON fa.id_fonction = f.id
                     ORDER BY fa.id_agent, fa.date_entree DESC
                 ) fa_actuel ON a.id = fa_actuel.id_agent
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ga.id_agent) ga.id_agent, g.libele as grade_libele
+                    FROM grades_agents ga LEFT JOIN grades g ON ga.id_grade = g.id
+                    ORDER BY ga.id_agent, COALESCE(ga.date_entree, ga.created_at) DESC, ga.id DESC
+                ) ga_actuelle ON a.id = ga_actuelle.id_agent
+                LEFT JOIN grades g_pref ON a.grade_prefectoral IS NOT NULL AND a.grade_prefectoral ~ '^[0-9]+$' AND g_pref.id = (a.grade_prefectoral::INTEGER)
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ea.id_agent) ea.id_agent, e.libele as echelon_libelle
+                    FROM echelons_agents ea LEFT JOIN echelons e ON ea.id_echelon = e.id
+                    ORDER BY ea.id_agent, COALESCE(ea.date_entree, ea.created_at) DESC, ea.id DESC
+                ) ech_actuelle ON a.id = ech_actuelle.id_agent
                 LEFT JOIN agents val ON doc.id_agent_generateur = val.id
                 LEFT JOIN directions val_dir ON val.id_direction = val_dir.id
                 LEFT JOIN ministeres m_val ON val.id_ministere = m_val.id
@@ -953,6 +1020,7 @@ class MemoryPDFService {
                 commentaire_drh: row.commentaire_drh,
                 date_generation: row.date_generation || row.updated_at || row.created_at,
                 annee_au_titre_conge: row.annee_au_titre_conge || null,
+                lieu: row.lieu || null,
                 // Utiliser motif_conge (choisi par l'agent) en priorité, puis motif_cessation, puis agree_motif
                 motif_conge: row.motif_conge || null,
                 agree_motif: row.id_demande ? row.agree_motif : (row.motif_cessation || row.agree_motif),
@@ -988,7 +1056,11 @@ class MemoryPDFService {
                 date_prise_service_dans_la_direction: row.date_prise_service_dans_la_direction,
                 id_direction: row.id_direction,
                 id_sous_direction: row.id_sous_direction,
-                id_ministere: row.id_ministere
+                id_ministere: row.id_ministere,
+                id_grade: row.id_grade,
+                id_echelon: row.id_echelon,
+                grade_libele: row.grade_libele,
+                echelon_libele: row.echelon_libelle
             };
 
             // Si validateur_id n'est pas disponible, essayer id_agent_generateur
@@ -1153,33 +1225,186 @@ class MemoryPDFService {
                 const agentServiceNom = agent.service_nom || agent.direction_nom || agentDirectionName || 'Service non renseigné';
                 const fonctionAvecService = agentServiceNom ? `${fonctionActuelle} à ${agentServiceNom}` : fonctionActuelle;
 
-                const dateDebut = demande.date_debut ? new Date(demande.date_debut) : new Date();
-                const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
+                let dateDebutValue = null;
+                if (agent && agent.date_prise_service_au_ministere) {
+                    dateDebutValue = agent.date_prise_service_au_ministere;
+                } else if (documentOptions && documentOptions.date_prise_service) {
+                    dateDebutValue = documentOptions.date_prise_service;
+                } else if (agent && agent.date_prise_service_dans_la_direction) {
+                    dateDebutValue = agent.date_prise_service_dans_la_direction;
+                } else if (agent && agent.date_prise_service) {
+                    dateDebutValue = agent.date_prise_service;
+                } else if (agent && agent.date_embauche) {
+                    dateDebutValue = agent.date_embauche;
+                }
+                const dateDebut = dateDebutValue ? new Date(dateDebutValue).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
+                }) : 'Date non spécifiée';
+
+                // Texte principal selon le modèle
+                let textePrincipal = `Je soussigné${validateurGenre}, <strong>${validateurNomComplet}</strong>, <strong>${validateurFonction}</strong>, atteste que ${civilite} <strong>${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}</strong>, <strong>${fonctionAvecService}</strong>, est en service dans ledit Ministère, depuis le <strong>${dateDebut}</strong>.`;
+                let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
+
+                // Récupération des informations d'emploi, grade et échelon pour le template
+                let emploi = agent.emploi_libele || agent.emploi_actuel_libele || '';
+                let gradeLibelle = agent.grade_libele || agent.grade || '';
+                let classeEchelon = '';
+                try {
+                    const db = require('../config/database');
+
+                    // Récupérer l'emploi le plus récent
+                    const emploiQuery = `
+                        SELECT e.libele as emploi_libele, ea.designation_poste
+                        FROM emploi_agents ea
+                        LEFT JOIN emplois e ON ea.id_emploi = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const emploiResult = await db.query(emploiQuery, [agent.id]);
+                    if (emploiResult.rows.length > 0) {
+                        emploi = emploiResult.rows[0].emploi_libele || emploiResult.rows[0].designation_poste || emploi;
+                    }
+
+                    // Récupérer le grade le plus récent depuis agent_grades (préfectoral ou non)
+                    // en priorité, sinon fallback sur agents.id_grade
+                    const agentGradeQuery = `
+                        SELECT g.libele as grade_libelle, g.is_prefectoral, ag.date_entree
+                        FROM grades_agents ag
+                        LEFT JOIN grades g ON ag.id_grade = g.id
+                        WHERE ag.id_agent = $1
+                        ORDER BY COALESCE(ag.date_entree, ag.created_at) DESC, ag.id DESC LIMIT 1
+                    `;
+                    const agentGradeResult = await db.query(agentGradeQuery, [agent.id]);
+
+                    if (agentGradeResult.rows.length > 0) {
+                        gradeLibelle = agentGradeResult.rows[0].grade_libelle || gradeLibelle;
+                    } else if (agent.id_grade) {
+                        // Fallback : grade directement sur l'agent
+                        const fallbackGradeQuery = `SELECT libele, is_prefectoral FROM grades WHERE id = $1`;
+                        const fallbackResult = await db.query(fallbackGradeQuery, [agent.id_grade]);
+                        if (fallbackResult.rows.length > 0) {
+                            gradeLibelle = fallbackResult.rows[0].libele || gradeLibelle;
+                        }
+                    }
+
+                    // Récupérer l'échelon le plus récent depuis echelons_agents
+                    console.log('[DEBUG echelon] agent.id =', agent.id, '| agent.id_echelon =', agent.id_echelon);
+                    const echelonQuery = `
+                        SELECT e.libele as echelon_libelle, ea.date_entree
+                        FROM echelons_agents ea
+                        LEFT JOIN echelons e ON ea.id_echelon = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const echelonResult = await db.query(echelonQuery, [agent.id]);
+                    console.log('[DEBUG echelon] echelonResult.rows =', echelonResult.rows);
+
+                    let echelonLibelle = '';
+                    let dateEntreeEchelon = null;
+                    if (echelonResult.rows.length > 0) {
+                        echelonLibelle = echelonResult.rows[0].echelon_libelle || '';
+                        dateEntreeEchelon = echelonResult.rows[0].date_entree;
+                    }
+
+                    // Fallback : id_echelon sur l'agent
+                    if (!echelonLibelle && agent.id_echelon) {
+                        console.log('[DEBUG echelon] Fallback sur agents.id_echelon =', agent.id_echelon);
+                        const fallbackEchelonQuery = `SELECT libele FROM echelons WHERE id = $1`;
+                        const fallbackEchelonResult = await db.query(fallbackEchelonQuery, [agent.id_echelon]);
+                        console.log('[DEBUG echelon] fallback rows =', fallbackEchelonResult.rows);
+                        if (fallbackEchelonResult.rows.length > 0) {
+                            echelonLibelle = fallbackEchelonResult.rows[0].libele || '';
+                        }
+                    }
+
+                    // Dernier fallback : champ echelon_libele direct sur l'agent
+                    if (!echelonLibelle) {
+                        echelonLibelle = agent.echelon_libele || agent.echelon_libelle || '';
+                        console.log('[DEBUG echelon] Dernier fallback echelon_libele =', echelonLibelle);
+                    }
+
+                    console.log('[DEBUG echelon] echelonLibelle final =', echelonLibelle);
+
+                    if (echelonLibelle) {
+                        classeEchelon = echelonLibelle;
+                        if (dateEntreeEchelon) {
+                            const dateEchStr = new Date(dateEntreeEchelon).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+                            classeEchelon += ` au ${dateEchStr}`;
+                        }
+                    }
+                } catch (err) {
+                    console.error('[DEBUG echelon] ERREUR:', err.message);
+                }
+
+                try {
+                    const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_presence'");
+                    if (configResult.rows.length > 0) {
+                        const template = configResult.rows[0].value;
+                        if (template && template.body) {
+                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNamePartsPresence.prenoms,
+                                nom: agentNamePartsPresence.nom,
+                                fonctionAvecService: fonctionAvecService,
+                                dateDebut: dateDebut,
+                                grade: gradeLibelle || '',
+                                fonctionActuelle: fonctionActuelle,
+                                serviceNom: serviceNom,
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite,
+                                matricule: agent.matricule || '',
+                                emploi: emploi || '',
+                                classeEchelon: classeEchelon || ''
+                            });
+                        }
+                        if (template && template.footer) {
+                            phraseCloture = replaceTemplatePlaceholders(template.footer, {
+                                validateurGenre: validateurGenre,
+                                validateurNomComplet: validateurNomComplet,
+                                validateurFonction: validateurFonction,
+                                civilite: civilite,
+                                prenoms: agentNamePartsPresence.prenoms,
+                                nom: agentNamePartsPresence.nom,
+                                fonctionAvecService: fonctionAvecService,
+                                dateDebut: dateDebut,
+                                grade: gradeLibelle || '',
+                                fonctionActuelle: fonctionActuelle,
+                                serviceNom: serviceNom,
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite,
+                                matricule: agent.matricule || '',
+                                emploi: emploi || '',
+                                classeEchelon: classeEchelon || ''
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement du template d\'attestation de présence:', error);
+                }
+
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
+                doc.fillColor(primaryColor);
+                yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
                 });
 
-                // Texte principal selon le modèle de l'image
-                const textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, atteste que ${civilite} ${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}, ${fonctionAvecService}, est en service dans ledit Ministère, depuis le ${dateDebutStr}.`;
-
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text(textePrincipal, 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
-
-                yPosition = doc.y + 30;
+                yPosition += 30;
 
                 // Phrase de clôture
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text('En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.', 50, yPosition, {
-                        align: 'justify',
-                        width: 500
-                    });
+                yPosition = writeRichText(doc, phraseCloture, 50, yPosition, {
+                    align: 'justify',
+                    width: 500,
+                    fontSize: BODY_FONT_SIZE,
+                    baseFont: BASE_FONT,
+                    boldFont: BOLD_FONT
+                });
 
                 // === SIGNATURE ===
                 yPosition += 60; // Espacement ajusté pour centrer le contenu
@@ -1221,6 +1446,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -1325,6 +1602,9 @@ class MemoryPDFService {
                         if (!isNaN(dateCessationObj.getTime())) {
                             anneeConge = dateCessationObj.getFullYear();
                         }
+                        if (demande.annee_au_titre_conge) {
+                            anneeConge = demande.annee_au_titre_conge;
+                        }
                         const anneeFiltre = demande.annee_au_titre_conge ? parseInt(demande.annee_au_titre_conge, 10) : anneeConge || new Date().getFullYear();
                         let agentRoleNom = '';
                         try {
@@ -1427,6 +1707,8 @@ class MemoryPDFService {
                             const nombreJours = Math.ceil(differenceMs / (1000 * 60 * 60 * 24)) + 1;
 
                             texteSupplementaire = `Bénéficiaire d'un congé annuel de ${nombreJours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
+                        } else if (numeroDecisionCessation && anneeConge && dateDecisionFormatee && demande.nombre_jours) {
+                            texteSupplementaire = `Bénéficiaire d'un congé annuel de ${demande.nombre_jours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
                         }
                     }
 
@@ -1472,7 +1754,11 @@ class MemoryPDFService {
                     dateReprise.setDate(dateReprise.getDate() + 1);
                 } else if (demande.agree_date_cessation) {
                     dateReprise = new Date(demande.agree_date_cessation);
-                    dateReprise.setDate(dateReprise.getDate() + 30);
+                    if (demande.nombre_jours) {
+                        dateReprise.setDate(dateReprise.getDate() + parseInt(demande.nombre_jours, 10));
+                    } else {
+                        dateReprise.setDate(dateReprise.getDate() + 30);
+                    }
                 }
 
                 // Ajuster la date de reprise pour éviter les weekends et jours fériés
@@ -1738,6 +2024,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -1888,17 +2226,12 @@ class MemoryPDFService {
                 // Texte principal selon l'image
                 const agentNamePartsSortieMemory = formatAgentName(agent);
 
-                // "Le Directeur" en premier
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .text('Le Directeur', 50, yPosition, {
-                        align: 'left'
-                    });
+                // Résoudre le lieu de destination depuis plusieurs champs possibles
+                const lieuDestinationMemory = demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || '';
 
-                yPosition += 15;
-
-                // Texte principal justifié comme dans l'image
-                const textePrincipal = `autorise ${agentNamePartsSortieMemory.fullWithCivilite}, matricule ${agent.matricule}, ${agent.poste || 'AGENT'}, en service à la ${agent.service_nom || 'DIRECTION'}, à se rendre ${demande.lieu || 'en France'} du ${dateDebutStr} au ${dateFinStr}, ${demande.description || 'pour ses vacances'}.`;
+                // Fusionner "Le Directeur autorise" en un seul bloc pour un alignement parfait
+                let textePrincipal = `Le Directeur autorise ${agentNamePartsSortieMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase().replace(/,\s*$/, '')}, en service à la ${agent.service_nom || agent.direction_nom || 'DIRECTION'}, à se rendre ${lieuDestinationMemory || 'PAYS DE DESTINATION'} du ${dateDebutStr} au ${dateFinStr}, ${demande.motif || demande.description || 'pour motif non précisé'}.`;
+                textePrincipal = textePrincipal.replace(/\s+/g, ' ');
 
                 doc.fontSize(BODY_FONT_SIZE)
                     .font(BASE_FONT)
@@ -2012,6 +2345,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -2142,15 +2527,26 @@ class MemoryPDFService {
                 const agentNamePartsTravailMemory = formatAgentName(agent);
 
                 // Texte principal de l'attestation de travail
-                const dateDebut = new Date(demande.date_debut);
-                const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
+                let dateDebutValue = null;
+                if (options && options.date_prise_service) {
+                    dateDebutValue = options.date_prise_service;
+                } else if (agent && agent.date_prise_service_au_ministere) {
+                    dateDebutValue = agent.date_prise_service_au_ministere;
+                } else if (agent && agent.date_prise_service_dans_la_direction) {
+                    dateDebutValue = agent.date_prise_service_dans_la_direction;
+                } else if (agent && agent.date_prise_service) {
+                    dateDebutValue = agent.date_prise_service;
+                } else if (agent && agent.date_embauche) {
+                    dateDebutValue = agent.date_embauche;
+                }
+                const dateDebut = dateDebutValue ? new Date(dateDebutValue).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
-                });
+                }) : 'Date non spécifiée';
 
-                const directionToDisplay = agent.service_nom || agent.direction_nom || '';
-                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravailMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${directionToDisplay} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
+                const directionToDisplay = getAgentDirectionToDisplay(agent, agent.service_nom || agent.direction_nom || '');
+                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravailMemory.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase().replace(/,\s*$/, '')}, à la ${directionToDisplay}, est en service dans ledit Ministère depuis le ${dateDebut} jusqu'à ce jour.`;
                 let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
 
                 try {
@@ -2164,7 +2560,7 @@ class MemoryPDFService {
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 classeInfo: '',
                                 direction: directionToDisplay,
-                                dateDebut: dateDebutStr,
+                                dateDebut: dateDebut,
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
                             });
                         }
@@ -2175,7 +2571,7 @@ class MemoryPDFService {
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 classeInfo: '',
                                 direction: servicePresenceDisplay || '',
-                                dateDebut: dateDebutStr,
+                                dateDebut: dateDebut,
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
                             });
                         }
@@ -2184,6 +2580,7 @@ class MemoryPDFService {
                     console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
                 }
 
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 doc.fillColor(primaryColor);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
@@ -2255,6 +2652,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -2500,6 +2949,7 @@ class MemoryPDFService {
                     console.error('Erreur lors du chargement du template de certificat de reprise de service:', error);
                 }
 
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
                     width: 500,
@@ -2612,6 +3062,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -2826,6 +3328,7 @@ class MemoryPDFService {
                     console.error('Erreur lors du chargement du template de certificat de non jouissance de congé:', error);
                 }
 
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 doc.fillColor(primaryColor);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
@@ -2891,6 +3394,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -3440,6 +3995,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -3956,6 +4563,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {
@@ -4644,6 +5303,58 @@ class MemoryPDFService {
                         });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+                    
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+            
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
             } catch (error) {

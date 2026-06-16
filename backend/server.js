@@ -37,31 +37,31 @@ function getAllowedOrigin(origin) {
     if (!origin) {
         return '*';
     }
-    
+
     const isDevelopment = !isProduction;
     const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-    
+
     // En développement, toujours autoriser localhost
     if (isDevelopment && isLocalhost) {
         return origin;
     }
-    
+
     // Vérifier si l'origine est dans la liste autorisée
     const normalizedOrigin = origin.replace(/\/$/, '');
     const isAllowed = allowedOrigins.some(allowed => {
         const normalizedAllowed = allowed.replace(/\/$/, '');
         return normalizedOrigin === normalizedAllowed;
     });
-    
+
     if (isAllowed) {
         return origin;
     }
-    
+
     // En développement, être permissif
     if (isDevelopment) {
         return origin;
     }
-    
+
     // En production, retourner null si non autorisé
     return null;
 }
@@ -71,7 +71,7 @@ app.use((req, res, next) => {
     // Gérer les requêtes OPTIONS IMMÉDIATEMENT, avant tout autre traitement
     if (req.method === 'OPTIONS') {
         const origin = req.headers.origin;
-        
+
         console.log('🔍 OPTIONS preflight request:', {
             path: req.path,
             origin: origin,
@@ -80,10 +80,10 @@ app.use((req, res, next) => {
             ip: req.ip,
             'x-forwarded-for': req.headers['x-forwarded-for']
         });
-        
+
         // Déterminer l'origine autorisée
         const allowedOrigin = getAllowedOrigin(origin);
-        
+
         if (!allowedOrigin) {
             console.warn('⚠️  OPTIONS: Origin non autorisé:', origin);
             // Même si non autorisé, on répond avec les headers pour éviter les erreurs CORS
@@ -91,19 +91,19 @@ app.use((req, res, next) => {
         } else {
             res.header('Access-Control-Allow-Origin', allowedOrigin);
         }
-        
+
         // TOUJOURS ajouter tous les headers CORS nécessaires
         res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Forwarded-For, x-motif-retrait');
         res.header('Access-Control-Allow-Credentials', 'true');
         res.header('Access-Control-Max-Age', '86400'); // 24 heures
-        
+
         console.log('✅ OPTIONS: Headers CORS envoyés, origin:', allowedOrigin || origin);
-        
+
         // Répondre immédiatement avec 200 (ou 204)
         return res.status(200).end();
     }
-    
+
     // Logger les requêtes importantes pour debug
     if (req.path.includes('/api/auth') || req.path.includes('/api/ministeres')) {
         console.log('📥 Requête reçue:', {
@@ -113,7 +113,7 @@ app.use((req, res, next) => {
             ip: req.ip
         });
     }
-    
+
     next();
 });
 
@@ -145,7 +145,7 @@ app.use((req, res, next) => {
 
 // Middleware CORS avec gestion améliorée
 app.use(cors({
-    origin: function(origin, callback) {
+    origin: function (origin, callback) {
         // Permettre les requêtes sans origin (ex: applications mobiles, Postman, curl)
         if (!origin) {
             console.log('ℹ️  Requête sans origin (probablement application mobile ou outil de test)');
@@ -154,7 +154,7 @@ app.use(cors({
 
         // Utiliser la même logique que getAllowedOrigin
         const allowedOrigin = getAllowedOrigin(origin);
-        
+
         if (allowedOrigin && allowedOrigin !== '*') {
             // Origin autorisé
             callback(null, true);
@@ -185,10 +185,10 @@ app.use(cors({
 // Ce middleware garantit que les headers CORS sont présents même si le middleware cors() ne les a pas ajoutés
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    
+
     // Utiliser la même logique que getAllowedOrigin
     const allowedOrigin = getAllowedOrigin(origin);
-    
+
     // Ajouter les headers CORS si une origine est autorisée ou si on est en développement
     if (allowedOrigin) {
         // Ne pas écraser les headers déjà définis par cors(), mais s'assurer qu'ils sont présents
@@ -205,7 +205,7 @@ app.use((req, res, next) => {
             res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Forwarded-For, x-motif-retrait');
         }
     }
-    
+
     next();
 });
 
@@ -565,7 +565,7 @@ app.get('/api/health', (req, res) => {
         res.header('Access-Control-Allow-Origin', origin);
         res.header('Access-Control-Allow-Credentials', 'true');
     }
-    
+
     res.status(200).json({
         success: true,
         status: 'OK',
@@ -580,13 +580,13 @@ app.use((err, req, res, next) => {
     // TOUJOURS ajouter les headers CORS même en cas d'erreur
     const origin = req.headers.origin;
     const allowedOrigin = getAllowedOrigin(origin) || origin || '*';
-    
+
     // Ajouter les headers CORS
     res.header('Access-Control-Allow-Origin', allowedOrigin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Forwarded-For, x-motif-retrait');
-    
+
     // Log de l'erreur
     console.error('❌ Erreur globale interceptée:', {
         message: err.message,
@@ -596,17 +596,17 @@ app.use((err, req, res, next) => {
         origin: origin,
         ip: req.ip
     });
-    
+
     // Déterminer le code de statut
     const statusCode = err.statusCode || err.status || 500;
-    
+
     // Répondre avec l'erreur
     res.status(statusCode).json({
         success: false,
         message: err.message || 'Erreur interne du serveur',
-        ...(process.env.NODE_ENV === 'development' && { 
+        ...(process.env.NODE_ENV === 'development' && {
             stack: err.stack,
-            details: err 
+            details: err
         })
     });
 });
@@ -616,15 +616,15 @@ app.use('*', (req, res) => {
     // Ajouter les headers CORS même pour les 404
     const origin = req.headers.origin;
     const allowedOrigin = getAllowedOrigin(origin) || origin || '*';
-    
+
     // Ajouter les headers CORS
     res.header('Access-Control-Allow-Origin', allowedOrigin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Forwarded-For, x-motif-retrait');
-    
+
     console.warn('⚠️  404 - Route non trouvée:', req.originalUrl, 'Origin:', origin);
-    
+
     res.status(404).json({
         success: false,
         message: 'Route non trouvée',
@@ -667,7 +667,7 @@ try {
         console.log(`🏢 API des entités: http://${HOST}:${PORT}/api/entites`);
         console.log(`👥 API des agents: http://${HOST}:${PORT}/api/agents`);
         console.log(`✅ Serveur prêt à recevoir des requêtes`);
-        
+
         // Démarrer la tâche planifiée pour les notifications de mariage
         try {
             const { startMariageNotificationsJob } = require('./jobs/mariageNotificationsJob');
@@ -677,7 +677,7 @@ try {
             console.warn('   Assurez-vous que node-cron est installé: npm install node-cron');
         }
     });
-    
+
     // Gestion des erreurs du serveur
     server.on('error', (error) => {
         console.error('❌ Erreur du serveur:', error);
@@ -718,21 +718,21 @@ setInterval(async () => {
         const pool = require('./config/database');
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // Calculer la date exactement dans 30 jours (1 mois)
         const dateDans30Jours = new Date(today);
         dateDans30Jours.setDate(dateDans30Jours.getDate() + 30);
         dateDans30Jours.setHours(23, 59, 59, 999);
-        
+
         // Période de vérification : ±1 jour de tolérance autour de 30 jours
         const dateMin = new Date(dateDans30Jours);
         dateMin.setDate(dateMin.getDate() - 1);
         dateMin.setHours(0, 0, 0, 0);
-        
+
         const dateMax = new Date(dateDans30Jours);
         dateMax.setDate(dateMax.getDate() + 1);
         dateMax.setHours(23, 59, 59, 999);
-        
+
         // Récupérer tous les agents avec une date de départ en congés dans la période (29-31 jours)
         const query = `
             SELECT 
@@ -749,24 +749,24 @@ setInterval(async () => {
                 AND ac.date_depart_conges <= $2
                 AND ac.date_depart_conges >= CURRENT_DATE
         `;
-        
+
         const result = await pool.query(query, [
             dateMin.toISOString().split('T')[0],
             dateMax.toISOString().split('T')[0]
         ]);
-        
+
         for (const agent of result.rows) {
             try {
                 // Calculer le nombre exact de jours restants
                 const dateDepart = new Date(agent.date_depart_conges);
                 dateDepart.setHours(0, 0, 0, 0);
                 const joursRestants = Math.ceil((dateDepart - today) / (1000 * 60 * 60 * 24));
-                
+
                 // Créer la notification seulement si on est exactement à 30 jours (±1 jour de tolérance)
                 if (joursRestants < 29 || joursRestants > 31) {
                     continue;
                 }
-                
+
                 // Vérifier si une notification existe déjà
                 const checkNotification = await pool.query(
                     `SELECT id FROM notifications_demandes 
@@ -779,7 +779,7 @@ setInterval(async () => {
                         `%${agent.date_depart_conges.toISOString().split('T')[0]}%`
                     ]
                 );
-                
+
                 if (checkNotification.rows.length === 0) {
                     const dateFormatee = dateDepart.toLocaleDateString('fr-FR', {
                         weekday: 'long',
@@ -787,10 +787,10 @@ setInterval(async () => {
                         month: 'long',
                         day: 'numeric'
                     });
-                    
+
                     const titre = 'Rappel : Départ en congés prévu dans 1 mois';
                     const message = `Votre départ en congés est prévu le ${dateFormatee} (dans ${joursRestants} jour${joursRestants > 1 ? 's' : ''}). Veuillez vous préparer en conséquence.`;
-                    
+
                     await pool.query(
                         `INSERT INTO notifications_demandes (
                             id_demande,
@@ -803,7 +803,7 @@ setInterval(async () => {
                         ) VALUES (NULL, $1, 'conges_previsionnel', $2, $3, false, CURRENT_TIMESTAMP)`,
                         [agent.id_agent, titre, message]
                     );
-                    
+
                     console.log(`✅ Notification de congés créée pour ${agent.nom} ${agent.prenom} (${agent.matricule}) - Départ le ${agent.date_depart_conges.toISOString().split('T')[0]} - Dans ${joursRestants} jours`);
                 }
             } catch (error) {

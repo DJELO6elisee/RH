@@ -286,7 +286,17 @@ class DirectionsController extends BaseController {
                     a.matricule,
                     LOWER(TRIM(r.nom)) as role_nom,
                     d.libelle as direction_libelle,
-                    sd.libelle as sous_direction_libelle
+                    sd.libelle as sous_direction_libelle,
+                    CASE LOWER(TRIM(r.nom))
+                        WHEN 'directeur_general' THEN 1
+                        WHEN 'directeur_central' THEN 2
+                        WHEN 'drh' THEN 3
+                        WHEN 'directeur' THEN 4
+                        WHEN 'sous_directeur' THEN 5
+                        WHEN 'chef_cabinet' THEN 6
+                        WHEN 'dir_cabinet' THEN 7
+                        ELSE 8
+                    END as role_order
                 FROM agents a
                 INNER JOIN utilisateurs u ON u.id_agent = a.id
                 INNER JOIN roles r ON u.id_role = r.id
@@ -297,16 +307,7 @@ class DirectionsController extends BaseController {
                   AND (u.is_active IS NULL OR u.is_active = true)
                   AND LOWER(TRIM(r.nom)) = ANY($2::text[])
                 ORDER BY 
-                    CASE LOWER(TRIM(r.nom))
-                        WHEN 'directeur_general' THEN 1
-                        WHEN 'directeur_central' THEN 2
-                        WHEN 'drh' THEN 3
-                        WHEN 'directeur' THEN 4
-                        WHEN 'sous_directeur' THEN 5
-                        WHEN 'chef_cabinet' THEN 6
-                        WHEN 'dir_cabinet' THEN 7
-                        ELSE 8
-                    END,
+                    role_order,
                     a.nom, a.prenom
             `;
 
@@ -373,12 +374,17 @@ class DirectionsController extends BaseController {
                     a.prenom,
                     a.matricule,
                     LOWER(TRIM(r.nom)) as role_nom,
-                    sd.libelle as sous_direction_libelle
+                    sd.libelle as sous_direction_libelle,
+                    CASE LOWER(TRIM(r.nom))
+                        WHEN 'sous_directeur' THEN 1
+                        WHEN 'directeur' THEN 2
+                        ELSE 3
+                    END as role_order
                 FROM agents a
                 INNER JOIN utilisateurs u ON u.id_agent = a.id
                 INNER JOIN roles r ON u.id_role = r.id
                 INNER JOIN sous_directions sd ON a.id_sous_direction = sd.id
-                WHERE sd.direction_id = $1
+                WHERE sd.id_direction = $1
                   AND (a.retire IS NULL OR a.retire = false)
                   AND (u.is_active IS NULL OR u.is_active = true)
                   AND LOWER(TRIM(r.nom)) = ANY($2::text[])
@@ -392,11 +398,7 @@ class DirectionsController extends BaseController {
 
             sousDirecteursQuery += `
                 ORDER BY 
-                    CASE LOWER(TRIM(r.nom))
-                        WHEN 'sous_directeur' THEN 1
-                        WHEN 'directeur' THEN 2
-                        ELSE 3
-                    END,
+                    role_order,
                     a.nom, a.prenom
             `;
 

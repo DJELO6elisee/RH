@@ -575,7 +575,8 @@ class CertificatRepriseServiceTemplate {
                 .replace(/{dateReprise}/g, dateReprise || '');
         };
 
-        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
+        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
         const resolvedMotifTitle = replacePlaceholders(motifTitleTemplate);
 
         return `

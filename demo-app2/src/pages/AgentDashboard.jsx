@@ -55,6 +55,7 @@ import BirthdaysDetailsModal from '../components/Anniversaires/BirthdaysDetailsM
 import BirthdaysMessageModal from '../components/Anniversaires/BirthdaysMessageModal';
 import { backendRoutes } from '../config/routes';
 import { getApiUrl, getAuthHeaders } from '../config/api';
+import EvaluationsPage from './EvaluationsPage';
 import {
     MdPerson, MdBusiness, MdWork, MdAssignment, MdPlace, MdTrendingUp,
     MdGroup, MdCategory, MdSchool, MdEmojiEvents, MdScience, MdLanguage,
@@ -5145,19 +5146,34 @@ const AgentDashboard = () => {
                                     </NavItem>
                                     )}
                                     {hasManagementPrivileges() && (
-                                    <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
-                                        <NavLink 
-                                            className={`text-white ${activeTab === '19' ? 'bg-white text-primary' : ''}`}
-                                            onClick={() => {
-                                                setActiveTab('19');
-                                                setSidebarOpen(false);
-                                            }}
-                                            style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', display: 'block', width: '100%', marginLeft: '15px' }}
-                                        >
-                                            <MdPersonAdd className="me-2" />
-                                            Besoins en agents
-                                        </NavLink>
-                                    </NavItem>
+                                    <>
+                                        <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
+                                            <NavLink 
+                                                className={`text-white ${activeTab === '19' ? 'bg-white text-primary' : ''}`}
+                                                onClick={() => {
+                                                    setActiveTab('19');
+                                                    setSidebarOpen(false);
+                                                }}
+                                                style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', display: 'block', width: '100%', marginLeft: '15px' }}
+                                            >
+                                                <MdPersonAdd className="me-2" />
+                                                Besoins en agents
+                                            </NavLink>
+                                        </NavItem>
+                                        <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
+                                            <NavLink 
+                                                className={`text-white ${activeTab === '20' ? 'bg-white text-primary' : ''}`}
+                                                onClick={() => {
+                                                    setActiveTab('20');
+                                                    setSidebarOpen(false);
+                                                }}
+                                                style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', display: 'block', width: '100%', marginLeft: '15px' }}
+                                            >
+                                                <MdEmojiEvents className="me-2" />
+                                                Évaluations
+                                            </NavLink>
+                                        </NavItem>
+                                    </>
                                     )}
                                     {canValidateDemandes() && (
                                         <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
@@ -5486,16 +5502,28 @@ const AgentDashboard = () => {
                                     </NavItem>
                                     )}
                                     {hasManagementPrivileges() && (
-                                        <NavItem>
-                                            <NavLink 
-                                                className={`text-white ${activeTab === '19' ? 'bg-white text-primary' : ''}`}
-                                                onClick={() => setActiveTab('19')}
-                                                style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', marginLeft: '15px' }}
-                                            >
-                                                <MdPersonAdd className="me-2" />
-                                                Besoins en agents
-                                            </NavLink>
-                                        </NavItem>
+                                        <>
+                                            <NavItem>
+                                                <NavLink 
+                                                    className={`text-white ${activeTab === '19' ? 'bg-white text-primary' : ''}`}
+                                                    onClick={() => setActiveTab('19')}
+                                                    style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', marginLeft: '15px' }}
+                                                >
+                                                    <MdPersonAdd className="me-2" />
+                                                    Besoins en agents
+                                                </NavLink>
+                                            </NavItem>
+                                            <NavItem>
+                                                <NavLink 
+                                                    className={`text-white ${activeTab === '20' ? 'bg-white text-primary' : ''}`}
+                                                    onClick={() => setActiveTab('20')}
+                                                    style={{ cursor: 'pointer', borderRadius: '5px', marginBottom: '5px', marginLeft: '15px' }}
+                                                >
+                                                    <MdEmojiEvents className="me-2" />
+                                                    Évaluations
+                                                </NavLink>
+                                            </NavItem>
+                                        </>
                                     )}
                                     {canValidateDemandes() && (
                                         <NavItem>
@@ -5955,10 +5983,18 @@ const AgentDashboard = () => {
                                                                                     <h6 className="mb-2" style={{ color: '#212529', fontWeight: 'bold' }}>{direction.libelle}</h6>
                                                                                     {Object.values(direction.sous_directions).slice(0, 2).map((sousDirection, sdIndex) => {
                                                                                         const totalAgents = Object.values(sousDirection.services).reduce((sum, service) => sum + service.agents.length, 0);
+                                                                                        const totalRetards = Object.values(sousDirection.services).reduce((sum, service) => sum + service.agents.filter(a => a.en_retard_reprise).length, 0);
                                                                                         return (
                                                                                             <div key={sdIndex} className="mb-2" style={{ fontSize: '0.9rem' }}>
                                                                                                 <div style={{ color: '#495057', fontWeight: '600' }}>{sousDirection.libelle}</div>
-                                                                                                <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>{totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés</div>
+                                                                                                <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
+                                                                                                    {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                                                                                    {totalRetards > 0 && (
+                                                                                                        <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: '5px' }}>
+                                                                                                            (dont {totalRetards} en retard de reprise)
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             </div>
                                                                                         );
                                                                                     })}
@@ -9035,7 +9071,6 @@ const AgentDashboard = () => {
                     </TabPane>
                 )}
                 
-                {/* Onglet 19: Besoins en agents (Directeurs/Sous-directeurs) */}
                 {hasManagementPrivileges() && (
                     <TabPane tabId="19">
                         <Row>
@@ -9043,6 +9078,13 @@ const AgentDashboard = () => {
                                 <BesoinAgentsList agentId={user?.id_agent} />
                             </Col>
                         </Row>
+                    </TabPane>
+                )}
+                
+                {/* Onglet 20: Évaluations des agents */}
+                {hasManagementPrivileges() && (
+                    <TabPane tabId="20">
+                        <EvaluationsPage isEmbedded={true} agentData={agentData} />
                     </TabPane>
                 )}
                 

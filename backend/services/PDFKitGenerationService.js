@@ -1,12 +1,13 @@
 const PDFDocument = require('pdfkit');
+const { drawQRCode } = require('./utils/qrCodeService');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const { drawOfficialHeaderPDF, resolveOfficialHeaderContext, pickFirstNonEmptyString } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference, generateNoteDeServiceNumber, generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
-const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName } = require('./utils/agentFunction');
+const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
-const { formatAffectationPhrase } = require('./utils/frenchGrammar');
+const { formatAffectationPhrase, correctDocumentPrepositions } = require('./utils/frenchGrammar');
 const db = require('../config/database');
 const { writeRichText, replaceTemplatePlaceholders } = require('./utils/pdfRichText');
 const BASE_FONT = 'Times-Roman';
@@ -263,8 +264,8 @@ function formatAgentName(agent = {}) {
 }
 
 function writePrefixedBoldName(doc, prefix, nameParts, x, y, options = {}) {
-    const baseOptions = {...DEFAULT_TEXT_OPTIONS, ...options, continued: true };
-    const boldOptions = {...DEFAULT_TEXT_OPTIONS, ...options, continued: false };
+    const baseOptions = { ...DEFAULT_TEXT_OPTIONS, ...options, continued: true };
+    const boldOptions = { ...DEFAULT_TEXT_OPTIONS, ...options, continued: false };
 
     doc.font(BASE_FONT)
         .fontSize(BODY_FONT_SIZE)
@@ -275,7 +276,7 @@ function writePrefixedBoldName(doc, prefix, nameParts, x, y, options = {}) {
 }
 
 function writeBoldName(doc, nameParts, x, y, options = {}) {
-    const boldOptions = {...DEFAULT_TEXT_OPTIONS, ...options };
+    const boldOptions = { ...DEFAULT_TEXT_OPTIONS, ...options };
     doc.font(BOLD_FONT)
         .fontSize(BODY_FONT_SIZE)
         .text(nameParts.fullWithCivilite, x, y, boldOptions);
@@ -443,7 +444,7 @@ class PDFKitGenerationService {
      * @returns {Promise<string>} - Le chemin du fichier PDF généré
      */
     static async generateAutorisationAbsencePDF(demande, agent, validateur, outputPath, userInfo = null, options = {}) {
-        return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
                 console.log(`📄 Génération du PDF d'autorisation avec PDFKit pour la demande ${demande.id}...`);
 
@@ -523,10 +524,11 @@ class PDFKitGenerationService {
                     headerContext.directionName ||
                     agentDirectionName;
 
-                const displayDirectionName = agentDirectionName ||
+                let displayDirectionName = agentDirectionName ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     validatorDirectionName ||
                     'DIRECTION DES RESSOURCES HUMAINES';
+                displayDirectionName = getAgentDirectionToDisplay(agent, displayDirectionName);
 
                 if (!agent.ministere_nom && agentMinistryName) {
                     agent.ministere_nom = agentMinistryName;
@@ -615,7 +617,7 @@ class PDFKitGenerationService {
                                 jours: jours,
                                 diffDays: jours,
                                 pluralS: jours > 1 ? 's' : '',
-                                dateDebut: dateDebutStr,
+                                dateDebut: dateDebut,
                                 dateDebutStr: dateDebutStr,
                                 dateFin: dateFinStr,
                                 dateFinStr: dateFinStr,
@@ -637,6 +639,7 @@ class PDFKitGenerationService {
                     console.error('Erreur lors du chargement du template d\'autorisation d\'absence:', error);
                 }
 
+                bodyText = correctDocumentPrepositions(bodyText);
                 doc.fillColor(primaryColor);
                 yPosition = writeRichText(doc, bodyText, 50, yPosition, {
                     align: 'justify',
@@ -648,8 +651,12 @@ class PDFKitGenerationService {
 
                 yPosition += 18;
 
-                // Afficher le motif
-                yPosition = writeRichText(doc, `<strong>${motifHeaderText}</strong>${demande.description || 'affaires personnelles'}.`, 50, yPosition, {
+                // Nettoyer la description pour éviter les doubles points ".." à la fin
+                let desc = (demande.description || 'affaires personnelles').trim();
+                if (desc.endsWith('.')) desc = desc.slice(0, -1);
+
+                // Afficher le motif (avec un espace garanti après le header et un seul point final)
+                yPosition = writeRichText(doc, `<strong>${motifHeaderText.trim()} </strong> ${desc}.`, 50, yPosition, {
                     align: 'justify',
                     width: 500,
                     fontSize: BODY_FONT_SIZE,
@@ -687,9 +694,9 @@ class PDFKitGenerationService {
                     .fillColor(secondaryColor)
                     .text('Document généré automatiquement par le système de gestion des ressources humaines',
                         50, footerY + 5, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 const generatedAtString = generatedAt.toLocaleString('fr-FR');
 
@@ -697,11 +704,63 @@ class PDFKitGenerationService {
                     .font(BASE_FONT)
                     .text(`Généré le ${generatedAtString} - Document N° ${documentNumber}`,
                         50, footerY + 14, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {
@@ -739,7 +798,7 @@ class PDFKitGenerationService {
             const outputPath = path.join(__dirname, '..', 'uploads', 'documents', fileName);
 
             // Générer le PDF
-            const options = {...(generatedAt && { generatedAt }), ...(documentOptions && { documentId: documentOptions.documentId, typeDocument: documentOptions.typeDocument }) };
+            const options = { ...(generatedAt && { generatedAt }), ...(documentOptions && { documentId: documentOptions.documentId, typeDocument: documentOptions.typeDocument }) };
             await this.generateAutorisationAbsencePDF(demande, agent, validateur, outputPath, userInfo, options);
 
             // Retourner le chemin relatif pour la base de données
@@ -792,7 +851,7 @@ class PDFKitGenerationService {
                        m_val.sigle as validateur_ministere_sigle,
                        val_civ.libele as validateur_civilite,
                        doc.type_document, doc.id_demande, doc.date_generation,
-                       ga_actuelle.grade_libele as grade_libele,
+                       COALESCE(ga_actuelle.grade_libele, g_pref.libele, a.grade_prefectoral) as grade_libele,
                        ech_actuelle.echelon_libelle as echelon_libelle,
                        ta.libele as type_agent_libele,
                        ea_actuel.emploi_libele as emploi_libele,
@@ -832,6 +891,7 @@ class PDFKitGenerationService {
                     LEFT JOIN grades g ON ga.id_grade = g.id
                     ORDER BY ga.id_agent, COALESCE(ga.date_entree, ga.created_at) DESC, ga.id DESC
                 ) ga_actuelle ON a.id = ga_actuelle.id_agent
+                LEFT JOIN grades g_pref ON a.grade_prefectoral IS NOT NULL AND a.grade_prefectoral ~ '^[0-9]+$' AND g_pref.id = (a.grade_prefectoral::INTEGER)
                 LEFT JOIN (
                     SELECT DISTINCT ON (ea.id_agent)
                         ea.id_agent,
@@ -878,6 +938,7 @@ class PDFKitGenerationService {
                 date_reprise_service: row.date_reprise_service || null,
                 date_fin_conges: row.date_fin_conges || null,
                 annee_au_titre_conge: row.annee_au_titre_conge || null,
+                lieu: row.lieu || null,
                 updated_at: row.updated_at || null
             };
 
@@ -1049,7 +1110,7 @@ class PDFKitGenerationService {
      * @returns {Promise<string>} - Le chemin du fichier PDF généré
      */
     static async generateAttestationPresencePDF(demande, agent, validateur, outputPath, userInfo = null, documentOptions = null) {
-        return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
                 console.log(`📄 Génération du PDF d'attestation de présence avec PDFKit pour la demande ${demande.id}...`);
 
@@ -1107,7 +1168,7 @@ class PDFKitGenerationService {
                 const agentMinistryName = agent.ministere_nom || '';
                 const agentDirectionName = agent.direction_nom || agent.service_nom || '';
                 const { ministryName: validatorMinistryName, directionName: validatorDirectionName } =
-                resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                    resolveOfficialHeaderContext({ agent, validateur, userInfo });
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
                     dateString: generatedAt,
@@ -1145,18 +1206,113 @@ class PDFKitGenerationService {
                 const civilite = agentNamePartsPresence.civilite;
                 const fonctionActuelle = getAgentPosteOuEmploi(agent);
                 const serviceNom = agent.service_nom || agent.direction_nom || agentDirectionName || 'Service non renseigné';
-                const fonctionAvecService = serviceNom ? `${fonctionActuelle} à ${serviceNom}` : fonctionActuelle;
+                const fonctionAvecService = serviceNom ? `${fonctionActuelle} à la ${serviceNom}` : fonctionActuelle;
 
-                const dateDebut = demande.date_debut ? new Date(demande.date_debut) : new Date();
-                const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
+                let dateDebutValue = null;
+                if (agent && agent.date_prise_service_au_ministere) {
+                    dateDebutValue = agent.date_prise_service_au_ministere;
+                } else if (documentOptions && documentOptions.date_prise_service) {
+                    dateDebutValue = documentOptions.date_prise_service;
+                } else if (agent && agent.date_prise_service_dans_la_direction) {
+                    dateDebutValue = agent.date_prise_service_dans_la_direction;
+                } else if (agent && agent.date_prise_service) {
+                    dateDebutValue = agent.date_prise_service;
+                } else if (agent && agent.date_embauche) {
+                    dateDebutValue = agent.date_embauche;
+                }
+                const dateDebut = dateDebutValue ? new Date(dateDebutValue).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
-                });
+                }) : 'Date non spécifiée';
 
-    
-                let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, atteste que ${civilite} ${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}, ${fonctionAvecService}, est en service dans ledit Ministère, depuis le ${dateDebutStr}.`;
+
+                let textePrincipal = `Je soussigné${validateurGenre}, <strong>${validateurNomComplet}</strong>, <strong>${validateurFonction}</strong>, atteste que ${civilite} <strong>${agentNamePartsPresence.prenoms} ${agentNamePartsPresence.nom}</strong>, <strong>${fonctionAvecService}</strong>, est en service dans ledit Ministère, depuis le <strong>${dateDebut}</strong>.`;
                 let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
+
+                // Récupération des informations d'emploi, grade et échelon pour le template
+                let emploi = agent.emploi_libele || agent.emploi_actuel_libele || '';
+                let gradeLibelle = agent.grade_libele || '';
+                let classeEchelon = '';
+                try {
+                    const db = require('../config/database');
+
+                    // Récupérer l'emploi le plus récent
+                    const emploiQuery = `
+                        SELECT e.libele as emploi_libele, ea.designation_poste
+                        FROM emploi_agents ea
+                        LEFT JOIN emplois e ON ea.id_emploi = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const emploiResult = await db.query(emploiQuery, [agent.id]);
+                    if (emploiResult.rows.length > 0) {
+                        emploi = emploiResult.rows[0].emploi_libele || emploiResult.rows[0].designation_poste || emploi;
+                    }
+
+                    // Récupérer le grade le plus récent depuis agent_grades (préfectoral ou non)
+                    // en priorité, sinon fallback sur agents.id_grade
+                    const agentGradeQuery = `
+                        SELECT g.libele as grade_libelle, g.is_prefectoral, ag.date_entree
+                        FROM grades_agents ag
+                        LEFT JOIN grades g ON ag.id_grade = g.id
+                        WHERE ag.id_agent = $1
+                        ORDER BY COALESCE(ag.date_entree, ag.created_at) DESC, ag.id DESC LIMIT 1
+                    `;
+                    const agentGradeResult = await db.query(agentGradeQuery, [agent.id]);
+
+                    if (agentGradeResult.rows.length > 0) {
+                        gradeLibelle = agentGradeResult.rows[0].grade_libelle || gradeLibelle;
+                    } else if (agent.id_grade) {
+                        // Fallback : grade directement sur l'agent
+                        const fallbackGradeQuery = `SELECT libele, is_prefectoral FROM grades WHERE id = $1`;
+                        const fallbackResult = await db.query(fallbackGradeQuery, [agent.id_grade]);
+                        if (fallbackResult.rows.length > 0) {
+                            gradeLibelle = fallbackResult.rows[0].libele || gradeLibelle;
+                        }
+                    }
+
+                    // Récupérer l'échelon le plus récent depuis echelons_agents
+                    const echelonQuery = `
+                        SELECT e.libele as echelon_libelle, ea.date_entree
+                        FROM echelons_agents ea
+                        LEFT JOIN echelons e ON ea.id_echelon = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const echelonResult = await db.query(echelonQuery, [agent.id]);
+
+                    let echelonLibelle = '';
+                    let dateEntreeEchelon = null;
+                    if (echelonResult.rows.length > 0) {
+                        echelonLibelle = echelonResult.rows[0].echelon_libelle || '';
+                        dateEntreeEchelon = echelonResult.rows[0].date_entree;
+                    }
+
+                    // Fallback : id_echelon sur l'agent
+                    if (!echelonLibelle && agent.id_echelon) {
+                        const fallbackEchelonQuery = `SELECT libele FROM echelons WHERE id = $1`;
+                        const fallbackEchelonResult = await db.query(fallbackEchelonQuery, [agent.id_echelon]);
+                        if (fallbackEchelonResult.rows.length > 0) {
+                            echelonLibelle = fallbackEchelonResult.rows[0].libele || '';
+                        }
+                    }
+
+                    // Dernier fallback : champ echelon_libele direct sur l'agent
+                    if (!echelonLibelle) {
+                        echelonLibelle = agent.echelon_libele || agent.echelon_libelle || '';
+                    }
+
+                    if (echelonLibelle) {
+                        classeEchelon = echelonLibelle;
+                        if (dateEntreeEchelon) {
+                            const dateEchStr = new Date(dateEntreeEchelon).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+                            classeEchelon += ` au ${dateEchStr}`;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erreur récupération emploi/grade/échelon:', err);
+                }
 
                 try {
                     const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_presence'");
@@ -1171,9 +1327,14 @@ class PDFKitGenerationService {
                                 prenoms: agentNamePartsPresence.prenoms,
                                 nom: agentNamePartsPresence.nom,
                                 fonctionAvecService: fonctionAvecService,
-                                dateDebut: dateDebutStr,
-                                // Also support fullWithCivilite in case it is used
-                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite
+                                dateDebut: dateDebut,
+                                grade: gradeLibelle || agent.grade_libele || '',
+                                fonctionActuelle: fonctionActuelle,
+                                serviceNom: serviceNom,
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite,
+                                matricule: agent.matricule || '',
+                                emploi: emploi || '',
+                                classeEchelon: classeEchelon || ''
                             });
                         }
                         if (template && template.footer) {
@@ -1185,8 +1346,14 @@ class PDFKitGenerationService {
                                 prenoms: agentNamePartsPresence.prenoms,
                                 nom: agentNamePartsPresence.nom,
                                 fonctionAvecService: fonctionAvecService,
-                                dateDebut: dateDebutStr,
-                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite
+                                dateDebut: dateDebut,
+                                grade: gradeLibelle || agent.grade_libele || '',
+                                fonctionActuelle: fonctionActuelle,
+                                serviceNom: serviceNom,
+                                fullWithCivilite: agentNamePartsPresence.fullWithCivilite,
+                                matricule: agent.matricule || '',
+                                emploi: emploi || '',
+                                classeEchelon: classeEchelon || ''
                             });
                         }
                     }
@@ -1194,6 +1361,7 @@ class PDFKitGenerationService {
                     console.error('Erreur lors du chargement du template d\'attestation de présence:', error);
                 }
 
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 doc.fillColor(primaryColor);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
@@ -1241,19 +1409,71 @@ class PDFKitGenerationService {
                     .fillColor('#666666')
                     .text('Document généré automatiquement par le système de gestion des ressources humaines',
                         50, footerY + 6, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 doc.fontSize(FOOTER_FONT_SIZE)
                     .font(BASE_FONT)
                     .text(`Généré le ${generatedAt.toLocaleString('fr-FR')} - Document N° ${documentNumber}`,
                         50, footerY + 16, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {
@@ -1274,7 +1494,7 @@ class PDFKitGenerationService {
     }
 
     static async generateAttestationTravailPDF(demande, agent, validateur, outputPath, userInfo = null, documentOptions = null) {
-        return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
                 console.log(`📄 Génération du PDF d'attestation de travail avec PDFKit pour la demande ${demande.id}...`);
 
@@ -1403,11 +1623,12 @@ class PDFKitGenerationService {
                 let yPosition = headerBottom + 120;
 
                 const agentNamePartsTravail = formatAgentName(agent);
-                const displayDirectionName = agentDirectionName ||
+                let displayDirectionName = agentDirectionName ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     validatorDirectionName ||
                     agent.service_nom ||
                     '';
+                displayDirectionName = getAgentDirectionToDisplay(agent, displayDirectionName);
 
                 if (!agent.direction_nom && displayDirectionName) {
                     agent.direction_nom = displayDirectionName;
@@ -1416,15 +1637,26 @@ class PDFKitGenerationService {
                     agent.service_nom = displayDirectionName;
                 }
 
-                const dateDebut = new Date(demande.date_debut);
-                const dateDebutStr = dateDebut.toLocaleDateString('fr-FR', {
+                let dateDebutValue = null;
+                if (documentOptions && documentOptions.date_prise_service) {
+                    dateDebutValue = documentOptions.date_prise_service;
+                } else if (agent && agent.date_prise_service_au_ministere) {
+                    dateDebutValue = agent.date_prise_service_au_ministere;
+                } else if (agent && agent.date_prise_service_dans_la_direction) {
+                    dateDebutValue = agent.date_prise_service_dans_la_direction;
+                } else if (agent && agent.date_prise_service) {
+                    dateDebutValue = agent.date_prise_service;
+                } else if (agent && agent.date_embauche) {
+                    dateDebutValue = agent.date_embauche;
+                }
+                const dateDebut = dateDebutValue ? new Date(dateDebutValue).toLocaleDateString('fr-FR', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
-                });
+                }) : 'Date non spécifiée';
 
-    
-                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravail.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, à la ${displayDirectionName || ''} travaille dans ledit Ministère depuis le ${dateDebutStr} jusqu'à ce jour.`;
+
+                let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravail.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase().replace(/,\s*$/, '')}, à la ${displayDirectionName || ''}, est en service dans ledit Ministère depuis le ${dateDebut} jusqu'à ce jour.`;
                 let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
 
                 try {
@@ -1438,7 +1670,7 @@ class PDFKitGenerationService {
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 classeInfo: '',
                                 direction: displayDirectionName || '',
-                                dateDebut: dateDebutStr,
+                                dateDebut: dateDebut,
                                 // fallback for other templates
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
                             });
@@ -1450,7 +1682,7 @@ class PDFKitGenerationService {
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 classeInfo: '',
                                 direction: displayDirectionName || '',
-                                dateDebut: dateDebutStr,
+                                dateDebut: dateDebut,
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
                             });
                         }
@@ -1459,6 +1691,7 @@ class PDFKitGenerationService {
                     console.error('Erreur lors du chargement du template d\'attestation de travail:', error);
                 }
 
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 doc.fillColor('#000000');
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
@@ -1514,18 +1747,70 @@ class PDFKitGenerationService {
                     .fillColor('#666666')
                     .text('Document généré automatiquement par le système de gestion des ressources humaines',
                         50, footerY + 10, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 doc.fontSize(FOOTER_FONT_SIZE)
                     .font(BASE_FONT)
                     .text(`Généré le ${generatedAt.toLocaleString('fr-FR')} - Document N° ${documentNumber}`,
                         50, footerY + 25, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {
@@ -1555,7 +1840,7 @@ class PDFKitGenerationService {
      * @returns {Promise<string>} - Le chemin du fichier PDF généré
      */
     static async generateAutorisationSortieTerritoirePDF(demande, agent, validateur, outputPath, userInfo = null, documentOptions = null) {
-        return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
                 console.log(`📄 Génération du PDF d'autorisation de sortie du territoire avec PDFKit pour la demande ${demande.id}...`);
 
@@ -1613,7 +1898,7 @@ class PDFKitGenerationService {
                 const agentMinistryName = agent.ministere_nom || '';
                 const agentDirectionName = agent.direction_nom || agent.service_nom || '';
                 const { ministryName: validatorMinistryName, directionName: validatorDirectionName } =
-                resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                    resolveOfficialHeaderContext({ agent, validateur, userInfo });
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
                     dateString: generatedAt,
@@ -1653,18 +1938,11 @@ class PDFKitGenerationService {
                 // Texte principal selon l'image
                 const agentNamePartsSortie = formatAgentName(agent);
 
-                // "Le Directeur" en premier
-                doc.fontSize(BODY_FONT_SIZE)
-                    .font(BASE_FONT)
-                    .fillColor(primaryColor)
-                    .text('Le Directeur', 50, yPosition, {
-                        align: 'left'
-                    });
+                // Résoudre le lieu de destination depuis plusieurs champs possibles
+                const lieuDestination = demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || '';
 
-                yPosition += 15;
-
-    
-                let textePrincipal = `autorise ${agentNamePartsSortie.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase()}, en service à la ${agent.service_nom || 'DIRECTION'}, à se rendre ${demande.lieu || 'en France'} du ${dateDebutStr} au ${dateFinStr}, ${demande.description || 'pour ses vacances'}.`;
+                // Fusionner "Le Directeur autorise" en un seul bloc pour un alignement parfait
+                let textePrincipal = `Le Directeur autorise ${agentNamePartsSortie.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase().replace(/,\s*$/, '')}, en service à la ${agent.service_nom || agent.direction_nom || 'DIRECTION'}, à se rendre ${lieuDestination || 'PAYS DE DESTINATION'} du ${dateDebutStr} au ${dateFinStr}, ${demande.motif || demande.description || 'pour motif non précisé'}.`;
                 let phraseCloture = 'En foi de quoi, la présente autorisation lui est délivrée pour servir et valoir ce que de droit.';
 
                 try {
@@ -1679,10 +1957,10 @@ class PDFKitGenerationService {
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 direction: agent.service_nom || 'DIRECTION',
-                                lieu: demande.lieu || 'en France',
+                                lieu: demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || 'PAYS DE DESTINATION',
                                 dateDebut: dateDebutStr,
                                 dateFin: dateFinStr,
-                                motif: demande.description || 'pour ses vacances',
+                                motif: demande.motif || demande.description || 'motif non précisé',
                                 fullWithCivilite: agentNamePartsSortie.fullWithCivilite,
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 serviceNom: agent.service_nom || 'DIRECTION'
@@ -1696,10 +1974,10 @@ class PDFKitGenerationService {
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 direction: agent.service_nom || 'DIRECTION',
-                                lieu: demande.lieu || 'en France',
+                                lieu: demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || 'PAYS DE DESTINATION',
                                 dateDebut: dateDebutStr,
                                 dateFin: dateFinStr,
-                                motif: demande.description || 'pour ses vacances',
+                                motif: demande.motif || demande.description || 'motif non précisé',
                                 fullWithCivilite: agentNamePartsSortie.fullWithCivilite,
                                 fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase(),
                                 serviceNom: agent.service_nom || 'DIRECTION'
@@ -1710,6 +1988,8 @@ class PDFKitGenerationService {
                     console.error('Erreur lors du chargement du template d\'autorisation de sortie du territoire:', error);
                 }
 
+                textePrincipal = textePrincipal.replace(/\s+/g, ' ');
+                textePrincipal = correctDocumentPrepositions(textePrincipal);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
                     width: 500,
@@ -1809,19 +2089,71 @@ class PDFKitGenerationService {
                     .fillColor(secondaryColor)
                     .text('Document généré automatiquement par le système de gestion des ressources humaines',
                         50, footerY + 5, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 doc.fontSize(FOOTER_FONT_SIZE)
                     .font(BASE_FONT)
                     .text(`Généré le ${generatedAt.toLocaleString('fr-FR')} - Document N° ${documentNumber}`,
                         50, footerY + 15, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {
@@ -1945,7 +2277,7 @@ class PDFKitGenerationService {
                     doc.*,
                     doc.motif_cessation, doc.date_cessation,
                     d.agree_motif, d.agree_date_cessation, d.date_creation, d.date_debut, d.date_fin,
-                    d.motif_conge, d.motif, d.annee_au_titre_conge,
+                    d.motif_conge, d.motif, d.annee_au_titre_conge, d.nombre_jours,
                     a.id as agent_id,
                     a.prenom, a.nom, a.matricule, a.sexe, a.fonction_actuelle,
                     a.id_direction, a.id_sous_direction,
@@ -2020,7 +2352,7 @@ class PDFKitGenerationService {
             const civilite = row.sexe === 'F' ? 'Mlle' : 'M.';
             const nomComplet = `${civilite} ${row.nom} ${row.prenom}`;
             const fonctionActuelle = row.fonction_actuelle || 'Agent';
-            const designationPoste = row.validateur_fonction_designation || row.fonction_actuelle || 'Agent';
+            const designationPoste = row.fonction_actuelle || row.poste || 'Agent';
             const echelon = row.echelon_libelle || '1er échelon';
             const classe = row.classe || 'deuxième classe';
             const serviceNom = row.direction_nom || row.service_nom || 'Service non renseigné';
@@ -2064,6 +2396,9 @@ class PDFKitGenerationService {
                     const dateCessationObj = new Date(dateCessationValue);
                     if (!isNaN(dateCessationObj.getTime())) {
                         anneeConge = dateCessationObj.getFullYear();
+                    }
+                    if (row.annee_au_titre_conge) {
+                        anneeConge = row.annee_au_titre_conge;
                     }
                     const anneeFiltre = row.annee_au_titre_conge ? parseInt(row.annee_au_titre_conge, 10) : (anneeConge || new Date().getFullYear());
                     const agentRoleNom = row.agent_role_nom || '';
@@ -2168,6 +2503,8 @@ class PDFKitGenerationService {
                         const nombreJours = Math.ceil(differenceMs / (1000 * 60 * 60 * 24)) + 1;
 
                         texteSupplementaire = `Bénéficiaire d'un congé annuel de ${nombreJours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
+                    } else if (numeroDecisionCessation && anneeConge && dateDecisionFormatee && row.nombre_jours) {
+                        texteSupplementaire = `Bénéficiaire d'un congé annuel de ${row.nombre_jours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
                     }
                 }
 
@@ -2210,7 +2547,7 @@ class PDFKitGenerationService {
             await attachActiveSignature(validateurInfo);
 
             const { ministryName: validatorMinistryName, directionName: validatorDirectionName } =
-            resolveOfficialHeaderContext({ agent: { ministere_nom: ministryName, direction_nom: directionName }, validateur: validateurInfo, userInfo });
+                resolveOfficialHeaderContext({ agent: { ministere_nom: ministryName, direction_nom: directionName }, validateur: validateurInfo, userInfo });
 
             // Récupérer la décision active (collective ou individuelle selon le rôle de l'agent)
             // Uniquement si le document est lié à une demande
@@ -2334,7 +2671,11 @@ class PDFKitGenerationService {
                 dateReprise.setDate(dateReprise.getDate() + 1);
             } else if (dateCessationForReprise) {
                 dateReprise = new Date(dateCessationForReprise);
-                dateReprise.setDate(dateReprise.getDate() + 30);
+                if (row.nombre_jours) {
+                    dateReprise.setDate(dateReprise.getDate() + parseInt(row.nombre_jours, 10));
+                } else {
+                    dateReprise.setDate(dateReprise.getDate() + 30);
+                }
             }
 
             // Ajuster la date de reprise pour éviter les weekends et jours fériés
@@ -2405,6 +2746,7 @@ class PDFKitGenerationService {
                 console.error('Erreur lors du chargement du template de certificat de cessation:', error);
             }
 
+            textePrincipal = correctDocumentPrepositions(textePrincipal);
             yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                 align: 'justify',
                 width: 500,
@@ -2522,19 +2864,71 @@ class PDFKitGenerationService {
                 .fillColor('#666666')
                 .text('Document généré automatiquement par le système de gestion des ressources humaines',
                     50, footerY + 5, {
-                        align: 'center',
-                        width: 495
-                    });
+                    align: 'center',
+                    width: 495
+                });
 
             doc.fontSize(FOOTER_SMALL_FONT_SIZE)
                 .font(BASE_FONT)
                 .text(`Généré le ${generatedAt.toLocaleString('fr-FR')} - Document N° ${documentNumber}`,
                     50, footerY + 18, {
-                        align: 'center',
-                        width: 495
-                    });
+                    align: 'center',
+                    width: 495
+                });
 
             // Finaliser le document
+
+            try {
+                const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                let qrGen = 'Système';
+                if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                let qrTitle = "Document Officiel";
+                if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                else if (typeof title !== 'undefined' && title) qrTitle = title;
+                else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                // Inférence basée sur le nom de la variable de numéro ou de données
+                else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                let qrMinistere = "N/A";
+                if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                    qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                    qrMinistere = userInfo.ministere_nom;
+                } else if (typeof ministereName !== 'undefined') {
+                    qrMinistere = ministereName;
+                } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                    qrMinistere = documentData.ministere_nom;
+                }
+
+                await drawQRCode(doc, {
+                    titre: qrTitle,
+                    ministere: qrMinistere,
+                    generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                    proprietaire: qrProp,
+                    generateur: qrGen,
+                    numeroDocument: qrDocNum
+                });
+
+            } catch (qrErr) {
+                console.error('Erreur insertion QR:', qrErr);
+            }
             doc.end();
 
             return new Promise((resolve, reject) => {
@@ -2583,112 +2977,112 @@ class PDFKitGenerationService {
      * @returns {Promise<string>} - Le chemin du fichier PDF généré
      */
     static async generateNoteDeServicePDF(agent, validateur, options = {}, outputPath) {
-            return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
+            try {
+                console.log(`📄 Génération du PDF de note de service pour l'agent ${agent.id}...`);
+
+                // Créer le répertoire de sortie s'il n'existe pas
+                const outputDir = path.dirname(outputPath);
+                await fs.mkdir(outputDir, { recursive: true });
+
+                // Créer le document PDF
+                const doc = new PDFDocument({
+                    size: 'A4',
+                    margins: {
+                        top: 50,
+                        bottom: 50,
+                        left: 50,
+                        right: 50
+                    }
+                });
+
+                // Créer le stream de fichier
+                const stream = require('fs').createWriteStream(outputPath);
+                doc.pipe(stream);
+
+                const primaryColor = '#000000';
+                const borderColor = '#000000';
+
+                // Vérifier que le validateur a un ID
+                console.log('🔍 [generateNoteDeServicePDF] Validateur avant attachActiveSignature:', {
+                    hasValidateur: !!validateur,
+                    validateurId: validateur && validateur.id,
+                    validateurNom: validateur && validateur.nom,
+                    validateurPrenom: validateur && validateur.prenom,
+                    validateurKeys: validateur ? Object.keys(validateur) : []
+                });
+
+                // S'assurer que le validateur a un ID
+                if (!validateur || !validateur.id) {
+                    console.error('❌ [generateNoteDeServicePDF] Le validateur n\'a pas d\'ID:', validateur);
+                    throw new Error('Le validateur doit avoir un ID pour récupérer la signature');
+                }
+
+                // Attacher la signature active au validateur
+                await hydrateAgentWithLatestFunction(validateur);
+                await attachActiveSignature(validateur);
+
+                console.log('🔍 [generateNoteDeServicePDF] Validateur après attachActiveSignature:', {
+                    validateurId: validateur && validateur.id,
+                    hasSignaturePath: !!(validateur && validateur.signature_path),
+                    signaturePath: validateur && validateur.signature_path
+                });
+
+                // Date de génération
+                const generationDate = options.date_generation ? new Date(options.date_generation) : new Date();
+
+                // Numéro de document - Utiliser un numéro séquentiel basé sur le nombre total de notes de service
+                // Si un numéro manuel est fourni, l'utiliser, sinon générer un numéro séquentiel
+                let documentNumber;
+                if (options.numero_document || options.reference) {
+                    // Si un numéro manuel est fourni, l'utiliser via formatDocumentReference
+                    const documentObject = options.document_id || options.id ? { id: options.document_id || options.id } : null;
+                    documentNumber = formatDocumentReference({
+                        document: documentObject,
+                        agent,
+                        validateur,
+                        userInfo: options.userInfo,
+                        manualReference: options.numero_document || options.reference
+                    });
+                } else {
+                    // Calculer dynamiquement le numéro de la note de service
+                    // en comptant les notes existantes, de la même manière que pour les certificats de prise de service
+                    let sequentialNumber = '';
+                    const documentId = options.document_id || options.id || null;
+                    let documentDateGeneration = options.date_generation || generationDate;
+
+                    // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
+                    if (documentId && !documentDateGeneration) {
                         try {
-                            console.log(`📄 Génération du PDF de note de service pour l'agent ${agent.id}...`);
 
-                            // Créer le répertoire de sortie s'il n'existe pas
-                            const outputDir = path.dirname(outputPath);
-                            await fs.mkdir(outputDir, { recursive: true });
-
-                            // Créer le document PDF
-                            const doc = new PDFDocument({
-                                size: 'A4',
-                                margins: {
-                                    top: 50,
-                                    bottom: 50,
-                                    left: 50,
-                                    right: 50
-                                }
-                            });
-
-                            // Créer le stream de fichier
-                            const stream = require('fs').createWriteStream(outputPath);
-                            doc.pipe(stream);
-
-                            const primaryColor = '#000000';
-                            const borderColor = '#000000';
-
-                            // Vérifier que le validateur a un ID
-                            console.log('🔍 [generateNoteDeServicePDF] Validateur avant attachActiveSignature:', {
-                                hasValidateur: !!validateur,
-                                validateurId: validateur && validateur.id,
-                                validateurNom: validateur && validateur.nom,
-                                validateurPrenom: validateur && validateur.prenom,
-                                validateurKeys: validateur ? Object.keys(validateur) : []
-                            });
-
-                            // S'assurer que le validateur a un ID
-                            if (!validateur || !validateur.id) {
-                                console.error('❌ [generateNoteDeServicePDF] Le validateur n\'a pas d\'ID:', validateur);
-                                throw new Error('Le validateur doit avoir un ID pour récupérer la signature');
-                            }
-
-                            // Attacher la signature active au validateur
-                            await hydrateAgentWithLatestFunction(validateur);
-                            await attachActiveSignature(validateur);
-
-                            console.log('🔍 [generateNoteDeServicePDF] Validateur après attachActiveSignature:', {
-                                validateurId: validateur && validateur.id,
-                                hasSignaturePath: !!(validateur && validateur.signature_path),
-                                signaturePath: validateur && validateur.signature_path
-                            });
-
-                            // Date de génération
-                            const generationDate = options.date_generation ? new Date(options.date_generation) : new Date();
-
-                            // Numéro de document - Utiliser un numéro séquentiel basé sur le nombre total de notes de service
-                            // Si un numéro manuel est fourni, l'utiliser, sinon générer un numéro séquentiel
-                            let documentNumber;
-                            if (options.numero_document || options.reference) {
-                                // Si un numéro manuel est fourni, l'utiliser via formatDocumentReference
-                                const documentObject = options.document_id || options.id ? { id: options.document_id || options.id } : null;
-                                documentNumber = formatDocumentReference({
-                                    document: documentObject,
-                                    agent,
-                                    validateur,
-                                    userInfo: options.userInfo,
-                                    manualReference: options.numero_document || options.reference
-                                });
+                            const docQuery = await db.query(
+                                'SELECT date_generation, created_at FROM documents_autorisation WHERE id = $1', [documentId]
+                            );
+                            if (docQuery.rows.length > 0) {
+                                documentDateGeneration = docQuery.rows[0].date_generation || docQuery.rows[0].created_at || generationDate;
                             } else {
-                                // Calculer dynamiquement le numéro de la note de service
-                                // en comptant les notes existantes, de la même manière que pour les certificats de prise de service
-                                let sequentialNumber = '';
-                                const documentId = options.document_id || options.id || null;
-                                let documentDateGeneration = options.date_generation || generationDate;
+                                documentDateGeneration = generationDate;
+                            }
+                        } catch (error) {
+                            console.error('⚠️ Erreur lors de la récupération de la date du document:', error);
+                            documentDateGeneration = generationDate;
+                        }
+                    } else if (!documentDateGeneration) {
+                        documentDateGeneration = generationDate;
+                    }
 
-                                // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
-                                if (documentId && !documentDateGeneration) {
-                                    try {
-                            
-                                        const docQuery = await db.query(
-                                            'SELECT date_generation, created_at FROM documents_autorisation WHERE id = $1', [documentId]
-                                        );
-                                        if (docQuery.rows.length > 0) {
-                                            documentDateGeneration = docQuery.rows[0].date_generation || docQuery.rows[0].created_at || generationDate;
-                                        } else {
-                                            documentDateGeneration = generationDate;
-                                        }
-                                    } catch (error) {
-                                        console.error('⚠️ Erreur lors de la récupération de la date du document:', error);
-                                        documentDateGeneration = generationDate;
-                                    }
-                                } else if (!documentDateGeneration) {
-                                    documentDateGeneration = generationDate;
-                                }
+                    // Convertir en Date si c'est une string
+                    if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
+                        documentDateGeneration = new Date(documentDateGeneration);
+                    }
 
-                                // Convertir en Date si c'est une string
-                                if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
-                                    documentDateGeneration = new Date(documentDateGeneration);
-                                }
+                    try {
 
-                                try {
-                        
-                                    const idMinistere = (agent && agent.id_ministere) || null;
-                                    if (documentId) {
-                                        // Si le document existe déjà, calculer sa position en comptant les notes antérieures (par ministère)
-                                        // IMPORTANT: utiliser da.id < $2 (pas <=) pour exclure le document lui-même du décompte
-                                        const positionQuery = idMinistere != null ? `
+                        const idMinistere = (agent && agent.id_ministere) || null;
+                        if (documentId) {
+                            // Si le document existe déjà, calculer sa position en comptant les notes antérieures (par ministère)
+                            // IMPORTANT: utiliser da.id < $2 (pas <=) pour exclure le document lui-même du décompte
+                            const positionQuery = idMinistere != null ? `
                                 SELECT COUNT(*) + 1 as position
                                 FROM documents_autorisation da
                                 INNER JOIN agents a ON da.id_agent_destinataire = a.id
@@ -2713,14 +3107,14 @@ class PDFKitGenerationService {
                                     OR (da.date_generation IS NULL AND da.id < $2)
                                 )
                             `;
-                                        const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
-                                        const positionResult = await db.query(positionQuery, positionParams);
+                            const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
+                            const positionResult = await db.query(positionQuery, positionParams);
 
-                                        const position = parseInt((positionResult.rows[0] && positionResult.rows[0].position) || 1, 10);
-                                        sequentialNumber = String(position).padStart(4, '0');
-                                    } else {
-                                        // Si le document n'existe pas encore, compter tous les documents existants (par ministère)
-                                        const countQuery = idMinistere != null ? `
+                            const position = parseInt((positionResult.rows[0] && positionResult.rows[0].position) || 1, 10);
+                            sequentialNumber = String(position).padStart(4, '0');
+                        } else {
+                            // Si le document n'existe pas encore, compter tous les documents existants (par ministère)
+                            const countQuery = idMinistere != null ? `
                                 SELECT COUNT(*) as count
                                 FROM documents_autorisation da
                                 INNER JOIN agents a ON da.id_agent_destinataire = a.id
@@ -2731,116 +3125,116 @@ class PDFKitGenerationService {
                                 FROM documents_autorisation
                                 WHERE type_document = 'note_de_service'
                             `;
-                                        const countParams = idMinistere != null ? [idMinistere] : [];
-                                        const countResult = await db.query(countQuery, countParams);
-                                        const count = parseInt((countResult.rows[0] && countResult.rows[0].count) || 0, 10);
-                                        const nextNumber = count + 1;
-                                        sequentialNumber = String(nextNumber).padStart(4, '0');
-                                    }
-                                } catch (error) {
-                                    console.error('⚠️ Erreur lors du calcul du numéro de note de service:', error);
-                                    // Fallback: utiliser generateSequentialNoteDeServiceDocumentNumber
-                                    sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('note_de_service', documentId, (agent && agent.id_ministere) || null);
-                                }
+                            const countParams = idMinistere != null ? [idMinistere] : [];
+                            const countResult = await db.query(countQuery, countParams);
+                            const count = parseInt((countResult.rows[0] && countResult.rows[0].count) || 0, 10);
+                            const nextNumber = count + 1;
+                            sequentialNumber = String(nextNumber).padStart(4, '0');
+                        }
+                    } catch (error) {
+                        console.error('⚠️ Erreur lors du calcul du numéro de note de service:', error);
+                        // Fallback: utiliser generateSequentialNoteDeServiceDocumentNumber
+                        sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('note_de_service', documentId, (agent && agent.id_ministere) || null);
+                    }
 
-                                const resolvedSigle = ensureMinistereSigle({ agent, validateur });
-                                const sigle = resolvedSigle || '';
+                    const resolvedSigle = ensureMinistereSigle({ agent, validateur });
+                    const sigle = resolvedSigle || '';
 
-                                // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS'
-                                const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
-                                const agentMinistryName = agent.ministere_nom || '';
-                                const ministereNom = validatorMinistryName || agentMinistryName || (options.userInfo && options.userInfo.ministere_nom) || '';
-                                const isMinTourismeEtLoisirs = ministereNom &&
-                                    ministereNom.toUpperCase().includes('TOURISME') &&
-                                    ministereNom.toUpperCase().includes('LOISIRS');
+                    // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS'
+                    const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
+                    const agentMinistryName = agent.ministere_nom || '';
+                    const ministereNom = validatorMinistryName || agentMinistryName || (options.userInfo && options.userInfo.ministere_nom) || '';
+                    const isMinTourismeEtLoisirs = ministereNom &&
+                        ministereNom.toUpperCase().includes('TOURISME') &&
+                        ministereNom.toUpperCase().includes('LOISIRS');
 
-                                if (sigle) {
-                                    if (isMinTourismeEtLoisirs) {
-                                        documentNumber = `${sequentialNumber}/${sigle}/DRH/SDGP`;
-                                    } else {
-                                        documentNumber = `${sequentialNumber}/${sigle}`;
-                                    }
-                                } else {
-                                    documentNumber = sequentialNumber;
-                                }
-                            }
+                    if (sigle) {
+                        if (isMinTourismeEtLoisirs) {
+                            documentNumber = `${sequentialNumber}/${sigle}/DRH/SDGP`;
+                        } else {
+                            documentNumber = `${sequentialNumber}/${sigle}`;
+                        }
+                    } else {
+                        documentNumber = sequentialNumber;
+                    }
+                }
 
-                            // Préparer les informations pour le header
-                            const resolvedSigle = ensureMinistereSigle({ agent, validateur });
-                            const agentMinistryName = agent.ministere_nom || '';
-                            // Pour les notes de service, la direction dans le header doit toujours être "DIRECTION DES RESSOURCES HUMAINES"
-                            const agentDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
-                            const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
-                            // Forcer aussi validatorDirectionName pour les notes de service (drawOfficialHeaderPDF utilise validatorDirectionName en priorité)
-                            const validatorDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
+                // Préparer les informations pour le header
+                const resolvedSigle = ensureMinistereSigle({ agent, validateur });
+                const agentMinistryName = agent.ministere_nom || '';
+                // Pour les notes de service, la direction dans le header doit toujours être "DIRECTION DES RESSOURCES HUMAINES"
+                const agentDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
+                const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
+                // Forcer aussi validatorDirectionName pour les notes de service (drawOfficialHeaderPDF utilise validatorDirectionName en priorité)
+                const validatorDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
 
-                            // Dessiner le header officiel
-                            const headerBottom = await drawOfficialHeaderPDF(doc, {
-                                documentNumber,
-                                dateString: generationDate,
-                                generatedAt: generationDate,
-                                city: 'Abidjan',
-                                agentMinistryName,
-                                agentDirectionName, // Toujours "DIRECTION DES RESSOURCES HUMAINES" pour les notes de service
-                                validatorMinistryName,
-                                validatorDirectionName // Toujours "DIRECTION DES RESSOURCES HUMAINES" pour les notes de service
-                            });
+                // Dessiner le header officiel
+                const headerBottom = await drawOfficialHeaderPDF(doc, {
+                    documentNumber,
+                    dateString: generationDate,
+                    generatedAt: generationDate,
+                    city: 'Abidjan',
+                    agentMinistryName,
+                    agentDirectionName, // Toujours "DIRECTION DES RESSOURCES HUMAINES" pour les notes de service
+                    validatorMinistryName,
+                    validatorDirectionName // Toujours "DIRECTION DES RESSOURCES HUMAINES" pour les notes de service
+                });
 
-                            // Titre "NOTE DE SERVICE" (centré et souligné)
-                            const titleY = headerBottom + 60;
-                            doc.fontSize(TITLE_FONT_SIZE)
-                                .font(BOLD_FONT)
-                                .text('NOTE DE SERVICE', 50, titleY, {
-                                    align: 'center',
-                                    width: 495
-                                });
+                // Titre "NOTE DE SERVICE" (centré et souligné)
+                const titleY = headerBottom + 60;
+                doc.fontSize(TITLE_FONT_SIZE)
+                    .font(BOLD_FONT)
+                    .text('NOTE DE SERVICE', 50, titleY, {
+                        align: 'center',
+                        width: 495
+                    });
 
-                            // Souligner le titre
-                            const titleWidth = doc.widthOfString('NOTE DE SERVICE', { font: BOLD_FONT, fontSize: TITLE_FONT_SIZE });
-                            const titleX = 50 + (495 - titleWidth) / 2;
-                            const underlineY = titleY + 20;
-                            doc.moveTo(titleX, underlineY)
-                                .lineTo(titleX + titleWidth, underlineY)
-                                .lineWidth(1)
-                                .stroke();
+                // Souligner le titre
+                const titleWidth = doc.widthOfString('NOTE DE SERVICE', { font: BOLD_FONT, fontSize: TITLE_FONT_SIZE });
+                const titleX = 50 + (495 - titleWidth) / 2;
+                const underlineY = titleY + 20;
+                doc.moveTo(titleX, underlineY)
+                    .lineTo(titleX + titleWidth, underlineY)
+                    .lineWidth(1)
+                    .stroke();
 
-                            // Date d'effet - Utiliser parseDateLocal pour éviter les décalages de fuseau horaire
-                            const dateEffet = options.date_effet ? this.parseDateLocal(options.date_effet) : generationDate;
-                            const dateEffetStr = dateEffet.toLocaleDateString('fr-FR', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            });
+                // Date d'effet - Utiliser parseDateLocal pour éviter les décalages de fuseau horaire
+                const dateEffet = options.date_effet ? this.parseDateLocal(options.date_effet) : generationDate;
+                const dateEffetStr = dateEffet.toLocaleDateString('fr-FR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
 
-                            // Date de génération formatée pour la phrase d'effet
-                            const generationDateStr = generationDate.toLocaleDateString('fr-FR', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            });
+                // Date de génération formatée pour la phrase d'effet
+                const generationDateStr = generationDate.toLocaleDateString('fr-FR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
 
-                            // Informations de l'agent
-                            const nameParts = formatAgentName(agent);
-                            const nomComplet = nameParts.fullWithCivilite;
+                // Informations de l'agent
+                const nameParts = formatAgentName(agent);
+                const nomComplet = nameParts.fullWithCivilite;
 
-                            // Date de naissance
-                            let dateNaissanceStr = '';
-                            if (agent.date_de_naissance) {
-                                const dateNaissance = new Date(agent.date_de_naissance);
-                                dateNaissanceStr = dateNaissance.toLocaleDateString('fr-FR', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric'
-                                });
-                            }
-                            const lieuNaissance = agent.lieu_de_naissance || '';
+                // Date de naissance
+                let dateNaissanceStr = '';
+                if (agent.date_de_naissance) {
+                    const dateNaissance = new Date(agent.date_de_naissance);
+                    dateNaissanceStr = dateNaissance.toLocaleDateString('fr-FR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                }
+                const lieuNaissance = agent.lieu_de_naissance || '';
 
-                            // Récupérer l'emploi le plus récent de l'agent
-                            let emploiRecent = '';
-                            if (agent.id) {
-                                try {
-                        
-                                    const emploiQuery = `
+                // Récupérer l'emploi le plus récent de l'agent
+                let emploiRecent = '';
+                if (agent.id) {
+                    try {
+
+                        const emploiQuery = `
                             SELECT e.libele as emploi_libele, ea.designation_poste
                             FROM emploi_agents ea
                             LEFT JOIN emplois e ON ea.id_emploi = e.id
@@ -2848,28 +3242,28 @@ class PDFKitGenerationService {
                             ORDER BY ea.date_entree DESC, ea.created_at DESC
                             LIMIT 1
                         `;
-                                    const emploiResult = await db.query(emploiQuery, [agent.id]);
-                                    if (emploiResult.rows.length > 0) {
-                                        emploiRecent = emploiResult.rows[0].emploi_libele || emploiResult.rows[0].designation_poste || '';
-                                    }
-                                } catch (error) {
-                                    console.error('⚠️ Erreur lors de la récupération de l\'emploi:', error);
-                                }
-                            }
+                        const emploiResult = await db.query(emploiQuery, [agent.id]);
+                        if (emploiResult.rows.length > 0) {
+                            emploiRecent = emploiResult.rows[0].emploi_libele || emploiResult.rows[0].designation_poste || '';
+                        }
+                    } catch (error) {
+                        console.error('⚠️ Erreur lors de la récupération de l\'emploi:', error);
+                    }
+                }
 
-                            // Si pas d'emploi récent trouvé, utiliser emploi/fonction selon type d'agent (emploi_agents / fonction_agents)
-                            if (!emploiRecent) {
-                                emploiRecent = getAgentPosteOuEmploi(agent);
-                            }
+                // Si pas d'emploi récent trouvé, utiliser emploi/fonction selon type d'agent (emploi_agents / fonction_agents)
+                if (!emploiRecent) {
+                    emploiRecent = getAgentPosteOuEmploi(agent);
+                }
 
-                            // Récupérer le grade depuis les tables d'historique
-                            let grade = '';
+                // Récupérer le grade depuis les tables d'historique
+                let grade = '';
 
-                            if (agent.id) {
-                                try {
-                        
-                                    // Récupérer le grade le plus récent
-                                    const gradeQuery = `
+                if (agent.id) {
+                    try {
+
+                        // Récupérer le grade le plus récent
+                        const gradeQuery = `
                             SELECT g.libele as grade_libelle
                             FROM grades_agents ga
                             LEFT JOIN grades g ON ga.id_grade = g.id
@@ -2877,230 +3271,282 @@ class PDFKitGenerationService {
                             ORDER BY COALESCE(ga.date_entree, ga.created_at) DESC, ga.id DESC
                             LIMIT 1
                         `;
-                                    const gradeResult = await db.query(gradeQuery, [agent.id]);
-                                    if (gradeResult.rows.length > 0) {
-                                        grade = gradeResult.rows[0].grade_libelle || '';
-                                    }
-                                } catch (error) {
-                                    console.error('⚠️ Erreur lors de la récupération du grade:', error);
-                                }
-                            }
+                        const gradeResult = await db.query(gradeQuery, [agent.id]);
+                        if (gradeResult.rows.length > 0) {
+                            grade = gradeResult.rows[0].grade_libelle || '';
+                        }
+                    } catch (error) {
+                        console.error('⚠️ Erreur lors de la récupération du grade:', error);
+                    }
+                }
 
-                            // Si pas trouvé dans l'historique, utiliser les valeurs de l'objet agent
-                            if (!grade) {
-                                grade = agent.grade_libele || agent.grade_libelle || agent.grade || '';
-                            }
+                // Si pas trouvé dans l'historique, utiliser les valeurs de l'objet agent
+                if (!grade) {
+                    grade = agent.grade_libele || agent.grade_libelle || agent.grade || '';
+                }
 
-                            // Récupérer la classe depuis les options ou les données de l'agent (sans échelon)
-                            const classeLibelle = agent.classe_libelle || agent.classe || options.classe || '';
+                // Récupérer la classe depuis les options ou les données de l'agent (sans échelon)
+                const classeLibelle = agent.classe_libelle || agent.classe || options.classe || '';
 
-                            const dateEchelon = options.date_echelon ? new Date(options.date_echelon).toLocaleDateString('fr-FR', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            }) : '';
+                const dateEchelon = options.date_echelon ? new Date(options.date_echelon).toLocaleDateString('fr-FR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                }) : '';
 
-                            // Construire la partie classe uniquement (sans échelon) - Format complet en toutes lettres
-                            let classeEchelon = '';
-                            if (classeLibelle) {
-                                // Utiliser uniquement la classe : "de deuxième classe"
-                                const classeFormatee = classeLibelle.toLowerCase();
-                                classeEchelon = `de ${classeFormatee}`;
-                                if (dateEchelon) {
-                                    classeEchelon += ` au ${dateEchelon}`;
-                                }
-                            }
+                // Construire la partie classe uniquement (sans échelon) - Format complet en toutes lettres
+                let classeEchelon = '';
+                if (classeLibelle) {
+                    // Utiliser uniquement la classe : "de deuxième classe"
+                    const classeFormatee = classeLibelle.toLowerCase();
+                    classeEchelon = `de ${classeFormatee}`;
+                    if (dateEchelon) {
+                        classeEchelon += ` au ${dateEchelon}`;
+                    }
+                }
 
-                            // Affectation : Direction en priorité, sinon Direction Générale
-                            const resolveAffectation = (a) => {
-                                for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
-                                    if (typeof val === 'string' && val.trim() !== '' && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined') {
-                                        return val.trim();
-                                    }
-                                }
-                                return '';
-                            };
-                            const affectation = resolveAffectation(agent);
+                // Affectation : Direction en priorité, sinon Direction Générale
+                const resolveAffectation = (a) => {
+                    for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
+                        if (typeof val === 'string' && val.trim() !== '' && val.trim().toLowerCase() !== 'null' && val.trim().toLowerCase() !== 'undefined') {
+                            return val.trim();
+                        }
+                    }
+                    return '';
+                };
+                const affectation = resolveAffectation(agent);
 
-                            // Référence certificat avec date
-                            const certReference = options.cert_reference || options.certificat_reference || '';
-                            const certDate = options.cert_date || '';
+                // Référence certificat avec date
+                const certReference = options.cert_reference || options.certificat_reference || '';
+                const certDate = options.cert_date || '';
 
-                            // Corps du document
-                            let yPosition = titleY + 60;
+                // Corps du document
+                let yPosition = titleY + 60;
 
-                            // Premier paragraphe - Format exact comme dans l'image
-                            doc.fontSize(BODY_FONT_SIZE)
-                                .font(BASE_FONT)
-                                .fillColor(primaryColor);
+                // Premier paragraphe - Format exact comme dans l'image
+                doc.fontSize(BODY_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .fillColor(primaryColor);
 
-                            // Construire le texte principal - Format complet selon l'image
-                            let texte1Parts = [];
+                // Construire le texte principal - Format complet selon l'image
+                let texte1Parts = [];
 
-                            // 1. Nom complet
-                            texte1Parts.push(nomComplet);
+                // 1. Nom complet
+                texte1Parts.push(nomComplet);
 
-                            // 2. Matricule
-                            if (agent.matricule) {
-                                texte1Parts.push(`matricule ${agent.matricule}`);
-                            }
+                // 2. Matricule
+                if (agent.matricule) {
+                    texte1Parts.push(`matricule ${agent.matricule}`);
+                }
 
-                            // 3. Date et lieu de naissance
-                            if (dateNaissanceStr) {
-                                const naissancePart = `née le ${dateNaissanceStr}`;
-                                if (lieuNaissance) {
-                                    texte1Parts.push(`${naissancePart} à ${lieuNaissance.toUpperCase()}`);
-                                } else {
-                                    texte1Parts.push(naissancePart);
-                                }
-                            }
+                // 3. Date et lieu de naissance
+                if (dateNaissanceStr) {
+                    const naissancePart = `née le ${dateNaissanceStr}`;
+                    if (lieuNaissance) {
+                        texte1Parts.push(`${naissancePart} à ${lieuNaissance.toUpperCase()}`);
+                    } else {
+                        texte1Parts.push(naissancePart);
+                    }
+                }
 
-                            // 4. Emploi
-                            if (emploiRecent) {
-                                texte1Parts.push(emploiRecent);
-                            }
+                // 4. Emploi
+                if (emploiRecent) {
+                    texte1Parts.push(emploiRecent);
+                }
 
-                            // 5. Grade
-                            if (grade) {
-                                texte1Parts.push(`grade ${grade}`);
-                            }
+                // 5. Grade
+                if (grade) {
+                    texte1Parts.push(`grade ${grade}`);
+                }
 
-                            // 6. Affectation (classe retirée selon demande)
-                            // Utiliser la fonction utilitaire pour déterminer la bonne préposition
-                            const genre = agent.sexe === 'F' ? 'F' : 'M';
-                            const affectationPhrase = formatAffectationPhrase(affectation, genre);
-                            if (affectationPhrase) {
-                                texte1Parts.push(affectationPhrase);
-                            }
+                // 6. Affectation (classe retirée selon demande)
+                // Utiliser la fonction utilitaire pour déterminer la bonne préposition
+                const genre = agent.sexe === 'F' ? 'F' : 'M';
+                const affectationPhrase = formatAffectationPhrase(affectation, genre);
+                if (affectationPhrase) {
+                    texte1Parts.push(affectationPhrase);
+                }
 
-                            // 7. Conformément au certificat
-                            if (certReference) {
-                                let certText = 'conformément au CERT. DE 1ERE P. DE SERVICE';
-                                certText += `\nnø ${certReference}`;
-                                if (certDate) {
-                                    const certDateStr = new Date(certDate).toLocaleDateString('fr-FR', {
-                                        year: 'numeric',
-                                        month: 'long',
-                                        day: 'numeric'
-                                    });
-                                    certText += ` du ${certDateStr}`;
-                                }
-                                texte1Parts.push(certText);
-                            }
-
-                            const texte1 = texte1Parts.join(' ,\n') + '.';
-
-                            doc.text(texte1, 50, yPosition, {
-                                align: 'justify',
-                                width: 495
-                            });
-
-                            yPosition = doc.y + 25;
-
-                            // Deuxième paragraphe
-                            const texte2 = `La présente note de service prend effet à compter du ${generationDateStr}.`;
-                            doc.text(texte2, 50, yPosition, {
-                                align: 'left',
-                                width: 495
-                            });
-
-                            yPosition = doc.y + 20;
-
-                            // Note importante (N.B.)
-                            doc.font(BOLD_FONT)
-                                .fontSize(BODY_FONT_SIZE)
-                                .text('N.B.:', 50, yPosition, {
-                                    align: 'left'
-                                });
-
-                            yPosition = doc.y + 8;
-
-                            doc.font(BASE_FONT)
-                                .fontSize(BODY_FONT_SIZE)
-                                .text('Le Responsable chargé du Personnel devra adresser à la Direction des Ressources Humaines du Ministère, le certificat de prise de service de l\'intéressé(e) dès sa prise de fonction.', 50, yPosition, {
-                                    align: 'justify',
-                                    width: 495
-                                });
-
-                            // Signature en bas à droite - Positionner après le texte N.B. avec espacement réduit
-                            yPosition = doc.y + 25;
-
-                            // Vérifier que la signature tient sur la page
-                            const docPageHeight = doc.page.height;
-                            const signatureHeight = 100; // Hauteur approximative de la signature (rôle + image + nom)
-                            const footerHeight = 80;
-                            const minYForSignature = docPageHeight - footerHeight - signatureHeight - 10;
-
-                            // Si la position actuelle est trop basse, la placer plus haut
-                            if (yPosition > minYForSignature) {
-                                yPosition = minYForSignature;
-                            }
-
-                            // S'assurer que la signature active est récupérée juste avant l'affichage
-                            await attachActiveSignature(validateur);
-                            const signatureInfo = await resolveSignatureInfo(validateur, 'Le Directeur');
-
-                            // Transformer "DIRECTEUR" ou "DRH" en "LE DIRECTEUR"
-                            if (signatureInfo.role) {
-                                const roleUpper = signatureInfo.role.toUpperCase();
-                                if (roleUpper === 'DIRECTEUR' || roleUpper === 'DRH') {
-                                    signatureInfo.role = 'LE DIRECTEUR';
-                                }
-                            }
-
-                            console.log('🔍 [generateNoteDeServicePDF] Signature info:', {
-                                hasRole: !!signatureInfo.role,
-                                hasName: !!signatureInfo.name,
-                                hasImagePath: !!signatureInfo.imagePath,
-                                imagePath: signatureInfo.imagePath,
-                                role: signatureInfo.role,
-                                name: signatureInfo.name,
-                                yPosition: yPosition,
-                                minYForSignature: minYForSignature
-                            });
-
-                            // Utiliser la fonction standardisée pour afficher la signature alignée à droite
-                            drawStandardSignatureRight(
-                                doc,
-                                yPosition,
-                                signatureInfo, {
-                                    imageWidth: 180,
-                                    imageHeight: 90,
-                                    signatureWidth: 450,
-                                    spacing: 15,
-                                    roleFontSize: 15,
-                                    nameFontSize: 15
-                                }
-                            );
-
-                            // Footer
-                            const pageHeight = doc.page.height;
-                            const footerY = pageHeight - 80;
-
-                            doc.moveTo(50, footerY)
-                                .lineTo(545, footerY)
-                                .lineWidth(0.5)
-                                .strokeColor(borderColor)
-                                .stroke();
-
-                            doc.fontSize(FOOTER_FONT_SIZE)
-                                .font(BASE_FONT)
-                                .fillColor('#666666')
-                                .text('Document généré automatiquement par le système de gestion des ressources humaines',
-                                    50, footerY + 5, {
-                                        align: 'center',
-                                        width: 495
-                                    });
-
-                            doc.fontSize(FOOTER_FONT_SIZE)
-                                .font(BASE_FONT)
-                                .text(`Généré le ${generationDate.toLocaleString('fr-FR')}${documentNumber ? ` - Document N° ${documentNumber}` : ''}`,
-                        50, footerY + 18, {
-                            align: 'center',
-                            width: 495
+                // 7. Conformément au certificat
+                if (certReference) {
+                    let certText = 'conformément au CERT. DE 1ERE P. DE SERVICE';
+                    certText += `\nnø ${certReference}`;
+                    if (certDate) {
+                        const certDateStr = new Date(certDate).toLocaleDateString('fr-FR', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
                         });
+                        certText += ` du ${certDateStr}`;
+                    }
+                    texte1Parts.push(certText);
+                }
+
+                const texte1 = texte1Parts.join(' ,\n') + '.';
+
+                doc.text(texte1, 50, yPosition, {
+                    align: 'justify',
+                    width: 495
+                });
+
+                yPosition = doc.y + 25;
+
+                // Deuxième paragraphe
+                const texte2 = `La présente note de service prend effet à compter du ${generationDateStr}.`;
+                doc.text(texte2, 50, yPosition, {
+                    align: 'left',
+                    width: 495
+                });
+
+                yPosition = doc.y + 20;
+
+                // Note importante (N.B.)
+                doc.font(BOLD_FONT)
+                    .fontSize(BODY_FONT_SIZE)
+                    .text('N.B.:', 50, yPosition, {
+                        align: 'left'
+                    });
+
+                yPosition = doc.y + 8;
+
+                doc.font(BASE_FONT)
+                    .fontSize(BODY_FONT_SIZE)
+                    .text('Le Responsable chargé du Personnel devra adresser à la Direction des Ressources Humaines du Ministère, le certificat de prise de service de l\'intéressé(e) dès sa prise de fonction.', 50, yPosition, {
+                        align: 'justify',
+                        width: 495
+                    });
+
+                // Signature en bas à droite - Positionner après le texte N.B. avec espacement réduit
+                yPosition = doc.y + 25;
+
+                // Vérifier que la signature tient sur la page
+                const docPageHeight = doc.page.height;
+                const signatureHeight = 100; // Hauteur approximative de la signature (rôle + image + nom)
+                const footerHeight = 80;
+                const minYForSignature = docPageHeight - footerHeight - signatureHeight - 10;
+
+                // Si la position actuelle est trop basse, la placer plus haut
+                if (yPosition > minYForSignature) {
+                    yPosition = minYForSignature;
+                }
+
+                // S'assurer que la signature active est récupérée juste avant l'affichage
+                await attachActiveSignature(validateur);
+                const signatureInfo = await resolveSignatureInfo(validateur, 'Le Directeur');
+
+                // Transformer "DIRECTEUR" ou "DRH" en "LE DIRECTEUR"
+                if (signatureInfo.role) {
+                    const roleUpper = signatureInfo.role.toUpperCase();
+                    if (roleUpper === 'DIRECTEUR' || roleUpper === 'DRH') {
+                        signatureInfo.role = 'LE DIRECTEUR';
+                    }
+                }
+
+                console.log('🔍 [generateNoteDeServicePDF] Signature info:', {
+                    hasRole: !!signatureInfo.role,
+                    hasName: !!signatureInfo.name,
+                    hasImagePath: !!signatureInfo.imagePath,
+                    imagePath: signatureInfo.imagePath,
+                    role: signatureInfo.role,
+                    name: signatureInfo.name,
+                    yPosition: yPosition,
+                    minYForSignature: minYForSignature
+                });
+
+                // Utiliser la fonction standardisée pour afficher la signature alignée à droite
+                drawStandardSignatureRight(
+                    doc,
+                    yPosition,
+                    signatureInfo, {
+                    imageWidth: 180,
+                    imageHeight: 90,
+                    signatureWidth: 450,
+                    spacing: 15,
+                    roleFontSize: 15,
+                    nameFontSize: 15
+                }
+                );
+
+                // Footer
+                const pageHeight = doc.page.height;
+                const footerY = pageHeight - 80;
+
+                doc.moveTo(50, footerY)
+                    .lineTo(545, footerY)
+                    .lineWidth(0.5)
+                    .strokeColor(borderColor)
+                    .stroke();
+
+                doc.fontSize(FOOTER_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .fillColor('#666666')
+                    .text('Document généré automatiquement par le système de gestion des ressources humaines',
+                        50, footerY + 5, {
+                        align: 'center',
+                        width: 495
+                    });
+
+                doc.fontSize(FOOTER_FONT_SIZE)
+                    .font(BASE_FONT)
+                    .text(`Généré le ${generationDate.toLocaleString('fr-FR')}${documentNumber ? ` - Document N° ${documentNumber}` : ''}`,
+                        50, footerY + 18, {
+                        align: 'center',
+                        width: 495
+                    });
 
                 // Finaliser le document
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {
@@ -3130,7 +3576,7 @@ class PDFKitGenerationService {
      * @returns {Promise<string>} - Le chemin du PDF généré
      */
     static async generateNoteDeServiceMutationPDF(demande, agent, validateur, options = {}, outputPath) {
-        return new Promise(async(resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
                 console.log(`📄 Génération du PDF de note de service de mutation pour l'agent ${agent.id}...`);
 
@@ -3171,7 +3617,7 @@ class PDFKitGenerationService {
                     parseInt(dateParts[1]) - 1, // mois (0-indexé)
                     parseInt(dateParts[2])      // jour
                 );
-                                
+
                 // Numéro de document pour l'en-tête - Utiliser un numéro séquentiel basé sur le nombre total de notes de service de mutation
                 const resolvedSigle = ensureMinistereSigle({ agent, validateur });
                 let headerDocumentNumber;
@@ -3193,11 +3639,11 @@ class PDFKitGenerationService {
                     let sequentialNumber = '';
                     const documentId = options.document_id || options.id || null;
                     let documentDateGeneration = options.date_debut || generationDate;
-                    
+
                     // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
                     if (documentId && !documentDateGeneration) {
                         try {
-                
+
                             const docQuery = await db.query(
                                 'SELECT date_debut FROM demandes WHERE id = $1',
                                 [documentId]
@@ -3214,14 +3660,14 @@ class PDFKitGenerationService {
                     } else if (!documentDateGeneration) {
                         documentDateGeneration = options.date_effet || generationDate;
                     }
-                    
+
                     // Convertir en Date si c'est une string
                     if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
                         documentDateGeneration = new Date(documentDateGeneration);
                     }
-                    
+
                     try {
-            
+
                         const idMinistere = agent?.id_ministere ?? null;
                         if (documentId) {
                             // Si le document existe déjà, calculer sa position en comptant les notes antérieures (par ministère)
@@ -3253,7 +3699,7 @@ class PDFKitGenerationService {
                             `;
                             const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
                             const positionResult = await db.query(positionQuery, positionParams);
-                            
+
                             const position = parseInt(positionResult.rows[0]?.position || 1, 10);
                             sequentialNumber = String(position).padStart(4, '0');
                         } else {
@@ -3280,17 +3726,17 @@ class PDFKitGenerationService {
                         // Fallback: utiliser generateSequentialNoteDeServiceDocumentNumber
                         sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('note_de_service_mutation', documentId, agent?.id_ministere ?? null);
                     }
-                    
+
                     const sigle = resolvedSigle || '';
-                    
+
                     // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS'
                     const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
                     const agentMinistryName = agent.ministere_nom || '';
                     const ministereNom = validatorMinistryName || agentMinistryName || options.userInfo?.ministere_nom || '';
-                    const isMinTourismeEtLoisirs = ministereNom && 
-                        ministereNom.toUpperCase().includes('TOURISME') && 
+                    const isMinTourismeEtLoisirs = ministereNom &&
+                        ministereNom.toUpperCase().includes('TOURISME') &&
                         ministereNom.toUpperCase().includes('LOISIRS');
-                    
+
                     if (sigle) {
                         if (isMinTourismeEtLoisirs) {
                             headerDocumentNumber = `${sequentialNumber}/${sigle}/DRH/SDGP`;
@@ -3301,11 +3747,11 @@ class PDFKitGenerationService {
                         headerDocumentNumber = sequentialNumber;
                     }
                 }
-                
+
                 // Numéro de document pour le texte : numéro séquentiel du jour
                 const noteServiceNumber = await generateNoteDeServiceNumber(generationDate);
                 const sigle = resolvedSigle || 'MINTOUR';
-                
+
                 // Préparer les informations pour le header
                 const agentMinistryName = agent.ministere_nom || '';
                 // Pour les notes de service mutation, la direction dans le header doit toujours être "DIRECTION DES RESSOURCES HUMAINES"
@@ -3313,14 +3759,14 @@ class PDFKitGenerationService {
                 const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
                 // Forcer aussi validatorDirectionName pour les notes de service mutation (drawOfficialHeaderPDF utilise validatorDirectionName en priorité)
                 const validatorDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
-                
+
                 // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS' pour ajouter /DRH/SDGP
                 const ministereNom = validatorMinistryName || agentMinistryName || options.userInfo?.ministere_nom || '';
-                const isMinTourismeEtLoisirs = ministereNom && 
-                    ministereNom.toUpperCase().includes('TOURISME') && 
+                const isMinTourismeEtLoisirs = ministereNom &&
+                    ministereNom.toUpperCase().includes('TOURISME') &&
                     ministereNom.toUpperCase().includes('LOISIRS');
-                
-                const noteServiceNumberText = isMinTourismeEtLoisirs 
+
+                const noteServiceNumberText = isMinTourismeEtLoisirs
                     ? `${noteServiceNumber}/${sigle}/DRH/SDGP`
                     : `${noteServiceNumber}/${sigle}`;
 
@@ -3386,7 +3832,7 @@ class PDFKitGenerationService {
                 const lieuNaissance = agent.lieu_de_naissance || '';
 
                 // Récupérer l'emploi le plus récent de l'agent
-    
+
                 let emploiRecent = '';
                 try {
                     const emploiQuery = `
@@ -3404,7 +3850,7 @@ class PDFKitGenerationService {
                 } catch (error) {
                     console.error('⚠️ Erreur lors de la récupération de l\'emploi:', error);
                 }
-                
+
                 // Si pas d'emploi récent trouvé, utiliser emploi/fonction selon type d'agent (emploi_agents / fonction_agents)
                 if (!emploiRecent) {
                     emploiRecent = getAgentPosteOuEmploi(agent);
@@ -3413,7 +3859,7 @@ class PDFKitGenerationService {
                 // Récupérer le grade et l'échelon les plus récents depuis grades_agents et echelons_agents
                 let grade = '';
                 let echelon = '';
-                
+
                 if (agent.id) {
                     try {
                         // Récupérer le grade le plus récent
@@ -3429,7 +3875,7 @@ class PDFKitGenerationService {
                         if (gradeResult.rows.length > 0) {
                             grade = gradeResult.rows[0].grade_libelle || '';
                         }
-                        
+
                         // Récupérer l'échelon le plus récent
                         const echelonQuery = `
                             SELECT e.libele as echelon_libelle
@@ -3443,7 +3889,7 @@ class PDFKitGenerationService {
                         if (echelonResult.rows.length > 0) {
                             echelon = echelonResult.rows[0].echelon_libelle || '';
                         }
-                        
+
                         console.log(`✅ [generateNoteDeServiceMutationPDF] Grade et échelon récupérés depuis les tables d'historique:`, {
                             grade: grade,
                             echelon: echelon,
@@ -3453,7 +3899,7 @@ class PDFKitGenerationService {
                         console.error('❌ Erreur lors de la récupération du grade et de l\'échelon:', error);
                     }
                 }
-                
+
                 // Si pas de grade/échelon trouvé dans l'historique, utiliser les valeurs de l'objet agent
                 if (!grade) {
                     grade = agent.grade_libele || agent.grade_libelle || agent.grade || '';
@@ -3461,7 +3907,7 @@ class PDFKitGenerationService {
                 if (!echelon) {
                     echelon = agent.echelon_libelle || agent.echelon_libele || '';
                 }
-                
+
                 // Affectation : Direction en priorité, sinon Direction Générale
                 const resolveAffectation = (a) => {
                     for (const val of [a.direction_nom, a.service_nom, a.direction_generale_nom, a.direction_libelle, a.service_libelle]) {
@@ -3472,7 +3918,7 @@ class PDFKitGenerationService {
                     return '';
                 };
                 const affectationOrigine = resolveAffectation(agent);
-                
+
                 console.log(`🔍 [generateNoteDeServiceMutationPDF] Grade et échelon finaux:`, {
                     grade: grade,
                     echelon: echelon,
@@ -3494,11 +3940,11 @@ class PDFKitGenerationService {
                 // Construire le texte principal selon le format de l'image
                 let texte1Parts = [];
                 texte1Parts.push(nomComplet);
-                
+
                 if (agent.matricule) {
                     texte1Parts.push(`matricule ${agent.matricule}`);
                 }
-                
+
                 if (dateNaissanceStr) {
                     const naissancePart = `née le ${dateNaissanceStr}`;
                     if (lieuNaissance) {
@@ -3507,25 +3953,25 @@ class PDFKitGenerationService {
                         texte1Parts.push(naissancePart);
                     }
                 }
-                
+
                 if (emploiRecent) {
                     texte1Parts.push(emploiRecent.toUpperCase());
                 }
-                
+
                 // Ajouter le grade si disponible
                 if (grade) {
                     texte1Parts.push(`grade ${grade}`);
                 }
-                
+
                 // Ajouter l'échelon si disponible
                 if (echelon) {
                     texte1Parts.push(`échelon ${echelon}`);
                 }
-                
+
                 // Texte de mutation
                 const mutationText = `est mutée à la ${directionDestination.toUpperCase()}`;
                 texte1Parts.push(mutationText);
-                
+
                 const texte1 = texte1Parts.join(', ') + '.';
 
                 doc.text(texte1, 50, yPosition, {
@@ -3575,19 +4021,19 @@ class PDFKitGenerationService {
 
                 // Signature en bas à droite
                 yPosition = doc.y + 25;
-                
+
                 const docPageHeight = doc.page.height;
                 const signatureHeight = 100;
                 const footerHeight = 80;
                 const minYForSignature = docPageHeight - footerHeight - signatureHeight - 10;
-                
+
                 if (yPosition > minYForSignature) {
                     yPosition = minYForSignature;
                 }
-                
+
                 await attachActiveSignature(validateur);
                 const signatureInfo = await resolveSignatureInfo(validateur, 'Le Directeur');
-                
+
                 // Transformer "DIRECTEUR" ou "DRH" en "LE DIRECTEUR"
                 if (signatureInfo.role) {
                     const roleUpper = signatureInfo.role.toUpperCase();
@@ -3595,7 +4041,7 @@ class PDFKitGenerationService {
                         signatureInfo.role = 'LE DIRECTEUR';
                     }
                 }
-                
+
                 drawStandardSignatureRight(
                     doc,
                     yPosition,
@@ -3625,18 +4071,70 @@ class PDFKitGenerationService {
                     .fillColor('#666666')
                     .text('Document généré automatiquement par le système de gestion des ressources humaines',
                         50, footerY + 5, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
                 doc.fontSize(FOOTER_FONT_SIZE)
                     .font(BASE_FONT)
                     .text(`Généré le ${generationDate.toLocaleString('fr-FR')}${headerDocumentNumber ? ` - Document N° ${headerDocumentNumber}` : ''}`,
                         50, footerY + 18, {
-                            align: 'center',
-                            width: 495
-                        });
+                        align: 'center',
+                        width: 495
+                    });
 
+
+                try {
+                    const qrDocNum = typeof documentNumber !== 'undefined' ? documentNumber : (typeof numeroDocument !== 'undefined' ? numeroDocument : (typeof noteServiceNumber !== 'undefined' ? noteServiceNumber : 'N/A'));
+                    const qrProp = typeof agentNameParts !== 'undefined' && agentNameParts ? agentNameParts.fullWithCivilite : (typeof agent !== 'undefined' && agent ? ((agent.nom || '') + ' ' + (agent.prenom || '')).trim() : 'N/A');
+
+                    let qrGen = 'Système';
+                    if (typeof signatureInfoAbsence !== 'undefined' && signatureInfoAbsence && signatureInfoAbsence.name) qrGen = signatureInfoAbsence.name;
+                    else if (typeof signatureInfo !== 'undefined' && signatureInfo && signatureInfo.name) qrGen = signatureInfo.name;
+                    else if (typeof validateur !== 'undefined' && validateur) qrGen = ((validateur.nom || '') + ' ' + (validateur.prenom || '')).trim();
+
+                    let qrTitle = "Document Officiel";
+                    if (typeof documentTitle !== 'undefined' && documentTitle) qrTitle = documentTitle;
+                    else if (typeof title !== 'undefined' && title) qrTitle = title;
+                    else if (typeof template !== 'undefined' && template && (template.nom || template.type)) qrTitle = (template.nom || template.type);
+                    // Inférence basée sur le nom de la variable de numéro ou de données
+                    else if (typeof row !== 'undefined' && row.type_document) qrTitle = row.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof row !== 'undefined' && row.type_demande) qrTitle = row.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof document !== 'undefined' && document.type_document) qrTitle = document.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof documentData !== 'undefined' && documentData.type_document) qrTitle = documentData.type_document.replace(/_/g, ' ').toUpperCase();
+                    else if (typeof demande !== 'undefined' && demande.type_demande) qrTitle = demande.type_demande.replace(/_/g, ' ').toUpperCase();
+                    else if (qrDocNum.includes('CESS')) qrTitle = 'CERTIFICAT DE CESSATION DE SERVICE';
+                    else if (qrDocNum.includes('REP')) qrTitle = 'CERTIFICAT DE REPRISE DE SERVICE';
+                    else if (qrDocNum.includes('ABS')) qrTitle = 'AUTORISATION D\'ABSENCE';
+                    else if (qrDocNum.includes('PRES')) qrTitle = 'ATTESTATION DE PRESENCE';
+                    else if (qrDocNum.includes('TRAV')) qrTitle = 'ATTESTATION DE TRAVAIL';
+                    else if (qrDocNum.includes('SORT')) qrTitle = 'AUTORISATION DE SORTIE DU TERRITOIRE';
+                    else if (qrDocNum.includes('MUT')) qrTitle = 'NOTE DE MUTATION';
+                    let qrMinistere = "N/A";
+                    if (typeof row !== 'undefined' && row.ministere_nom) qrMinistere = row.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere_nom) qrMinistere = agent.ministere_nom;
+                    else if (typeof agent !== 'undefined' && agent && agent.ministere) {
+                        qrMinistere = typeof agent.ministere === 'object' ? (agent.ministere.nom || agent.ministere.libelle) : agent.ministere;
+                    } else if (typeof userInfo !== 'undefined' && userInfo && userInfo.ministere_nom) {
+                        qrMinistere = userInfo.ministere_nom;
+                    } else if (typeof ministereName !== 'undefined') {
+                        qrMinistere = ministereName;
+                    } else if (typeof documentData !== 'undefined' && documentData.ministere_nom) {
+                        qrMinistere = documentData.ministere_nom;
+                    }
+
+                    await drawQRCode(doc, {
+                        titre: qrTitle,
+                        ministere: qrMinistere,
+                        generatedAt: typeof generatedAt !== 'undefined' ? generatedAt : new Date(),
+                        proprietaire: qrProp,
+                        generateur: qrGen,
+                        numeroDocument: qrDocNum
+                    });
+
+                } catch (qrErr) {
+                    console.error('Erreur insertion QR:', qrErr);
+                }
                 doc.end();
 
                 stream.on('finish', () => {

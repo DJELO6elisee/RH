@@ -980,6 +980,16 @@ class PlanningPrevisionnelController {
                     };
                 }
 
+                // Déterminer si l'agent est en retard de reprise
+                let en_retard_reprise = false;
+                if (agent.date_fin) {
+                    const dateFin = new Date(agent.date_fin);
+                    dateFin.setHours(0, 0, 0, 0);
+                    if (dateFin < today) {
+                        en_retard_reprise = true;
+                    }
+                }
+
                 structure[directionKey].sous_directions[sousDirectionKey].services[serviceKey].agents.push({
                     id_agent: agent.id_agent,
                     nom: agent.nom,
@@ -988,7 +998,8 @@ class PlanningPrevisionnelController {
                     date_debut: agent.date_debut,
                     date_fin: agent.date_fin,
                     type_demande: agent.type_demande,
-                    role_agent: agent.role_agent
+                    role_agent: agent.role_agent,
+                    en_retard_reprise: en_retard_reprise
                 });
             });
 
@@ -1004,6 +1015,142 @@ class PlanningPrevisionnelController {
             res.status(500).json({
                 success: false,
                 error: 'Erreur serveur lors de la récupération du rapport',
+                details: error.message
+            });
+        }
+    }
+
+    /**
+     * Vérifier les agents dont le congé est terminé et qui n'ont pas repris le service,
+     * puis alerter le DRH de leur ministère.
+     * GET /api/planning-previsionnel/verifier-retards-reprise
+     */
+    static async verifierEtAlerterRetardReprise(req, res) {
+        try {
+            console.log('🔍 Vérification des agents en retard de reprise');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Requête pour trouver tous les agents en congé validé dont la date_fin est passée
+            // et qui n'ont pas de demande de reprise validée
+            const query = `
+                WITH agents_roles AS (
+                    SELECT DISTINCT
+                        a.id as id_agent,
+                        COALESCE(LOWER(r.nom), 'agent') as role_agent
+                    FROM agents a
+                    LEFT JOIN utilisateurs u ON a.id = u.id_agent
+                    LEFT JOIN roles r ON u.id_role = r.id
+                ),
+                reprises_validees AS (
+                    SELECT DISTINCT d2.id_agent
+                    FROM demandes d2
+                    JOIN agents_roles ar2 ON d2.id_agent = ar2.id_agent
+                    WHERE d2.type_demande IN ('reprise_service', 'certificat_reprise_service', 'reprise', 'certificat_reprise')
+                        AND d2.status != 'rejete'
+                        AND (
+                            (ar2.role_agent = 'agent' AND (d2.niveau_evolution_demande = 'valide_par_drh' OR d2.statut_drh = 'approuve' OR (d2.status = 'approuve' AND d2.niveau_actuel = 'finalise')))
+                            OR (ar2.role_agent IN ('drh', 'directeur', 'sous_directeur', 'directeur_general', 'directeur_central', 'directeur_generale', 'directeur_centrale') AND (d2.niveau_evolution_demande = 'valide_par_dir_cabinet' OR d2.statut_dir_cabinet = 'approuve'))
+                            OR (ar2.role_agent IN ('dir_cabinet', 'directeur_de_cabinet', 'chef_cabinet', 'chef_de_cabinet') AND (d2.niveau_evolution_demande = 'valide_par_ministre' OR d2.statut_ministre = 'approuve'))
+                        )
+                )
+                SELECT 
+                    d.id as id_demande,
+                    d.id_agent,
+                    d.date_fin,
+                    a.nom,
+                    a.prenom,
+                    a.matricule,
+                    a.id_ministere
+                FROM demandes d
+                JOIN agents a ON d.id_agent = a.id
+                LEFT JOIN agents_roles ar ON a.id = ar.id_agent
+                WHERE d.type_demande IN ('conges', 'absence', 'conge')
+                    AND d.date_fin < CURRENT_DATE
+                    AND d.status != 'rejete'
+                    AND (
+                        (COALESCE(ar.role_agent, 'agent') = 'agent' AND (d.niveau_evolution_demande = 'valide_par_drh' OR d.statut_drh = 'approuve' OR (d.status = 'approuve' AND d.niveau_actuel = 'finalise')))
+                        OR (COALESCE(ar.role_agent, 'agent') IN ('drh', 'directeur', 'sous_directeur', 'directeur_general', 'directeur_central', 'directeur_generale', 'directeur_centrale') AND (d.niveau_evolution_demande = 'valide_par_dir_cabinet' OR d.statut_dir_cabinet = 'approuve'))
+                        OR (COALESCE(ar.role_agent, 'agent') IN ('dir_cabinet', 'directeur_de_cabinet', 'chef_cabinet', 'chef_de_cabinet') AND (d.niveau_evolution_demande = 'valide_par_ministre' OR d.statut_ministre = 'approuve'))
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM reprises_validees rv WHERE rv.id_agent = d.id_agent
+                    )
+            `;
+
+            const result = await pool.query(query);
+            console.log(`✅ ${result.rows.length} agent(s) trouvé(s) en retard de reprise`);
+
+            let notificationsCreees = 0;
+            let notificationsExistantes = 0;
+
+            for (const agent of result.rows) {
+                try {
+                    // Trouver le DRH du ministère de l'agent pour le notifier
+                    // Assumer le role 'drh' ou 'directeur_des_ressources_humaines'
+                    const drhQuery = `
+                        SELECT u.id_agent 
+                        FROM utilisateurs u 
+                        JOIN roles r ON u.id_role = r.id 
+                        JOIN agents a ON u.id_agent = a.id
+                        WHERE LOWER(r.nom) IN ('drh', 'directeur des ressources humaines', 'directeur_des_ressources_humaines')
+                        AND a.id_ministere = $1
+                    `;
+                    const drhResult = await pool.query(drhQuery, [agent.id_ministere]);
+
+                    if (drhResult.rows.length > 0) {
+                        for (const drh of drhResult.rows) {
+                            // Vérifier si une notification n'a pas déjà été envoyée très récemment pour éviter le spam (ex: dans les 24h)
+                            const checkNotif = await pool.query(
+                                `SELECT id FROM notifications_demandes 
+                                 WHERE id_agent_destinataire = $1 
+                                   AND type_notification = 'alerte_retard_reprise'
+                                   AND message LIKE $2
+                                   AND date_creation >= CURRENT_DATE - INTERVAL '1 day'`,
+                                [drh.id_agent, `%${agent.matricule}%`]
+                            );
+
+                            if (checkNotif.rows.length > 0) {
+                                notificationsExistantes++;
+                                continue;
+                            }
+
+                            const titre = `Alerte : Retard de reprise de service - ${agent.nom} ${agent.prenom}`;
+                            const dateFinFormatee = new Date(agent.date_fin).toLocaleDateString('fr-FR');
+                            const message = `L'agent ${agent.nom} ${agent.prenom} (Matricule: ${agent.matricule}) n'a pas encore repris le service. Son congé/absence prenait fin le ${dateFinFormatee}.`;
+
+                            await pool.query(
+                                `INSERT INTO notifications_demandes (
+                                    id_demande,
+                                    id_agent_destinataire,
+                                    type_notification,
+                                    titre,
+                                    message,
+                                    lu,
+                                    date_creation
+                                ) VALUES ($1, $2, 'alerte_retard_reprise', $3, $4, false, CURRENT_TIMESTAMP)`,
+                                [agent.id_demande, drh.id_agent, titre, message]
+                            );
+                            notificationsCreees++;
+                            console.log(`✅ Notification de retard créée pour le DRH concernant ${agent.nom} ${agent.prenom}`);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`❌ Erreur lors de la notification du retard pour l'agent ${agent.id_agent}:`, error);
+                }
+            }
+
+            res.json({
+                success: true,
+                message: `${result.rows.length} agent(s) en retard détecté(s). ${notificationsCreees} notification(s) créée(s), ${notificationsExistantes} existaient déjà.`,
+                data: result.rows
+            });
+
+        } catch (error) {
+            console.error('❌ Erreur lors de la vérification des retards de reprise:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Erreur serveur lors de la vérification des retards de reprise',
                 details: error.message
             });
         }

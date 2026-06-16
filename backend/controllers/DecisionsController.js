@@ -55,7 +55,8 @@ class DecisionsController {
             let nextNumber = 1;
             if (result.rows.length > 0 && result.rows[0].numero_acte) {
                 const lastNumero = result.rows[0].numero_acte;
-                const match = lastNumero.match(/DECISION N\s*(\d+)/i);
+                // Match either "DECISION N 001" or "N° 001" to extract the digits
+                const match = lastNumero.match(/(?:DECISION\s*)?N[^0-9]*(\d+)/i);
                 if (match && match[1]) {
                     nextNumber = parseInt(match[1], 10) + 1;
                 }
@@ -76,7 +77,7 @@ class DecisionsController {
      */
     async create(req, res) {
         try {
-            const { type, numero_acte, id_direction, id_sous_direction, year: yearBody } = req.body;
+            const { type, numero_acte, date_decision, id_direction, id_sous_direction, id_agent, year: yearBody } = req.body;
             // created_by doit être un id de la table agents (FK), pas l'id utilisateur
             const createdByAgentId = req.user?.id_agent ?? null;
             const currentYear = new Date().getFullYear();
@@ -121,7 +122,7 @@ class DecisionsController {
                 console.log(`✅ Fichier uploadé: ${req.file.filename}`);
                 console.log(`✅ Chemin complet du fichier: ${req.file.path}`);
                 console.log(`✅ Chemin stocké en DB: ${cheminDocument}`);
-                
+
                 // Vérifier que le fichier existe réellement
                 if (fsSync.existsSync(req.file.path)) {
                     console.log(`✅ Fichier confirmé présent sur le disque`);
@@ -129,7 +130,7 @@ class DecisionsController {
                     console.error(`❌ ERREUR: Fichier uploadé mais non trouvé sur le disque: ${req.file.path}`);
                 }
             }
-        
+
 
             // Générer automatiquement le numéro si non fourni (par année choisie + direction ou sous-direction)
             let finalNumeroActe = numero_acte;
@@ -224,9 +225,11 @@ class DecisionsController {
                         id_direction, 
                         id_sous_direction,
                         annee_decision,
-                        created_by
+                        date_decision,
+                        created_by,
+                        is_active
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, CURRENT_DATE), $8, true)
                     RETURNING *
                 `;
 
@@ -237,6 +240,7 @@ class DecisionsController {
                     id_direction || null,
                     id_sous_direction || null,
                     year,
+                    date_decision || null,
                     createdByAgentId
                 ]);
 
@@ -280,9 +284,11 @@ class DecisionsController {
                         id_agent,
                         id_direction,
                         annee_decision,
-                        created_by
+                        date_decision,
+                        created_by,
+                        is_active
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, CURRENT_DATE), $8, true)
                     RETURNING *
                 `;
 
@@ -293,6 +299,7 @@ class DecisionsController {
                     id_agent || null,
                     id_direction || null,
                     year,
+                    date_decision || null,
                     createdByAgentId
                 ]);
 
@@ -322,20 +329,40 @@ class DecisionsController {
      */
     async getAll(req, res) {
         try {
-            const { type } = req.query;
+            const { type, id_ministere } = req.query;
 
             let query = `
                 SELECT d.*, 
+                       TO_CHAR(d.date_decision, 'YYYY-MM-DD') as date_decision,
                        a.prenom as created_by_prenom, 
-                       a.nom as created_by_nom
+                       a.nom as created_by_nom,
+                       dir.libelle as direction_libelle,
+                       sd.libelle as sous_direction_libelle,
+                       a_target.prenom as agent_prenom,
+                       a_target.nom as agent_nom,
+                       r_target.nom as agent_role
                 FROM decisions d
                 LEFT JOIN agents a ON d.created_by = a.id
+                LEFT JOIN directions dir ON d.id_direction = dir.id
+                LEFT JOIN sous_directions sd ON d.id_sous_direction = sd.id
+                LEFT JOIN agents a_target ON d.id_agent = a_target.id
+                LEFT JOIN utilisateurs u_target ON a_target.id = u_target.id_agent
+                LEFT JOIN roles r_target ON u_target.id_role = r_target.id
+                WHERE 1=1
             `;
             const params = [];
+            let paramIndex = 1;
 
             if (type && ['collective', 'individuelle'].includes(type)) {
-                query += ` WHERE d.type = $1`;
+                query += ` AND d.type = $${paramIndex}`;
                 params.push(type);
+                paramIndex++;
+            }
+
+            if (id_ministere) {
+                query += ` AND (dir.id_ministere = $${paramIndex} OR a_target.id_ministere = $${paramIndex} OR a.id_ministere = $${paramIndex})`;
+                params.push(id_ministere);
+                paramIndex++;
             }
 
             query += ` ORDER BY d.date_decision DESC, d.created_at DESC`;
@@ -366,6 +393,7 @@ class DecisionsController {
 
             const query = `
                 SELECT d.*, 
+                       TO_CHAR(d.date_decision, 'YYYY-MM-DD') as date_decision,
                        a.prenom as created_by_prenom, 
                        a.nom as created_by_nom
                 FROM decisions d
@@ -414,7 +442,7 @@ class DecisionsController {
             }
 
             let query = `
-                SELECT d.*
+                SELECT d.*, TO_CHAR(d.date_decision, 'YYYY-MM-DD') as date_decision
                 FROM decisions d
                 WHERE d.type = $1
             `;
@@ -475,15 +503,7 @@ class DecisionsController {
 
             const decision = getResult.rows[0];
 
-            // Si on active cette décision, désactiver toutes les autres du même type
-            if (is_active === true) {
-                const deactivateQuery = `
-                    UPDATE decisions 
-                    SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                    WHERE type = $1 AND id != $2
-                `;
-                await db.query(deactivateQuery, [decision.type, id]);
-            }
+            // Les décisions restent toutes actives, on ne désactive plus les autres.
 
             // Mettre à jour la décision
             const updateQuery = `
@@ -555,14 +575,14 @@ class DecisionsController {
             console.log(`✅ Upload fichier pour décision ${id}: ${req.file.filename}`);
             console.log(`✅ Chemin complet multer: ${req.file.path}`);
             console.log(`✅ Chemin stocké en DB: ${newCheminDocument}`);
-            
+
             // Vérifier que le fichier existe réellement
             if (fsSync.existsSync(req.file.path)) {
                 console.log(`✅ Fichier confirmé présent sur le disque`);
             } else {
                 console.error(`❌ ERREUR: Fichier uploadé mais non trouvé sur le disque: ${req.file.path}`);
             }
-            
+
             const updateQuery = `
                 UPDATE decisions 
                 SET chemin_document = $1, updated_at = CURRENT_TIMESTAMP
@@ -622,7 +642,7 @@ class DecisionsController {
             // Dans le contrôleur, __dirname est 'backend/controllers', donc on remonte d'un niveau
             const baseDir = path.join(__dirname, '..');
             let filePath = path.join(baseDir, decision.chemin_document);
-            
+
             // Normaliser le chemin (supprimer les doubles slashes, etc.)
             filePath = path.normalize(filePath);
 
@@ -635,7 +655,7 @@ class DecisionsController {
             const decisionsDir = path.join(baseDir, 'uploads', 'decisions');
             console.log(`🔍 Répertoire decisions: ${decisionsDir}`);
             console.log(`🔍 Répertoire decisions existe: ${fsSync.existsSync(decisionsDir)}`);
-            
+
             if (fsSync.existsSync(decisionsDir)) {
                 // Lister les fichiers dans le répertoire pour déboguer
                 try {
@@ -649,12 +669,12 @@ class DecisionsController {
             // Vérifier que le fichier existe
             if (!fsSync.existsSync(filePath)) {
                 console.error(`❌ Fichier non trouvé à: ${filePath}`);
-                
+
                 // Essayer de trouver le fichier par son nom seulement dans le répertoire decisions
                 const fileName = path.basename(decision.chemin_document);
                 const alternativePath = path.join(decisionsDir, fileName);
                 console.log(`🔍 Essai avec nom de fichier seulement: ${alternativePath}`);
-                
+
                 if (fsSync.existsSync(alternativePath)) {
                     filePath = alternativePath;
                     console.log(`✅ Fichier trouvé avec nom seulement: ${filePath}`);

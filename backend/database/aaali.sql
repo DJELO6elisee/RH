@@ -103,15 +103,15 @@
 -- DELETE FROM utilisateurs
 -- WHERE username = '5461515';
 
-UPDATE utilisateurs
-SET 
-    is_active = TRUE, 
-    updated_at = CURRENT_TIMESTAMP
-WHERE username = 'DRHMINTEST01'; 
+-- UPDATE utilisateurs
+-- SET 
+--     is_active = TRUE, 
+--     updated_at = CURRENT_TIMESTAMP
+-- WHERE username = 'DRHMINTEST01'; 
 -- Ou utilisez : WHERE email = 'l_emal@agent.com';
 
-
-
+ALTER TABLE emplois ALTER COLUMN libele_court TYPE varchar(100);
+-- ALTER TABLE fonctions ALTER COLUMN libele TYPE VARCHAR(255);
 -- UPDATE agents
 -- SET date_de_naissance = '1970-03-09'
 -- WHERE date_de_naissance = '1965-04-09' AND id = 1910;

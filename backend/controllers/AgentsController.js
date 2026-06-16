@@ -9177,8 +9177,8 @@ class AgentsController extends BaseController {
                         n.date_signature,
                         TO_CHAR(fa.date_entree, 'YYYY-MM-DD') AS date_entree,
                         TO_CHAR(fa.date_entree, 'YYYY-MM-DD') AS date_debut,
-                        TO_CHAR(fa.date_sortie, 'YYYY-MM-DD') AS date_sortie,
-                        TO_CHAR(fa.date_sortie, 'YYYY-MM-DD') AS date_fin
+                        NULL AS date_sortie,
+                        NULL AS date_fin
                     FROM fonction_agents fa
                     LEFT JOIN fonctions f ON fa.id_fonction = f.id
                     LEFT JOIN nominations n ON fa.id_nomination = n.id
@@ -9209,7 +9209,7 @@ class AgentsController extends BaseController {
                         n.date_signature,
                         TO_CHAR(ea.date_entree, 'YYYY-MM-DD') AS date_entree,
                         TO_CHAR(ea.date_entree, 'YYYY-MM-DD') AS date_emploi,
-                        TO_CHAR(ea.date_sortie, 'YYYY-MM-DD') AS date_sortie
+                        NULL AS date_sortie
                     FROM emploi_agents ea
                     LEFT JOIN emplois e ON ea.id_emploi = e.id
                     LEFT JOIN nominations n ON ea.id_nomination = n.id

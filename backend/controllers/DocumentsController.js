@@ -907,6 +907,7 @@ class DocumentsController {
                     a.id as agent_id,
                     a.prenom as agent_prenom, a.nom as agent_nom, a.matricule, a.email, a.sexe,
                     a.fonction_actuelle, a.date_de_naissance, a.lieu_de_naissance,
+                    a.date_prise_service_au_ministere, a.date_prise_service_dans_la_direction, a.date_embauche,
                     a.id_direction, a.id_sous_direction, a.id_direction_generale,
                     a.id_ministere as id_ministere,
                     dg.libelle as direction_generale_nom,
@@ -994,6 +995,8 @@ class DocumentsController {
                 ministere_sigle: document.ministere_sigle,
                 date_prise_service_au_ministere: document.date_prise_service_au_ministere,
                 date_prise_service_dans_la_direction: document.date_prise_service_dans_la_direction,
+                date_prise_service: document.date_prise_service,
+                date_embauche: document.date_embauche,
                 id_direction: document.id_direction,
                 id_sous_direction: document.id_sous_direction,
                 id_ministere: document.id_ministere
@@ -1032,11 +1035,34 @@ class DocumentsController {
             } else if (document.type_document === 'attestation_presence') {
                 const AttestationPresenceTemplate = require('../services/AttestationPresenceTemplate');
                 htmlContent = await AttestationPresenceTemplate.generateHTML(demande, agent, validateur, document);
+            } else if (document.type_document === 'attestation_travail') {
+                const AttestationTravailTemplate = require('../services/AttestationTravailTemplate');
+                htmlContent = await AttestationTravailTemplate.generateHTML(demande, agent, validateur, document);
             } else if (document.type_document === 'note_de_service') {
                 const DocumentGenerationService = require('../services/DocumentGenerationService');
-                htmlContent = DocumentGenerationService.generateNoteDeServiceHTML(agent, validateur, {
+                htmlContent = await DocumentGenerationService.generateNoteDeServiceHTML(agent, validateur, {
                     date_generation: document.date_generation,
                     date_effet: document.date_generation
+                });
+            } else if (document.type_document === 'note_de_service_mutation') {
+                const DocumentGenerationService = require('../services/DocumentGenerationService');
+                let mutationOptions = {};
+                if (demande && demande.description && demande.description.startsWith('MUTATION_DATA:')) {
+                    try {
+                        const jsonStr = demande.description.replace('MUTATION_DATA:', '');
+                        mutationOptions = JSON.parse(jsonStr);
+                    } catch (e) {
+                        console.error('Erreur parsing MUTATION_DATA', e);
+                    }
+                }
+                htmlContent = await DocumentGenerationService.generateMutationHTML(demande, agent, validateur, {
+                    date_generation: document.date_generation,
+                    date_effet: mutationOptions.date_effet || document.date_generation,
+                    direction_destination: mutationOptions.direction_destination,
+                    direction_generale: mutationOptions.direction_generale,
+                    sous_direction: mutationOptions.sous_direction,
+                    retirer_service: mutationOptions.retirer_service,
+                    type_mutation: mutationOptions.type_mutation
                 });
             } else {
                 // Par défaut, utiliser le template d'autorisation d'absence

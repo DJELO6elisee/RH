@@ -57,6 +57,8 @@ const DecisionsPage = () => {
     const currentYear = new Date().getFullYear();
     const allowedYears = [currentYear, currentYear - 1, currentYear - 2];
     const [selectedYear, setSelectedYear] = useState(currentYear);
+    const [numeroActe, setNumeroActe] = useState('');
+    const [dateDecision, setDateDecision] = useState('');
 
     // Fonction pour charger les décisions depuis la base de données
     const fetchDecisions = async () => {
@@ -70,7 +72,12 @@ const DecisionsPage = () => {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/decisions`, {
+            let url = `${API_BASE_URL}/api/decisions`;
+            if (ministereId) {
+                url += `?id_ministere=${ministereId}`;
+            }
+
+            const response = await fetch(url, {
                 method: 'GET',
                 headers: headers
             });
@@ -250,6 +257,12 @@ const DecisionsPage = () => {
                     formData.append('id_direction', selectedDirectionForIndividuelle);
                 }
             }
+            if (numeroActe.trim()) {
+                formData.append('numero_acte', numeroActe.trim());
+            }
+            if (dateDecision) {
+                formData.append('date_decision', dateDecision);
+            }
 
             const token = localStorage.getItem('token');
             const headers = {};
@@ -281,6 +294,7 @@ const DecisionsPage = () => {
                 setSelectedDirecteur('');
                 setDirecteurs([]);
                 setSelectedYear(currentYear);
+                setNumeroActe('');
                 // Recharger les décisions
                 await fetchDecisions();
                 // Réinitialiser le type de décision après 2 secondes
@@ -308,6 +322,7 @@ const DecisionsPage = () => {
         setSelectedDirecteur('');
         setDirecteurs([]);
         setSelectedYear(currentYear);
+        setNumeroActe('');
         setError(null);
         setSuccess(null);
     };
@@ -467,6 +482,35 @@ const DecisionsPage = () => {
                                         </Input>
                                         <small className="form-text text-muted">
                                             Année utilisée pour générer le numéro de décision.
+                                        </small>
+                                    </FormGroup>
+                                </Col>
+                                <Col md="12" lg="8">
+                                    <FormGroup>
+                                        <Label for="numero_acte">Numéro d'acte (optionnel)</Label>
+                                        <Input
+                                            type="text"
+                                            id="numero_acte"
+                                            value={numeroActe}
+                                            onChange={(e) => setNumeroActe(e.target.value)}
+                                            placeholder="Ex: N° 123 MINTOUR/DRH/SDGP 2024"
+                                        />
+                                        <small className="form-text text-muted">
+                                            Laissez vide pour générer automatiquement le numéro.
+                                        </small>
+                                    </FormGroup>
+                                </Col>
+                                <Col md="12" lg="4">
+                                    <FormGroup>
+                                        <Label for="date_decision">Date de décision (optionnel)</Label>
+                                        <Input
+                                            type="date"
+                                            id="date_decision"
+                                            value={dateDecision}
+                                            onChange={(e) => setDateDecision(e.target.value)}
+                                        />
+                                        <small className="form-text text-muted">
+                                            Date associée à la décision. Laissez vide pour la date du jour.
                                         </small>
                                     </FormGroup>
                                 </Col>
@@ -729,6 +773,7 @@ const DecisionsPage = () => {
                                                     <tr>
                                                         <th style={{ width: '60px' }}>N°</th>
                                                         <th>Type</th>
+                                                        <th>Entité / Agent</th>
                                                         <th>Numéro d'acte</th>
                                                         <th>Date de décision</th>
                                                         <th>Document</th>
@@ -747,6 +792,29 @@ const DecisionsPage = () => {
                                                                 </span>
                                                             </td>
                                                             <td>
+                                                                {decision.type === 'collective' ? (
+                                                                    <span>
+                                                                        {decision.sous_direction_libelle || decision.direction_libelle || '-'}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span>
+                                                                        {decision.agent_prenom && decision.agent_nom ? (
+                                                                            <>
+                                                                                <strong>{decision.agent_prenom} {decision.agent_nom}</strong>
+                                                                                {decision.agent_role && <br/>}
+                                                                                {decision.agent_role && (
+                                                                                    <small className="text-muted">
+                                                                                        {decision.agent_role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                                                    </small>
+                                                                                )}
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-muted">-</span>
+                                                                        )}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td>
                                                                 {decision.numero_acte ? (
                                                                     <strong>{decision.numero_acte}</strong>
                                                                 ) : (
@@ -756,6 +824,7 @@ const DecisionsPage = () => {
                                                             <td>
                                                                 {decision.date_decision ? (
                                                                     new Date(decision.date_decision).toLocaleDateString('fr-FR', {
+                                                                        timeZone: 'UTC',
                                                                         year: 'numeric',
                                                                         month: 'long',
                                                                         day: 'numeric'

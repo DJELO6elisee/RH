@@ -25,6 +25,8 @@ import {
     PaginationLink
 } from 'reactstrap';
 import * as MdIcons from 'react-icons/md';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 import Page from '../components/Page';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -38,10 +40,12 @@ const {
     MdCancel: CancelIcon,
     MdSave: SaveIcon,
     MdRateReview: ReviewIcon,
-    MdRefresh: RefreshIcon
+    MdRefresh: RefreshIcon,
+    MdPrint: PrintIcon,
+    MdFileDownload: DownloadIcon
 } = MdIcons;
 
-const EvaluationsPage = () => {
+const EvaluationsPage = ({ isEmbedded = false, agentData = null }) => {
     const { user } = useAuth();
     const apiUrl = getApiUrl();
 
@@ -52,7 +56,40 @@ const EvaluationsPage = () => {
     const [success, setSuccess] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterAnnee, setFilterAnnee] = useState(new Date().getFullYear().toString());
-    
+
+    // Cascade hierarchy states
+    const [directionsGenerales, setDirectionsGenerales] = useState([]);
+    const [directions, setDirections] = useState([]);
+    const [sousDirections, setSousDirections] = useState([]);
+    const [services, setServices] = useState([]);
+
+    // Cascade filter selected values
+    const [filterDg, setFilterDg] = useState('');
+    const [filterDir, setFilterDir] = useState('');
+    const [filterSubDir, setFilterSubDir] = useState('');
+    const [filterService, setFilterService] = useState('');
+
+    // Whether filters are locked to user's own scope
+    const [scopeLocked, setScopeLocked] = useState(false);
+
+    // Normalize user role
+    const getNormalizedRole = () => {
+        if (!user) return '';
+        const roleCode = user.role_code;
+        if (roleCode && typeof roleCode === 'string' && roleCode.trim()) return roleCode.trim().toLowerCase();
+        const raw = (user.role ?? user.role_nom ?? '').toString().trim();
+        if (!raw) return '';
+        const r = raw.toLowerCase().replace(/\s+/g, '_');
+        if (r.includes('sous') && r.includes('directeur')) return 'sous_directeur';
+        if (r.includes('drh')) return 'drh';
+        if (r.includes('directeur') && r.includes('general')) return 'directeur_general';
+        if (r.includes('directeur') && r.includes('central')) return 'directeur_central';
+        if (r.includes('directeur')) return 'directeur';
+        return r;
+    };
+
+    const [exporting, setExporting] = useState(false);
+
     // Pagination states
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -64,12 +101,12 @@ const EvaluationsPage = () => {
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [isEdit, setIsEdit] = useState(false);
     const [selectedEvaluation, setSelectedEvaluation] = useState(null);
-    
+
     // Form & Agents states
     const [agents, setAgents] = useState([]);
     const [loadingAgents, setLoadingAgents] = useState(false);
     const [saving, setSaving] = useState(false);
-    
+
     const [formData, setFormData] = useState({
         id_agent: '',
         annee: new Date().getFullYear(),
@@ -90,11 +127,176 @@ const EvaluationsPage = () => {
     const currentYear = new Date().getFullYear();
     const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - i);
 
+    // Load dropdown filters
+    const loadDirectionsGenerales = async () => {
+        try {
+            let url = `${apiUrl}/api/directions-generales/select/all`;
+            const mId = user?.id_ministere || user?.organization?.id;
+            if (mId) {
+                url += `?id_ministere=${mId}`;
+            }
+            const res = await fetch(url, { headers: getAuthHeaders() });
+            if (res.ok) {
+                const result = await res.json();
+                if (result.success && Array.isArray(result.data)) {
+                    setDirectionsGenerales(result.data);
+                } else if (Array.isArray(result)) {
+                    setDirectionsGenerales(result);
+                }
+            }
+        } catch (err) {
+            console.error('Error loading DGs:', err);
+        }
+    };
+
+    const loadDirections = async (dgId) => {
+        try {
+            let url = `${apiUrl}/api/directions/select/all`;
+            const params = new URLSearchParams();
+            const mId = user?.id_ministere || user?.organization?.id;
+            if (mId) params.append('id_ministere', mId);
+            if (dgId) params.append('id_direction_generale', dgId);
+
+            url += `?${params.toString()}`;
+            const res = await fetch(url, { headers: getAuthHeaders() });
+            if (res.ok) {
+                const result = await res.json();
+                if (Array.isArray(result)) {
+                    setDirections(result.filter(item => item.type === 'direction' || !item.type));
+                }
+            }
+        } catch (err) {
+            console.error('Error loading directions:', err);
+        }
+    };
+
+    const loadSousDirections = async (dirId) => {
+        if (!dirId) {
+            setSousDirections([]);
+            return;
+        }
+        try {
+            let url = `${apiUrl}/api/sous-directions/select/all?direction_id=${dirId}`;
+            const res = await fetch(url, { headers: getAuthHeaders() });
+            if (res.ok) {
+                const result = await res.json();
+                if (Array.isArray(result)) {
+                    setSousDirections(result);
+                }
+            }
+        } catch (err) {
+            console.error('Error loading sous-directions:', err);
+        }
+    };
+
+    const loadServices = async (dirId, subDirId) => {
+        if (!dirId && !subDirId) {
+            setServices([]);
+            return;
+        }
+        try {
+            const params = new URLSearchParams();
+            if (dirId) params.append('direction_id', dirId);
+            if (subDirId) params.append('sous_direction_id', subDirId);
+
+            let url = `${apiUrl}/api/services/select/all?${params.toString()}`;
+            const res = await fetch(url, { headers: getAuthHeaders() });
+            if (res.ok) {
+                const result = await res.json();
+                if (Array.isArray(result)) {
+                    setServices(result);
+                }
+            }
+        } catch (err) {
+            console.error('Error loading services:', err);
+        }
+    };
+
+    // Pre-set filters based on user role/scope on mount
+    useEffect(() => {
+        if (!user) return;
+        const role = getNormalizedRole();
+        const isDrhOrAdmin = ['drh', 'super_admin', 'ministre', 'directeur_general', 'inspecteur_general', 'chef_cabinet', 'dir_cabinet'].includes(role);
+
+        if (isDrhOrAdmin) {
+            setScopeLocked(false);
+        } else if (role === 'sous_directeur') {
+            const sdId = agentData?.id_sous_direction ?? user.id_sous_direction ?? user.agent?.id_sous_direction ?? '';
+            const dirId = agentData?.id_direction ?? user.id_direction ?? user.agent?.id_direction ?? '';
+            if (sdId) {
+                setFilterDir(String(dirId));
+                setFilterSubDir(String(sdId));
+                setScopeLocked(true);
+            }
+        } else if (['directeur', 'directeur_central', 'directeur_service_exterieur', 'chef_service'].includes(role)) {
+            const dirId = agentData?.id_direction ?? user.id_direction ?? user.agent?.id_direction ?? '';
+            if (dirId) {
+                setFilterDir(String(dirId));
+                setScopeLocked(true);
+            }
+        }
+    }, [user?.id, agentData?.id_direction, agentData?.id_sous_direction]);
+
+    useEffect(() => {
+        if (user) {
+            loadDirectionsGenerales();
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (user) {
+            loadDirections(filterDg);
+        }
+    }, [user, filterDg]);
+
+    useEffect(() => {
+        if (user && filterDir) {
+            loadSousDirections(filterDir);
+        } else {
+            setSousDirections([]);
+        }
+    }, [user, filterDir]);
+
+    useEffect(() => {
+        if (user && (filterDir || filterSubDir)) {
+            loadServices(filterDir, filterSubDir);
+        } else {
+            setServices([]);
+        }
+    }, [user, filterDir, filterSubDir]);
+
+    const handleDgChange = (val) => {
+        setFilterDg(val);
+        setFilterDir('');
+        setFilterSubDir('');
+        setFilterService('');
+        setDirections([]);
+        setSousDirections([]);
+        setServices([]);
+        setCurrentPage(1);
+    };
+
+    const handleDirChange = (val) => {
+        setFilterDir(val);
+        setFilterSubDir('');
+        setFilterService('');
+        setSousDirections([]);
+        setServices([]);
+        setCurrentPage(1);
+    };
+
+    const handleSubDirChange = (val) => {
+        setFilterSubDir(val);
+        setFilterService('');
+        setServices([]);
+        setCurrentPage(1);
+    };
+
     useEffect(() => {
         if (user) {
             loadEvaluations();
         }
-    }, [user, currentPage, rowsPerPage, filterAnnee]);
+    }, [user, currentPage, rowsPerPage, filterAnnee, filterDg, filterDir, filterSubDir, filterService]);
 
     // Load evaluations from backend with query parameters
     const loadEvaluations = async () => {
@@ -105,7 +307,11 @@ const EvaluationsPage = () => {
                 page: currentPage,
                 limit: rowsPerPage,
                 ...(filterAnnee && { annee: filterAnnee }),
-                ...(searchTerm && { search: searchTerm })
+                ...(searchTerm && { search: searchTerm }),
+                ...(filterDg && { id_direction_generale: filterDg }),
+                ...(filterDir && { id_direction: filterDir }),
+                ...(filterSubDir && { id_sous_direction: filterSubDir }),
+                ...(filterService && { id_service: filterService })
             });
 
             const response = await fetch(`${apiUrl}/api/evaluations?${queryParams.toString()}`, {
@@ -135,12 +341,628 @@ const EvaluationsPage = () => {
         }
     };
 
+    const fetchFilteredAll = async () => {
+        try {
+            const queryParams = new URLSearchParams({
+                page: 1,
+                limit: 10000,
+                ...(filterAnnee && { annee: filterAnnee }),
+                ...(searchTerm && { search: searchTerm }),
+                ...(filterDg && { id_direction_generale: filterDg }),
+                ...(filterDir && { id_direction: filterDir }),
+                ...(filterSubDir && { id_sous_direction: filterSubDir }),
+                ...(filterService && { id_service: filterService })
+            });
+
+            const response = await fetch(`${apiUrl}/api/evaluations?${queryParams.toString()}`, {
+                headers: getAuthHeaders()
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    const data = result.data || [];
+
+                    // Sort hierarchically:
+                    // 1. Direction Générale (with/without DG handled: group DGs first, then standalone Directions)
+                    // 2. Direction
+                    // 3. Sous-Direction
+                    // 4. Service
+                    // 5. Agent Nom & Prénoms
+                    data.sort((a, b) => {
+                        const dgA = a.direction_generale_libelle || '';
+                        const dgB = b.direction_generale_libelle || '';
+
+                        if (dgA && dgB) {
+                            if (dgA !== dgB) return dgA.localeCompare(dgB);
+                        } else if (dgA) {
+                            return -1; // Group DGs first
+                        } else if (dgB) {
+                            return 1;
+                        }
+
+                        const dirA = a.direction_libelle || '';
+                        const dirB = b.direction_libelle || '';
+                        if (dirA !== dirB) return dirA.localeCompare(dirB);
+
+                        const sdA = a.sous_direction_libelle || '';
+                        const sdB = b.sous_direction_libelle || '';
+                        if (sdA !== sdB) return sdA.localeCompare(sdB);
+
+                        const svA = a.service_libelle || '';
+                        const svB = b.service_libelle || '';
+                        if (svA !== svB) return svA.localeCompare(svB);
+
+                        const nomA = a.agent_nom || '';
+                        const nomB = b.agent_nom || '';
+                        if (nomA !== nomB) return nomA.localeCompare(nomB);
+
+                        return (a.agent_prenom || '').localeCompare(b.agent_prenom || '');
+                    });
+
+                    return data;
+                }
+            }
+            return [];
+        } catch (err) {
+            console.error('Error fetching all filtered evaluations:', err);
+            return [];
+        }
+    };
+
+    const handleExportExcel = async () => {
+        setExporting(true);
+        try {
+            const allData = await fetchFilteredAll();
+            if (allData.length === 0) {
+                alert('Aucune donnée à exporter');
+                return;
+            }
+
+            // Group sorted data by structure path
+            const groups = [];
+            let currentGroup = null;
+            allData.forEach(ev => {
+                const path = [
+                    ev.direction_generale_libelle,
+                    ev.direction_libelle,
+                    ev.sous_direction_libelle,
+                    ev.service_libelle
+                ].filter(Boolean).join(' > ') || 'Sans Structure';
+
+                if (!currentGroup || currentGroup.path !== path) {
+                    currentGroup = {
+                        path: path,
+                        agents: []
+                    };
+                    groups.push(currentGroup);
+                }
+                currentGroup.agents.push(ev);
+            });
+
+            const headers = [
+                'Matricule',
+                'Nom',
+                'Prénom',
+                'Année',
+                'Assiduité /5',
+                'Initiative /3',
+                'Équipe /3',
+                'Rendement /5',
+                'Discipline /4',
+                'Note Finale /20',
+                'Commentaire Général'
+            ];
+
+            const sheetRows = [];
+            sheetRows.push(['Rapport des Évaluations des Agents']);
+            const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            sheetRows.push([`Date de génération : ${todayFormatted}`]);
+            sheetRows.push([]); // blank spacer row
+            sheetRows.push(headers);
+
+            groups.forEach(group => {
+                // Add empty row for spacing if not the first group
+                if (sheetRows.length > 1) {
+                    sheetRows.push([]);
+                }
+
+                // Add structure header row
+                const structureName = group.agents[0] ? (
+                    group.agents[0].service_libelle ||
+                    group.agents[0].sous_direction_libelle ||
+                    group.agents[0].direction_libelle ||
+                    group.agents[0].direction_generale_libelle ||
+                    'Sans Structure'
+                ) : 'Sans Structure';
+                sheetRows.push([structureName]);
+
+                // Add agents under this structure
+                group.agents.forEach(ev => {
+                    sheetRows.push([
+                        ev.agent_matricule || '',
+                        ev.agent_nom || '',
+                        ev.agent_prenom || '',
+                        ev.annee || '',
+                        ev.id ? ev.note_assiduite : 'Non évalué',
+                        ev.id ? ev.note_initiative : 'Non évalué',
+                        ev.id ? ev.note_equipe : 'Non évalué',
+                        ev.id ? ev.note_rendement : 'Non évalué',
+                        ev.id ? ev.note_discipline : 'Non évalué',
+                        ev.id ? ev.note_finale : 'Non évalué',
+                        ev.comment_general || ''
+                    ]);
+                });
+
+                // Add total count row
+                sheetRows.push([`Total de la structure : ${group.agents.length} agent(s)`]);
+            });
+
+            const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+            worksheet['!cols'] = [
+                { wch: 15 }, // Matricule
+                { wch: 25 }, // Nom
+                { wch: 30 }, // Prénom
+                { wch: 10 }, // Année
+                { wch: 15 }, // Assiduité /5
+                { wch: 15 }, // Initiative /3
+                { wch: 15 }, // Équipe /3
+                { wch: 15 }, // Rendement /5
+                { wch: 15 }, // Discipline /4
+                { wch: 18 }, // Note Finale /20
+                { wch: 45 }  // Commentaire Général
+            ];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Evaluations');
+
+            const today = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `Evaluations_${today}.xlsx`);
+        } catch (err) {
+            console.error('Error exporting Excel:', err);
+            alert('Erreur lors de l\'export Excel');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const handlePrint = async () => {
+        setExporting(true);
+        try {
+            const allData = await fetchFilteredAll();
+            if (allData.length === 0) {
+                alert('Aucune donnée à imprimer');
+                return;
+            }
+
+            // Group sorted data by structure path
+            const groups = [];
+            let currentGroup = null;
+            allData.forEach(ev => {
+                const path = [
+                    ev.direction_generale_libelle,
+                    ev.direction_libelle,
+                    ev.sous_direction_libelle,
+                    ev.service_libelle
+                ].filter(Boolean).join(' > ') || 'Sans Structure';
+
+                if (!currentGroup || currentGroup.path !== path) {
+                    currentGroup = {
+                        path: path,
+                        agents: []
+                    };
+                    groups.push(currentGroup);
+                }
+                currentGroup.agents.push(ev);
+            });
+
+            const printWindow = window.open('', '_blank');
+            const today = new Date().toLocaleDateString('fr-FR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const tablesHTML = groups.map(group => {
+                const tableRowsHTML = group.agents.map(ev => {
+                    const isEvaluated = ev.id !== null && ev.id !== undefined;
+                    const noteStr = isEvaluated ? `${ev.note_finale} / 20` : 'Non évalué';
+                    const statusStr = isEvaluated ? 'Évalué' : 'Non évalué';
+
+                    return `
+                        <tr>
+                            <td>${ev.agent_matricule || '-'}</td>
+                            <td><strong>${ev.agent_nom || ''}</strong> ${ev.agent_prenom || ''}</td>
+                            <td>${ev.annee}</td>
+                            <td style="text-align: center; font-weight: bold; color: ${isEvaluated ? '#28a745' : '#6c757d'}">${noteStr}</td>
+                            <td>${statusStr}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                const structureName = group.agents[0] ? (
+                    group.agents[0].service_libelle ||
+                    group.agents[0].sous_direction_libelle ||
+                    group.agents[0].direction_libelle ||
+                    group.agents[0].direction_generale_libelle ||
+                    'Sans Structure'
+                ) : 'Sans Structure';
+
+                return `
+                    <div class="structure-section" style="margin-top: 35px; page-break-inside: avoid;">
+                        <div class="structure-title" style="font-size: 15px; font-weight: bold; background-color: #f5f5f5; padding: 8px 12px; border: 1px solid #ddd; border-bottom: none; border-left: 4px solid #007bff; color: #333;">
+                            Structure : ${structureName}
+                        </div>
+                        <table style="margin-top: 0; width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">Matricule</th>
+                                    <th style="width: 45%;">Nom & Prénoms</th>
+                                    <th style="width: 10%;">Année</th>
+                                    <th style="width: 15%; text-align: center;">Note Finale</th>
+                                    <th style="width: 15%;">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRowsHTML}
+                                <tr class="total-row" style="font-weight: bold; background-color: #fafafa;">
+                                    <td colspan="3" style="text-align: right; border-top: 2px solid #ddd;">Total de la structure :</td>
+                                    <td colspan="2" style="text-align: left; border-top: 2px solid #ddd; padding-left: 15px; color: #007bff;">${group.agents.length} agent(s)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Rapport d'évaluation par structure</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+                        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #f2f2f2; font-weight: bold; }
+                        h1 { color: #333; text-align: center; margin-bottom: 5px; }
+                        .subtitle { color: #666; font-size: 14px; margin-bottom: 20px; text-align: center; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                            .structure-section { page-break-inside: avoid; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div style="text-align: right; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 10px;">
+                        Généré le ${today}
+                    </div>
+                    <h1>Rapport des Évaluations des Agents</h1>
+                    <div class="subtitle">
+                        <strong>${allData.length} agent(s) listés au total</strong>
+                    </div>
+                    ${tablesHTML}
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            printWindow.onload = () => {
+                printWindow.print();
+            };
+        } catch (err) {
+            console.error('Error printing evaluations:', err);
+            alert('Erreur lors de l\'impression');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const handlePrintSingle = (ev) => {
+        if (!ev) return;
+
+        const printWindow = window.open('', '_blank');
+        const today = new Date().toLocaleDateString('fr-FR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        const formattedDate = ev.created_at
+            ? new Date(ev.created_at).toLocaleString('fr-FR')
+            : '-';
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Fiche d'Évaluation - ${ev.agent_nom || ''} ${ev.agent_prenom || ''}</title>
+                <style>
+                    body {
+                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                        margin: 20px;
+                        color: #333;
+                        line-height: 1.4;
+                        font-size: 13px;
+                    }
+                    .print-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        width: 100%;
+                        margin-bottom: 15px;
+                        padding-bottom: 5px;
+                    }
+                    .header-left, .header-right {
+                        width: 40%;
+                        text-align: center;
+                    }
+                    .header-center {
+                        width: 20%;
+                        text-align: center;
+                    }
+                    .header-center img {
+                        height: 55px;
+                        max-width: 100%;
+                        object-fit: contain;
+                    }
+                    .header-left .main-title, .header-right .main-title {
+                        font-size: 11px;
+                        font-weight: bold;
+                        color: #000;
+                    }
+                    .header-left .sub-title {
+                        font-size: 9px;
+                        font-weight: bold;
+                        line-height: 1.2;
+                        color: #000;
+                    }
+                    .header-right .motto {
+                        font-size: 10px;
+                        font-style: italic;
+                        color: #000;
+                    }
+                    .dashed-line {
+                        border-bottom: 1px dashed #000;
+                        width: 60%;
+                        margin: 3px auto;
+                    }
+                    .header-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 15px;
+                    }
+                    .header-table td {
+                        border: none;
+                        padding: 4px 0;
+                        vertical-align: top;
+                    }
+                    .title {
+                        text-align: center;
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: #0d6efd;
+                        margin-bottom: 15px;
+                        padding-bottom: 5px;
+                        border-bottom: 2px solid #0d6efd;
+                        text-transform: uppercase;
+                    }
+                    .section-title {
+                        font-size: 15px;
+                        font-weight: bold;
+                        color: #333;
+                        margin-top: 15px;
+                        margin-bottom: 8px;
+                        border-bottom: 1px solid #ddd;
+                        padding-bottom: 3px;
+                    }
+                    .info-label {
+                        color: #666;
+                        font-size: 12px;
+                        font-weight: bold;
+                    }
+                    .info-value {
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    .badge {
+                        background-color: #dc3545;
+                        color: white;
+                        padding: 3px 8px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        font-weight: bold;
+                        display: inline-block;
+                        margin-top: 2px;
+                    }
+                    table.criteria-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 15px;
+                        margin-top: 5px;
+                    }
+                    table.criteria-table th, table.criteria-table td {
+                        border: 1px solid #dee2e6;
+                        padding: 6px 10px;
+                        text-align: left;
+                    }
+                    table.criteria-table th {
+                        background-color: #f8f9fa;
+                        font-weight: bold;
+                        color: #495057;
+                    }
+                    table.criteria-table td.center, table.criteria-table th.center {
+                        text-align: center;
+                    }
+                    table.criteria-table tr.total-row {
+                        background-color: #e9ecef;
+                        font-weight: bold;
+                    }
+                    .comment-box {
+                        background-color: #f8f9fa;
+                        border: 1px solid #dee2e6;
+                        border-radius: 4px;
+                        padding: 8px 12px;
+                        margin-top: 5px;
+                        min-height: 40px;
+                        white-space: pre-wrap;
+                    }
+                    .footer-note {
+                        margin-top: 20px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #777;
+                        border-top: 1px dashed #ccc;
+                        padding-top: 8px;
+                    }
+                    @media print {
+                        body {
+                            margin: 10px;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <div style="text-align: right; font-size: 11px; color: #777; margin-bottom: 5px;">
+                    Imprimé le ${today}
+                </div>
+                
+                <div class="print-header">
+                    <div class="header-left">
+                        <div class="main-title">MINISTERE DU TOURISME ET DES LOISIRS</div>
+                        <div class="dashed-line"></div>
+                        <div class="sub-title">DIRECTION DES RESSOURCES<br>HUMAINES</div>
+                        <div class="dashed-line"></div>
+                    </div>
+                    <div class="header-center">
+                        <img src="${window.location.origin}/img/voir.jpg" alt="Logo" onerror="this.src='${window.location.origin}/img/voir.jpg'" />
+                    </div>
+                    <div class="header-right">
+                        <div class="main-title">REPUBLIQUE DE COTE D'IVOIRE</div>
+                        <div class="motto">Union-Discipline-Travail</div>
+                        <div class="dashed-line"></div>
+                    </div>
+                </div>
+                
+                <div class="title">Fiche d'Évaluation Individuelle</div>
+                
+                <table class="header-table">
+                    <tr>
+                        <td style="width: 50%;">
+                            <span class="info-label">Agent :</span><br>
+                            <span class="info-value" style="font-size: 16px;">${ev.agent_nom || ''} ${ev.agent_prenom || ''}</span>
+                        </td>
+                        <td style="width: 50%;">
+                            <span class="info-label">Année de l'évaluation :</span><br>
+                            <span class="badge">${ev.annee || ''}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span class="info-label">Matricule :</span><br>
+                            <span class="info-value">${ev.agent_matricule || '-'}</span>
+                        </td>
+                        <td>
+                            <span class="info-label">Date d'enregistrement :</span><br>
+                            <span class="info-value">${formattedDate}</span>
+                        </td>
+                    </tr>
+                </table>
+
+                <div class="section-title">Critères d'évaluation détaillés</div>
+                
+                <table class="criteria-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">Critère</th>
+                            <th class="center" style="width: 15%;">Note Max</th>
+                            <th class="center" style="width: 15%;">Note Obtenue</th>
+                            <th style="width: 35%;">Commentaire associé</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>1. Assiduité</strong></td>
+                            <td class="center">5</td>
+                            <td class="center"><strong>${ev.note_assiduite}</strong></td>
+                            <td>${ev.comment_assiduite || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>2. Esprit d’initiative</strong></td>
+                            <td class="center">3</td>
+                            <td class="center"><strong>${ev.note_initiative}</strong></td>
+                            <td>${ev.comment_initiative || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>3. Esprit d’équipe</strong></td>
+                            <td class="center">3</td>
+                            <td class="center"><strong>${ev.note_equipe}</strong></td>
+                            <td>${ev.comment_equipe || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>4. Rendement</strong></td>
+                            <td class="center">5</td>
+                            <td class="center"><strong>${ev.note_rendement}</strong></td>
+                            <td>${ev.comment_rendement || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>5. Discipline</strong></td>
+                            <td class="center">4</td>
+                            <td class="center"><strong>${ev.note_discipline}</strong></td>
+                            <td>${ev.comment_discipline || '-'}</td>
+                        </tr>
+                        <tr class="total-row">
+                            <td>NOTE FINALE</td>
+                            <td class="center">20</td>
+                            <td class="center" style="color: #0d6efd; font-size: 16px;"><strong>${ev.note_finale}</strong></td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="section-title">Commentaire général de synthèse</div>
+                <div class="comment-box">${ev.comment_general || 'Aucun commentaire général n\'a été fourni.'}</div>
+
+                <table style="width: 100%; margin-top: 25px; border-collapse: collapse;">
+                    <tr>
+                        <td style="width: 50%; text-align: center; border: none; padding: 0;">
+                            <span style="font-weight: bold; text-decoration: underline;">Signature de l'évaluateur</span>
+                            <br><br><br>
+                        </td>
+                        <td style="width: 50%; text-align: center; border: none; padding: 0;">
+                            <span style="font-weight: bold; text-decoration: underline;">Signature de l'agent</span>
+                            <br><br><br>
+                        </td>
+                    </tr>
+                </table>
+
+                <div class="footer-note">
+                    Document officiel généré par le Système de Gestion des Ressources Humaines
+                </div>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.onload = () => {
+            printWindow.print();
+        };
+    };
+
     // Load active agents for dropdown select
     const loadAgents = async () => {
         setLoadingAgents(true);
         try {
             let url = `${apiUrl}/api/agents?limit=1000&retire=false`;
-            
+
             // Filter by user's organization/ministry
             if (user?.id_ministere || user?.organization?.id) {
                 const ministereId = user.id_ministere || user.organization.id;
@@ -250,7 +1072,7 @@ const EvaluationsPage = () => {
     // Form inputs change handler
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        
+
         // Notes bounds clamping or validating
         if (name.startsWith('note_')) {
             let numVal = value === '' ? '' : parseFloat(value);
@@ -315,10 +1137,10 @@ const EvaluationsPage = () => {
         setSaving(true);
         setError(null);
         try {
-            const url = isEdit 
+            const url = isEdit
                 ? `${apiUrl}/api/evaluations/${selectedEvaluation.id}`
                 : `${apiUrl}/api/evaluations`;
-            
+
             const method = isEdit ? 'PUT' : 'POST';
 
             const response = await fetch(url, {
@@ -372,8 +1194,8 @@ const EvaluationsPage = () => {
         { name: 'Évaluation des agents', active: true }
     ];
 
-    return (
-        <Page title="Évaluations des agents" breadcrumbs={breadcrumbs}>
+    const content = (
+        <div className={isEmbedded ? "mt-3" : ""}>
             <Row>
                 <Col>
                     <Card className="shadow border-0">
@@ -391,7 +1213,7 @@ const EvaluationsPage = () => {
                                     {error}
                                 </Alert>
                             )}
-                            
+
                             {success && (
                                 <Alert color="success" className="mb-3" toggle={() => setSuccess(null)}>
                                     {success}
@@ -430,11 +1252,75 @@ const EvaluationsPage = () => {
                                         ))}
                                     </Input>
                                 </Col>
-                                <Col md="5" className="d-flex justify-content-md-end gap-2">
+                                <Col md="5" className="d-flex justify-content-md-end gap-2 align-items-center flex-wrap">
+                                    <Button color="success" onClick={handleExportExcel} disabled={loading || exporting} className="d-flex align-items-center text-white">
+                                        <DownloadIcon className="me-1" style={{ marginRight: '5px' }} />
+                                        Excel
+                                    </Button>
+                                    <Button color="info" onClick={handlePrint} disabled={loading || exporting} className="d-flex align-items-center text-white">
+                                        <PrintIcon className="me-1" style={{ marginRight: '5px' }} />
+                                        Imprimer
+                                    </Button>
                                     <Button color="secondary" onClick={loadEvaluations} disabled={loading} className="d-flex align-items-center">
                                         <RefreshIcon className="me-1" style={{ marginRight: '5px' }} />
                                         Actualiser
                                     </Button>
+                                </Col>
+                            </Row>
+
+                            {/* Cascading Hierarchy Filters */}
+                            <Row className="mb-4">
+                                <Col md="3" className="mb-2 mb-md-0">
+                                    <Input
+                                        type="select"
+                                        value={filterDg}
+                                        onChange={(e) => handleDgChange(e.target.value)}
+                                        disabled={scopeLocked}
+                                    >
+                                        <option value="">Toutes les DG</option>
+                                        {directionsGenerales.map(dg => (
+                                            <option key={dg.id} value={dg.id}>{dg.libelle}</option>
+                                        ))}
+                                    </Input>
+                                </Col>
+                                <Col md="3" className="mb-2 mb-md-0">
+                                    <Input
+                                        type="select"
+                                        value={filterDir}
+                                        onChange={(e) => handleDirChange(e.target.value)}
+                                        disabled={scopeLocked}
+                                    >
+                                        <option value="">Toutes les directions</option>
+                                        {directions.map(dir => (
+                                            <option key={dir.id} value={dir.id}>{dir.libelle}</option>
+                                        ))}
+                                    </Input>
+                                </Col>
+                                <Col md="3" className="mb-2 mb-md-0">
+                                    <Input
+                                        type="select"
+                                        value={filterSubDir}
+                                        onChange={(e) => handleSubDirChange(e.target.value)}
+                                        disabled={!filterDir || scopeLocked}
+                                    >
+                                        <option value="">Toutes les sous-directions</option>
+                                        {sousDirections.map(sd => (
+                                            <option key={sd.id} value={sd.id}>{sd.libelle}</option>
+                                        ))}
+                                    </Input>
+                                </Col>
+                                <Col md="3" className="mb-2 mb-md-0">
+                                    <Input
+                                        type="select"
+                                        value={filterService}
+                                        onChange={(e) => setFilterService(e.target.value)}
+                                        disabled={!filterDir}
+                                    >
+                                        <option value="">Tous les services</option>
+                                        {services.map(srv => (
+                                            <option key={srv.id} value={srv.id}>{srv.libelle}</option>
+                                        ))}
+                                    </Input>
                                 </Col>
                             </Row>
 
@@ -468,7 +1354,22 @@ const EvaluationsPage = () => {
                                                     return (
                                                         <tr key={evalObj.id_agent}>
                                                             <td>
-                                                                <strong>{evalObj.agent_nom}</strong> {evalObj.agent_prenom}
+                                                                <div>
+                                                                    <strong>{evalObj.agent_nom}</strong> {evalObj.agent_prenom}
+                                                                </div>
+                                                                {(() => {
+                                                                    const hierarchyPath = [
+                                                                        evalObj.direction_generale_libelle,
+                                                                        evalObj.direction_libelle,
+                                                                        evalObj.sous_direction_libelle,
+                                                                        evalObj.service_libelle
+                                                                    ].filter(Boolean).join(' > ');
+                                                                    return hierarchyPath ? (
+                                                                        <div className="text-muted small" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                                                                            {hierarchyPath}
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
                                                             </td>
                                                             <td>{evalObj.agent_matricule || '-'}</td>
                                                             <td className="text-center">
@@ -509,15 +1410,6 @@ const EvaluationsPage = () => {
                                                                             >
                                                                                 <EditIcon size={14} className="me-1" style={{ marginRight: '2px' }} />
                                                                                 Modifier
-                                                                            </Button>
-                                                                            <Button
-                                                                                color="danger"
-                                                                                size="sm"
-                                                                                className="d-flex align-items-center"
-                                                                                onClick={() => handleDelete(evalObj.id)}
-                                                                            >
-                                                                                <DeleteIcon size={14} className="me-1" style={{ marginRight: '2px' }} />
-                                                                                Supprimer
                                                                             </Button>
                                                                         </>
                                                                     ) : (
@@ -794,7 +1686,7 @@ const EvaluationsPage = () => {
                             <Row className="align-items-center">
                                 <Col md="4">
                                     <FormGroup className="mb-md-0">
-                                        <Label for="note_discipline" className="fw-bold mb-1">5. La discipline (Note sur 4)</Label>
+                                        <Label for="note_discipline" className="fw-bold mb-1">5. Discipline (Note sur 4)</Label>
                                         <Input
                                             type="number"
                                             name="note_discipline"
@@ -898,7 +1790,7 @@ const EvaluationsPage = () => {
                             </Row>
 
                             <h5 className="text-secondary mb-3">Critères d'évaluation détaillés</h5>
-                            
+
                             <Table bordered striped responsive className="mb-4">
                                 <thead className="table-light">
                                     <tr>
@@ -934,7 +1826,7 @@ const EvaluationsPage = () => {
                                         <td>{selectedEvaluation.comment_rendement || <span className="text-muted italic small">Aucun commentaire</span>}</td>
                                     </tr>
                                     <tr>
-                                        <td><strong>5. La discipline</strong></td>
+                                        <td><strong>5. Discipline</strong></td>
                                         <td className="text-center">4</td>
                                         <td className="text-center fw-bold">{selectedEvaluation.note_discipline}</td>
                                         <td>{selectedEvaluation.comment_discipline || <span className="text-muted italic small">Aucun commentaire</span>}</td>
@@ -943,7 +1835,7 @@ const EvaluationsPage = () => {
                                         <td><strong>NOTE FINALE</strong></td>
                                         <td className="text-center"><strong>20</strong></td>
                                         <td className="text-center text-primary h5 mb-0"><strong>{selectedEvaluation.note_finale}</strong></td>
-                                        <td><strong className="text-uppercase text-secondary">Cumul des notes</strong></td>
+                                        <td></td>
                                     </tr>
                                 </tbody>
                             </Table>
@@ -960,11 +1852,25 @@ const EvaluationsPage = () => {
                     )}
                 </ModalBody>
                 <ModalFooter>
+                    <Button color="info" className="text-white d-flex align-items-center me-auto" onClick={() => handlePrintSingle(selectedEvaluation)}>
+                        <PrintIcon className="me-1" style={{ marginRight: '5px' }} />
+                        Imprimer
+                    </Button>
                     <Button color="secondary" onClick={() => setViewModalOpen(false)}>
                         Fermer
                     </Button>
                 </ModalFooter>
             </Modal>
+        </div>
+    );
+
+    if (isEmbedded) {
+        return content;
+    }
+
+    return (
+        <Page title="Évaluations des agents" breadcrumbs={breadcrumbs}>
+            {content}
         </Page>
     );
 };

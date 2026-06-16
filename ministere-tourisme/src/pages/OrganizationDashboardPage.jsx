@@ -762,6 +762,9 @@ const OrganizationDashboardPage = () => {
                             const totalAgents = Object.values(sousDirection.services).reduce(
                               (sum, service) => sum + service.agents.length, 0
                             );
+                            const totalRetards = Object.values(sousDirection.services).reduce(
+                              (sum, service) => sum + service.agents.filter(a => a.en_retard_reprise).length, 0
+                            );
                             return (
                               <div key={sdIndex} className="mb-2" style={{ fontSize: '0.9rem' }}>
                                 <div style={{ color: '#495057', fontWeight: '600' }}>
@@ -769,6 +772,11 @@ const OrganizationDashboardPage = () => {
                                 </div>
                                 <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
                                   {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                  {totalRetards > 0 && (
+                                    <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: '5px' }}>
+                                      (dont {totalRetards} en retard de reprise)
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -1025,7 +1033,7 @@ const OrganizationDashboardPage = () => {
                               </thead>
                               <tbody>
                                 {service.agents.map((agent, agentIndex) => (
-                                  <tr key={agentIndex}>
+                                  <tr key={agentIndex} style={agent.en_retard_reprise ? { backgroundColor: '#fff5f5' } : {}}>
                                     <td>{agent.matricule || '-'}</td>
                                     <td>{agent.nom || '-'}</td>
                                     <td>{agent.prenom || '-'}</td>
@@ -1035,9 +1043,14 @@ const OrganizationDashboardPage = () => {
                                       </Badge>
                                     </td>
                                     <td>
-                                      <Badge color={agent.date_fin && new Date(agent.date_fin) < new Date() ? 'secondary' : 'primary'}>
+                                      <Badge color={agent.en_retard_reprise ? 'danger' : 'primary'}>
                                         {agent.date_fin ? new Date(agent.date_fin).toLocaleDateString('fr-FR') : 'En cours'}
                                       </Badge>
+                                      {agent.en_retard_reprise && (
+                                        <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: '2px', fontWeight: 'bold' }}>
+                                          En retard de reprise
+                                        </div>
+                                      )}
                                     </td>
                                     <td>
                                       <Badge color="dark">

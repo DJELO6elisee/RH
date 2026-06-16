@@ -35,6 +35,10 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
         date_from: '',
         date_to: ''
     });
+    // Nouveaux filtres frontend
+    const [agentFilter, setAgentFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
+
     const [isMobile, setIsMobile] = useState(() => {
         if (typeof window === 'undefined') {
             return false;
@@ -93,9 +97,9 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                 }
             });
 
-            // Si includeCertificatPriseService est true, ne pas filtrer par type_demande pour inclure tous les documents
+            // Si includeCertificatPriseService est true, ou si typeDemande est 'tous', ne pas filtrer par type_demande pour inclure tous les documents
             // Sinon, utiliser le filtre type_demande normal
-            if (!includeCertificatPriseService) {
+            if (!includeCertificatPriseService && typeDemande !== 'tous') {
                 queryParams.append('type_demande', typeDemande);
             }
             // Note: Si includeCertificatPriseService est true, on ne filtre pas pour récupérer tous les documents générés
@@ -407,11 +411,31 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
         return 'N/A';
     };
 
+    // Application des filtres frontend (Agent et Type)
+    const filteredDocuments = documents.filter(doc => {
+        let match = true;
+        if (agentFilter) {
+            const searchStr = agentFilter.toLowerCase();
+            const fullName = `${doc.agent_prenom || ''} ${doc.agent_nom || ''}`.toLowerCase();
+            const matricule = (doc.agent_matricule || '').toLowerCase();
+            if (!fullName.includes(searchStr) && !matricule.includes(searchStr)) {
+                match = false;
+            }
+        }
+        if (typeFilter && typeFilter !== '') {
+            const docType = (doc.type_document || doc.type_demande || '').toLowerCase();
+            if (docType !== typeFilter) {
+                match = false;
+            }
+        }
+        return match;
+    });
+
     // Pagination
-    const totalPages = Math.ceil(documents.length / itemsPerPage);
+    const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    const currentDocuments = documents.slice(startIndex, endIndex);
+    const currentDocuments = filteredDocuments.slice(startIndex, endIndex);
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
@@ -464,8 +488,42 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                 </CardHeader>
                 <CardBody>
                     {/* Filtres */}
-                    <Row className="mb-3">
-                        <Col xs="12" md={3} className="mb-2 mb-md-0">
+                    <Row className="mb-3 g-2">
+                        <Col xs="12" md="4" lg="3">
+                            <Input
+                                type="text"
+                                placeholder="Rechercher un agent (Nom ou Matricule)..."
+                                value={agentFilter}
+                                onChange={(e) => {
+                                    setAgentFilter(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                            />
+                        </Col>
+                        {(!typeDemande || typeDemande === 'tous' || includeCertificatPriseService) && (
+                            <Col xs="12" md="4" lg="2">
+                                <Input
+                                    type="select"
+                                    value={typeFilter}
+                                    onChange={(e) => {
+                                        setTypeFilter(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                >
+                                    <option value="">Tous les types</option>
+                                    <option value="absence">Autorisation d'Absence</option>
+                                    <option value="certificat_reprise_service">Certificat de Reprise</option>
+                                    <option value="sortie_territoire">Sortie du Territoire</option>
+                                    <option value="attestation_presence">Attestation de Présence</option>
+                                    <option value="attestation_travail">Attestation de Travail</option>
+                                    <option value="certificat_cessation">Certificat de Cessation</option>
+                                    <option value="certificat_non_jouissance_conge">Certificat Non Jouissance</option>
+                                    <option value="autorisation_retraite">Autorisation Retraite</option>
+                                    <option value="mutation">Note de Mutation</option>
+                                </Input>
+                            </Col>
+                        )}
+                        <Col xs="12" md="4" lg={(!typeDemande || typeDemande === 'tous' || includeCertificatPriseService) ? 2 : 3}>
                             <Input
                                 type="select"
                                 value={filters.statut}
@@ -479,7 +537,7 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                                 <option value="approuve">Approuvé</option>
                             </Input>
                         </Col>
-                        <Col xs="12" md={3} className="mb-2 mb-md-0">
+                        <Col xs="12" md="6" lg="2">
                             <Input
                                 type="date"
                                 value={filters.date_from}
@@ -487,7 +545,7 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                                 placeholder="Date de début"
                             />
                         </Col>
-                        <Col xs="12" md={3} className="mb-2 mb-md-0">
+                        <Col xs="12" md="6" lg="2">
                             <Input
                                 type="date"
                                 value={filters.date_to}
@@ -495,8 +553,8 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                                 placeholder="Date de fin"
                             />
                         </Col>
-                        <Col xs="12" md={3}>
-                            <Button color="primary" onClick={loadDocuments} className="w-100 w-md-auto">
+                        <Col xs="12" lg="1" className="d-flex align-items-end">
+                            <Button color="primary" onClick={loadDocuments} className="w-100 mt-2 mt-lg-0">
                                 Filtrer
                             </Button>
                         </Col>

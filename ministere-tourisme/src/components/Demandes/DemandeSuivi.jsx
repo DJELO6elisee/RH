@@ -311,7 +311,7 @@ const DemandeSuivi = ({ agentId, onDemandeClick }) => {
 
                 const token = localStorage.getItem('token');
                 const queryParams = new URLSearchParams();
-                
+
                 Object.keys(filters).forEach(key => {
                     if (filters[key] !== '') {
                         queryParams.append(key, filters[key]);
@@ -320,7 +320,7 @@ const DemandeSuivi = ({ agentId, onDemandeClick }) => {
 
                 const queryString = queryParams.toString();
                 const url = `/api/demandes/suivi/${agentId}${queryString ? `?${queryString}` : ''}`;
-                
+
                 const response = await fetchWithBaseFallback(url, {
                     headers: {
                         'Content-Type': 'application/json',
@@ -529,98 +529,98 @@ const DemandeSuivi = ({ agentId, onDemandeClick }) => {
                                 </thead>
                                 <tbody>
                                     {getPaginatedDemandes().map((demande) => {
-                                    const typeKey = sanitizeKey(demande.type_demande);
-                                    const prioriteKey = sanitizeKey(demande.priorite, 'normale') || 'normale';
-                                    const statusKey = sanitizeKey(demande.status || demande.statut, 'en_attente') || 'en_attente';
-                                    const phaseKey = sanitizeKey(demande.phase, 'aller') || 'aller';
-                                    const rawNiveauEvolution = sanitizeKey(demande.niveau_evolution_demande);
-                                    const rawNiveauActuel = sanitizeKey(demande.niveau_actuel || demande.niveau);
-                                    const statusApprouve = (demande.status || demande.statut || '') === 'approuve';
-                                    let niveauKey = rawNiveauEvolution || rawNiveauActuel;
-                                    // Si la demande est approuvée ou finalisée (DRH a validé), afficher "Finalisé"
-                                    if (statusApprouve || rawNiveauActuel === 'finalise') {
-                                        niveauKey = 'finalise';
-                                    } else if (rawNiveauActuel === 'drh') {
-                                        niveauKey = 'valide_par_drh';
-                                    } else if (rawNiveauActuel === 'directeur_service_exterieur') {
-                                        niveauKey = 'valide_par_directeur_service_exterieur';
-                                    }
-                                    const niveauActuelKey = rawNiveauActuel;
-                                    const motif =
-                                        [demande.agree_motif, demande.motif, demande.description, demande.objet]
-                                            .find((item) => typeof item === 'string' && item.trim().length > 0) || 'Aucun motif';
-                                    const motifText = typeof motif === 'string' ? motif.trim() : String(motif);
-                                    const rawProgress = clampProgress(demande.progression ?? demande.progress ?? demande.progress_percent);
-                                    const fallbackProgress = getProgressValue(phaseKey, niveauKey, niveauActuelKey);
-                                    const progressValue = rawProgress ?? fallbackProgress;
-                                    const progressColor = rawProgress !== null
-                                        ? (rawProgress >= 100 ? 'success' : phaseKey === 'retour' ? 'warning' : 'primary')
-                                        : getProgressColor(phaseKey, niveauKey, niveauActuelKey);
+                                        const typeKey = sanitizeKey(demande.type_demande);
+                                        const prioriteKey = sanitizeKey(demande.priorite, 'normale') || 'normale';
+                                        const statusKey = sanitizeKey(demande.status || demande.statut, 'en_attente') || 'en_attente';
+                                        const phaseKey = sanitizeKey(demande.phase, 'aller') || 'aller';
+                                        const rawNiveauEvolution = sanitizeKey(demande.niveau_evolution_demande);
+                                        const rawNiveauActuel = sanitizeKey(demande.niveau_actuel || demande.niveau);
+                                        const statusApprouve = (demande.status || demande.statut || '') === 'approuve';
+                                        let niveauKey = rawNiveauEvolution || rawNiveauActuel;
+                                        // Si la demande est approuvée ou finalisée (DRH a validé), afficher "Finalisé"
+                                        if (statusApprouve || rawNiveauActuel === 'finalise') {
+                                            niveauKey = 'finalise';
+                                        } else if (rawNiveauActuel === 'drh') {
+                                            niveauKey = 'valide_par_drh';
+                                        } else if (rawNiveauActuel === 'directeur_service_exterieur') {
+                                            niveauKey = 'valide_par_directeur_service_exterieur';
+                                        }
+                                        const niveauActuelKey = rawNiveauActuel;
+                                        const motif =
+                                            [demande.agree_motif, demande.motif, demande.description, demande.objet]
+                                                .find((item) => typeof item === 'string' && item.trim().length > 0) || 'Aucun motif';
+                                        const motifText = typeof motif === 'string' ? motif.trim() : String(motif);
+                                        const rawProgress = clampProgress(demande.progression ?? demande.progress ?? demande.progress_percent);
+                                        const fallbackProgress = getProgressValue(phaseKey, niveauKey, niveauActuelKey);
+                                        const progressValue = rawProgress ?? fallbackProgress;
+                                        const progressColor = rawProgress !== null
+                                            ? (rawProgress >= 100 ? 'success' : phaseKey === 'retour' ? 'warning' : 'primary')
+                                            : getProgressColor(phaseKey, niveauKey, niveauActuelKey);
 
-                                    return (
-                                        <tr
-                                            key={demande.id || demande.id_demande}
-                                            style={{ color: '#000' }}
-                                        >
-                                            <td style={{ color: '#000' }}>
-                                                {renderBadge(typeKey, typeConfig, 'Type inconnu', true)}
-                                            </td>
-                                            <td style={{ color: '#000' }}>
-                                                <div
-                                                    style={{ maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                                    title={motifText}
-                                                >
-                                                    {motifText}
-                                                </div>
-                                            </td>
-                                            <td style={{ color: '#000' }}>
-                                                {renderBadge(prioriteKey, prioriteConfig, 'Priorité', true)}
-                                            </td>
-                                            <td style={{ color: '#000' }}>
-                                                {renderBadge(statusKey, statusConfig, 'Statut', true)}
-                                            </td>
-                                            <td style={{ color: '#000' }}>
-                                                {renderBadge(phaseKey, phaseConfig, 'Phase', true)}
-                                            </td>
-                                            <td style={{ color: '#000' }}>
-                                                {renderBadge(niveauKey, niveauConfig, niveauKey || 'Niveau', true)}
-                                            </td>
-                                            <td style={{ color: '#000' }}>{renderPeriode(demande)}</td>
-                                            <td style={{ color: '#000' }}>
-                                                <Progress value={progressValue} color={progressColor} className="mb-1" />
-                                                <small className="text-muted">{progressValue}%</small>
-                                            </td>
-                                            <td>{formatDate(demande.date_creation)}</td>
-                                            <td
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleView(demande);
-                                                }}
-                                                role="button"
-                                                tabIndex={0}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === ' ') {
-                                                        e.preventDefault();
-                                                        handleView(demande);
-                                                    }
-                                                }}
+                                        return (
+                                            <tr
+                                                key={demande.id || demande.id_demande}
+                                                style={{ color: '#000' }}
                                             >
-                                                <Button
-                                                    type="button"
-                                                    color="outline-primary"
-                                                    size="sm"
+                                                <td style={{ color: '#000' }}>
+                                                    {renderBadge(typeKey, typeConfig, 'Type inconnu', true)}
+                                                </td>
+                                                <td style={{ color: '#000' }}>
+                                                    <div
+                                                        style={{ maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                                        title={motifText}
+                                                    >
+                                                        {motifText}
+                                                    </div>
+                                                </td>
+                                                <td style={{ color: '#000' }}>
+                                                    {renderBadge(prioriteKey, prioriteConfig, 'Priorité', true)}
+                                                </td>
+                                                <td style={{ color: '#000' }}>
+                                                    {renderBadge(statusKey, statusConfig, 'Statut', true)}
+                                                </td>
+                                                <td style={{ color: '#000' }}>
+                                                    {renderBadge(phaseKey, phaseConfig, 'Phase', true)}
+                                                </td>
+                                                <td style={{ color: '#000' }}>
+                                                    {renderBadge(niveauKey, niveauConfig, niveauKey || 'Niveau', true)}
+                                                </td>
+                                                <td style={{ color: '#000' }}>{renderPeriode(demande)}</td>
+                                                <td style={{ color: '#000' }}>
+                                                    <Progress value={progressValue} color={progressColor} className="mb-1" />
+                                                    <small className="text-muted">{progressValue}%</small>
+                                                </td>
+                                                <td>{formatDate(demande.date_creation)}</td>
+                                                <td
+                                                    style={{ cursor: 'pointer' }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleView(demande);
                                                     }}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            handleView(demande);
+                                                        }
+                                                    }}
                                                 >
-                                                    <i className="fa fa-eye me-1"></i>
-                                                    Voir
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    );
+                                                    <Button
+                                                        type="button"
+                                                        color="outline-primary"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleView(demande);
+                                                        }}
+                                                    >
+                                                        <i className="fa fa-eye me-1"></i>
+                                                        Voir
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        );
                                     })}
                                 </tbody>
                             </Table>
@@ -636,7 +636,7 @@ const DemandeSuivi = ({ agentId, onDemandeClick }) => {
                                             onClick={() => handlePageChange(getClientPagination().current_page - 1)}
                                         />
                                     </PaginationItem>
-                                    
+
                                     {Array.from({ length: getClientPagination().total_pages }, (_, i) => i + 1).map(page => (
                                         <PaginationItem key={page} active={page === getClientPagination().current_page}>
                                             <PaginationLink onClick={() => handlePageChange(page)}>
@@ -644,7 +644,7 @@ const DemandeSuivi = ({ agentId, onDemandeClick }) => {
                                             </PaginationLink>
                                         </PaginationItem>
                                     ))}
-                                    
+
                                     <PaginationItem disabled={getClientPagination().current_page === getClientPagination().total_pages}>
                                         <PaginationLink
                                             next

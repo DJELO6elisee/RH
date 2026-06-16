@@ -18,8 +18,9 @@ const pool = new Pool({
 });
 
 // Test de connexion
-pool.on('connect', () => {
-    console.log('✅ Connexion à PostgreSQL établie');
+pool.on('connect', (client) => {
+    client.query(`SET timezone = 'Africa/Abidjan'`);
+    console.log('✅ Connexion à PostgreSQL établie (Fuseau horaire: Africa/Abidjan)');
 });
 
 pool.on('error', (err) => {

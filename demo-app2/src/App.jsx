@@ -178,6 +178,8 @@ const EvaluationsPage = React.lazy(() =>
     import('./pages/EvaluationsPage'));
 const InformaticienDashboard = React.lazy(() =>
     import('./pages/InformaticienDashboard.jsx'));
+const VerifyDocumentPage = React.lazy(() =>
+    import('./pages/VerifyDocument'));
 
 // Pages de gestion des demandes
 const DemandeAbsencePage = React.lazy(() =>
@@ -323,6 +325,15 @@ class App extends React.Component {
                                         component={props => (
                                             <React.Suspense fallback={<PageSpinner />}>
                                                 <DomainRouter {...props} />
+                                            </React.Suspense>
+                                        )} />
+
+                                    {/* Route publique de vérification de QR code */}
+                                    <LayoutRoute exact path="/verify" 
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <VerifyDocumentPage {...props} />
                                             </React.Suspense>
                                         )} />
 

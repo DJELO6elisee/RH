@@ -149,9 +149,25 @@ function normalizeCivilite(civilite = '', sexe = null) {
  */
 function getAgentPosteOuEmploi(agent = {}) {
     const isFonctionnaire = agent.type_agent_libele && String(agent.type_agent_libele).toUpperCase() === 'FONCTIONNAIRE';
-    return isFonctionnaire
-        ? (agent.emploi_libele || agent.emploi_designation_poste || agent.emploi_actuel_libele || 'Agent')
-        : (agent.fonction_actuelle || agent.poste || 'Agent');
+    if (isFonctionnaire) {
+        // Pour les fonctionnaires, on utilise la fonction
+        return agent.fonction_resolved || agent.fonction_actuelle || agent.poste || 'Agent';
+    } else {
+        // Pour les contractuels (et autres), on utilise l'emploi
+        return agent.emploi_libele || agent.emploi_designation_poste || agent.emploi_actuel_libele || agent.emploi || 'Agent';
+    }
+}
+
+function getAgentDirectionToDisplay(agent = {}, defaultDirection = '') {
+    // Return the specific direction the agent is attached to, from specific to generic.
+    // We avoid hardcoded fallback logic (like ASSARI/CABINET).
+    let direction = defaultDirection 
+                 || agent.service_nom || agent.service_libelle
+                 || agent.sous_direction_nom || agent.sous_direction_libelle
+                 || agent.direction_nom || agent.direction_libelle
+                 || agent.direction_generale_nom || agent.direction_generale_libelle
+                 || 'DIRECTION';
+    return direction;
 }
 
 function formatAgentDisplayName(agent = {}) {
@@ -190,5 +206,6 @@ module.exports = {
     normalizeFunctionLabel,
     normalizeCivilite,
     extractAgentId,
+    getAgentDirectionToDisplay
 };
 

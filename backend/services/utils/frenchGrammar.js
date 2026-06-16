@@ -121,8 +121,23 @@ function formatDirecteurFromDirection(directionName) {
     return `Directeur de ${raw}`;
 }
 
+/**
+ * Corrige dynamiquement les prépositions "à la" dans les textes générés en fonction du nom de l'organisation
+ * @param {string} text - Le texte HTML ou brut
+ * @returns {string} - Le texte corrigé
+ */
+function correctDocumentPrepositions(text) {
+    if (!text) return text;
+    // Remplace "à la ", optionnellement suivi d'une balise comme <strong>, puis le nom de l'organisation
+    return text.replace(/à\s+la\s+(<[^>]+>)?\s*([^<.,;]+)/gi, (match, tag, orgName) => {
+        const prep = getPrepositionForDirection(orgName.trim());
+        return `${prep} ${tag || ''}${orgName}`;
+    });
+}
+
 module.exports = {
     getPrepositionForDirection,
     formatAffectationPhrase,
-    formatDirecteurFromDirection
+    formatDirecteurFromDirection,
+    correctDocumentPrepositions
 };

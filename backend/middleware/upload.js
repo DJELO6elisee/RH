@@ -56,7 +56,7 @@ const storage = multer.diskStorage({
             cb(null, documentsDir);
         } else if (file.fieldname === 'signature') {
             cb(null, signaturesDir);
-        } else if (file.fieldname === 'document' && req.body && req.body.type) {
+        } else if (file.fieldname === 'document' && (req.originalUrl?.includes('/decisions') || req.url?.includes('/decisions') || req.body?.type)) {
             // Documents de décision
             cb(null, decisionsDir);
         } else if (file.fieldname === 'fichier_attestation') {

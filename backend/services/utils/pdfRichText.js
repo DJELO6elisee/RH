@@ -12,7 +12,7 @@
  */
 function parseHtmlToSegments(htmlText) {
     if (!htmlText) return [];
-    
+
     const segments = [];
     // Regex to match <strong> or <b> tags, ignoring attributes (like <strong >)
     const regex = /<(strong|b)[^>]*>(.*?)<\/\1>/gi;
@@ -27,16 +27,16 @@ function parseHtmlToSegments(htmlText) {
                 segments.push({ text: normalText, bold: false });
             }
         }
-        
+
         // Add bold text
         const boldText = match[2];
         if (boldText) {
             segments.push({ text: boldText, bold: true });
         }
-        
+
         lastIndex = regex.lastIndex;
     }
-    
+
     // Add remaining normal text
     if (lastIndex < htmlText.length) {
         const remainingText = htmlText.substring(lastIndex);
@@ -44,12 +44,12 @@ function parseHtmlToSegments(htmlText) {
             segments.push({ text: remainingText, bold: false });
         }
     }
-    
+
     // Fallback if no tags were found
     if (segments.length === 0 && htmlText.length > 0) {
         segments.push({ text: htmlText, bold: false });
     }
-    
+
     return segments;
 }
 
@@ -67,61 +67,58 @@ function parseHtmlToSegments(htmlText) {
 function writeRichText(doc, htmlText, x, y, options = {}) {
     const segments = parseHtmlToSegments(htmlText);
     const width = options.width || 500;
-    const align = options.align || 'left';
+    // Forcer l'alignement à gauche pour éviter les espaces géants avec 'continued'
+    const align = 'left';
     const BODY_FONT_SIZE = options.fontSize || 16;
     const BASE_FONT = options.baseFont || 'Times-Roman';
     const BOLD_FONT = options.boldFont || 'Times-Bold';
-    const lineHeight = BODY_FONT_SIZE * 1.2;
-
-    let currentX = x;
-    let currentY = y;
 
     // Ensure the initial font size is set
     doc.fontSize(BODY_FONT_SIZE);
 
     if (segments.length === 0) {
-        return currentY;
+        return y;
     }
 
-    // If there is only one segment and it's not bold, render it normally (better for alignment)
-    if (segments.length === 1 && !segments[0].bold) {
-        doc.font(BASE_FONT).text(segments[0].text, x, y, { align, width });
-        return doc.y;
-    }
 
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         const isLast = i === segments.length - 1;
+        const nextSegment = !isLast ? segments[i + 1] : null;
 
         doc.font(segment.bold ? BOLD_FONT : BASE_FONT);
 
-        // Calculer la largeur du segment
-        const segmentWidth = doc.widthOfString(segment.text, {
-            font: segment.bold ? BOLD_FONT : BASE_FONT,
-            fontSize: BODY_FONT_SIZE
-        });
-
-        // Vérifier si le segment dépasse la largeur disponible
-        const availableWidth = width - (currentX - x);
-        if (segmentWidth > availableWidth && currentX > x) {
-            // Nouvelle ligne
-            currentY += lineHeight;
-            currentX = x;
+        // S'assurer qu'un espace est présent entre deux segments de styles différents
+        // PDFKit avec 'continued' peut coller les segments bold/normal sans espace
+        let textToRender = segment.text;
+        if (isLast) {
+            textToRender += '\n';
         }
 
-        // Afficher le segment
-        doc.text(segment.text, currentX, currentY, {
-            width: width - (currentX - x),
-            continued: !isLast,
-            align: align
-        });
+        if (!isLast && nextSegment && segment.bold !== nextSegment.bold) {
+            // Si le segment courant ne se termine pas par un espace
+            // et que le suivant ne commence pas par un espace ou une ponctuation
+            const endsWithSpace = /\s$/.test(textToRender);
+            const nextStartsWithPunctOrSpace = /^[\s,;:.!?]/.test(nextSegment.text);
+            if (!endsWithSpace && !nextStartsWithPunctOrSpace) {
+                textToRender = textToRender + ' ';
+            }
+        }
 
-        // Mettre à jour la position
-        currentX = doc.x;
-        currentY = doc.y;
+        const textOptions = {
+            continued: !isLast
+        };
+
+        if (i === 0) {
+            textOptions.width = width;
+            textOptions.align = align;
+            doc.text(textToRender, x, y, textOptions);
+        } else {
+            doc.text(textToRender, textOptions);
+        }
     }
 
-    return currentY;
+    return doc.y;
 }
 
 /**
@@ -133,9 +130,9 @@ function writeRichText(doc, htmlText, x, y, options = {}) {
  */
 function replaceTemplatePlaceholders(template, data) {
     if (!template) return '';
-    
+
     let result = template;
-    
+
     for (const [key, value] of Object.entries(data)) {
         // Handle both with and without brackets in the key name
         const searchKey = key.startsWith('{') ? key : `{${key}}`;
@@ -143,7 +140,15 @@ function replaceTemplatePlaceholders(template, data) {
         const regex = new RegExp(searchKey.replace(/([{}])/g, '\\$1'), 'g');
         result = result.replace(regex, value ?? '');
     }
-    
+
+    // Nettoyage post-remplacement : supprimer les doubles virgules générées
+    // par des champs vides (ex: {classeInfo} vide → ", ," ou ",  ,")
+    result = result.replace(/,\s*,/g, ',');
+    // Supprimer une virgule isolée entre deux espaces sans texte entre elles
+    result = result.replace(/,\s{2,}/g, ', ');
+    // Supprimer virgule collée directement avant "à la" ou autre mot clé si le champ était vide
+    result = result.replace(/,\s*,/g, ',');
+
     return result;
 }
 

@@ -6,7 +6,7 @@
 
 const { HEADER_CSS, buildHeaderHTML, resolveOfficialHeaderContext } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference } = require('./utils/documentReference');
-const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel } = require('./utils/agentFunction');
+const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
@@ -135,7 +135,7 @@ function isJourFerie(date) {
  */
 function ajusterDateReprise(date) {
     if (!date || isNaN(date.getTime())) {
-        return date;
+        return null;
     }
     
     let dateAjustee = new Date(date);
@@ -176,11 +176,12 @@ class CertificatCessationTemplate {
 
         // Utiliser agree_date_cessation ou date_cessation selon la disponibilité
         const dateCessationValue = demande.agree_date_cessation || demande.date_cessation;
-        const dateCessation = dateCessationValue ? new Date(dateCessationValue).toLocaleDateString('fr-FR', {
+        const parsedDateCessation = dateCessationValue ? new Date(dateCessationValue) : null;
+        const dateCessation = (parsedDateCessation && !isNaN(parsedDateCessation.getTime())) ? parsedDateCessation.toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
-        }) : 'Date non spécifiée';
+        }) : '......................';
         
         // Récupérer la décision (collective ou individuelle) selon l'année au titre du congé et le périmètre
         let numeroActeDecision = null;
@@ -406,8 +407,8 @@ class CertificatCessationTemplate {
         const nameParts = formatNameParts(agent);
         const signatureInfo = await resolveSignature(validateur);
         const fonctionActuelle = getAgentPosteOuEmploi(agent);
-        const designationPoste = agent.emploi_designation_poste || fonctionActuelle;
-        const serviceNom = agent.service_nom || 'Service non renseigné';
+        const designationPoste = fonctionActuelle;
+        const serviceNom = getAgentDirectionToDisplay(agent, agent.service_nom || 'Service non renseigné');
         
         // Formatage du nom du validateur avec épouse si applicable
         const validateurNameParts = validateur ? formatNameParts(validateur) : { fullWithCivilite: '' };
@@ -500,13 +501,17 @@ class CertificatCessationTemplate {
                 .replace(/{nom}/g, nameParts.nom || '')
                 .replace(/{matricule}/g, agent.matricule || '')
                 .replace(/{designationPoste}/g, designationPoste || '')
+                .replace(/{poste}/g, designationPoste || '')
+                .replace(/{fonction}/g, designationPoste || '')
                 .replace(/{serviceNom}/g, serviceNom || '')
+                .replace(/{direction}/g, serviceNom || '')
                 .replace(/{dateCessation}/g, dateCessation || '')
                 .replace(/{interesseGenre}/g, interesseGenre || '')
                 .replace(/{dateRepriseFormatee}/g, dateRepriseFormatee || '');
         };
 
-        const resolvedBody = replacePlaceholders(bodyTemplate);
+        const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
+        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
         const resolvedMotifTitle = replacePlaceholders(motifTitleTemplate);
         const resolvedRepriseText = replacePlaceholders(repriseTextTemplate);
 

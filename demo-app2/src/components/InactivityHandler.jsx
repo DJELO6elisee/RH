@@ -22,7 +22,7 @@ const InactivityHandler = ({ children }) => {
   const WARNING_TIME = 2 * 60 * 1000; // Avertir 2 minutes avant
 
   // Ne pas activer le système pour les pages publiques ou utilisateurs non connectés
-  const publicPages = ['/ministere', '/login', '/login-page', '/signup', '/institution', '/public'];
+  const publicPages = ['/ministere', '/login', '/login-page', '/signup', '/institution', '/public', '/verify'];
   const isPublicPage = publicPages.some(page => location.pathname.startsWith(page));
   const shouldActivateTimer = isAuthenticated && !isPublicPage;
 

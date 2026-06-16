@@ -6,9 +6,14 @@ import { useAuth } from '../contexts/AuthContext';
 
 const DocumentsGeneresPage = () => {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState('absence');
+    const [activeTab, setActiveTab] = useState('tous');
 
     const tabsConfig = [
+        {
+            id: 'tous',
+            icon: 'fa fa-folder-open',
+            label: "Tous les documents"
+        },
         {
             id: 'absence',
             icon: 'fa fa-calendar-times',
@@ -84,6 +89,11 @@ const DocumentsGeneresPage = () => {
                         </Nav>
 
                         <TabContent activeTab={activeTab}>
+                            <TabPane tabId="tous">
+                                <div className="mt-3">
+                                    <DocumentsGenerated typeDemande="tous" />
+                                </div>
+                            </TabPane>
                             <TabPane tabId="absence">
                                 <div className="mt-3">
                                     <DocumentsGenerated typeDemande="absence" />
