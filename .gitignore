@@ -1,0 +1,27 @@
+# Node
+node_modules/
+**/node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+
+# Build
+dist/
+build/
+
+# Database dump
+dump.sql
+
+# Puppeteer
+.local-chromium/
+
+# React
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
