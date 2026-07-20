@@ -5,16 +5,16 @@ const fsSync = require('fs');
 const path = require('path');
 const { drawOfficialHeaderPDF, resolveOfficialHeaderContext, pickFirstNonEmptyString } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference, generateNoteDeServiceNumber, generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
-const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, formatAgentDisplayName, getAgentDirectionToDisplay } = require('./utils/agentFunction');
+const { hydrateAgentWithLatestFunction, getResolvedFunctionLabel, getAgentPosteOuEmploi, getAgentEmploi, normalizeFunctionLabel, formatAgentDisplayName, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature, fetchDRHForSignature } = require('./utils/signatureUtils');
 const { formatAffectationPhrase, correctDocumentPrepositions } = require('./utils/frenchGrammar');
 const db = require('../config/database');
 const { writeRichText, replaceTemplatePlaceholders } = require('./utils/pdfRichText');
-const BASE_FONT = 'Times-Roman';
-const BOLD_FONT = 'Times-Bold';
+const BASE_FONT = 'Courier';
+const BOLD_FONT = 'Courier-Bold';
 const TITLE_FONT_SIZE = 18;
 const SUBTITLE_FONT_SIZE = 16;
-const BODY_FONT_SIZE = 16;
+const BODY_FONT_SIZE = 13;
 const FOOTER_FONT_SIZE = 8;
 
 function applyUserInfoFallback(agent, validateur, userInfo) {
@@ -52,18 +52,16 @@ function drawStandardSignature(doc, startY = 0, signatureInfo = {}, options = {}
     const hasImage = imagePath && fsSync.existsSync(imagePath);
 
     if (role) {
-        doc.font(BOLD_FONT)
-            .fontSize(SUBTITLE_FONT_SIZE)
-            .text(role, leftMargin, currentY, {
-                align: 'center',
-                width: usableWidth
-            });
+        doc.font(BOLD_FONT).fontSize(SUBTITLE_FONT_SIZE).text(role, leftMargin, currentY, {
+            align: 'center',
+            width: usableWidth
+        });
         currentY = doc.y + spacing;
     }
 
     if (hasImage) {
-        const imageWidth = options.imageWidth || Math.min(usableWidth * 0.5, 200);
-        const imageHeight = options.imageHeight || 80;
+        const imageWidth = (options.imageWidth || 166) * 1.5;
+        const imageHeight = (options.imageHeight || 100) * 1.5;
         const imageX = leftMargin + (usableWidth - imageWidth) / 2;
         try {
             doc.image(imagePath, imageX, currentY, {
@@ -71,15 +69,16 @@ function drawStandardSignature(doc, startY = 0, signatureInfo = {}, options = {}
                 align: 'center',
                 valign: 'center'
             });
-            currentY += imageHeight + 10;
+            currentY += imageHeight + 20;
         } catch (error) {
             console.error('❌ Erreur lors de l\'insertion de la signature dans le PDF:', error);
         }
     }
 
     if (name) {
+        const nameFontSize = options.nameFontSize ? options.nameFontSize : BODY_FONT_SIZE;
         doc.font(BOLD_FONT)
-            .fontSize(BODY_FONT_SIZE)
+            .fontSize(nameFontSize)
             .text(name, leftMargin, currentY, {
                 align: 'center',
                 width: usableWidth
@@ -120,8 +119,8 @@ function drawStandardSignatureRight(doc, startY = 0, signatureInfo = {}, options
     });
 
     if (role) {
-        // Augmenter la taille du rôle pour la signature
-        const roleFontSize = options.roleFontSize || SUBTITLE_FONT_SIZE + 1; // 17 au lieu de 16
+        // Mettre la même taille que le nom et le corps du document
+        const roleFontSize = options.roleFontSize || BODY_FONT_SIZE;
         doc.font(BOLD_FONT)
             .fontSize(roleFontSize)
             .text(role, signatureX, currentY, {
@@ -133,15 +132,15 @@ function drawStandardSignatureRight(doc, startY = 0, signatureInfo = {}, options
     }
 
     if (hasImage) {
-        const imageWidth = options.imageWidth || 120;
-        const imageHeight = options.imageHeight || 60;
+        const imageWidth = (options.imageWidth || 166) * 1.5;
+        const imageHeight = (options.imageHeight || 100) * 1.5;
         const imageX = pageWidth - rightMargin - imageWidth;
         try {
             console.log(`🖼️ [drawStandardSignatureRight] Tentative d'insertion image à (${imageX}, ${currentY})`);
             doc.image(imagePath, imageX, currentY, {
                 fit: [imageWidth, imageHeight]
             });
-            currentY += imageHeight + 10;
+            currentY += imageHeight + 20;
             console.log(`✅ [drawStandardSignatureRight] Image insérée avec succès à (${imageX}, ${currentY - imageHeight - 10})`);
         } catch (error) {
             console.error('❌ [drawStandardSignatureRight] Erreur lors de l\'insertion de la signature dans le PDF:', error);
@@ -152,7 +151,7 @@ function drawStandardSignatureRight(doc, startY = 0, signatureInfo = {}, options
 
     if (name) {
         // Forcer le nom sur une seule ligne (réduction auto de la police si nécessaire)
-        let nameFontSize = options.nameFontSize || BODY_FONT_SIZE + 2;
+        let nameFontSize = options.nameFontSize || BODY_FONT_SIZE;
         // Optionnel: garder le nom strictement dans le bloc signature à droite
         const nameWidth = limitNameToSignature ? signatureWidth : Math.max(480, usableWidth * 0.98);
         const nameX = limitNameToSignature ? signatureX : leftMargin;
@@ -251,8 +250,8 @@ function formatAgentName(agent = {}) {
     const civilite = normalizeCivilite(agent.civilite, agent.sexe);
     const prenoms = (agent.prenom || '').toUpperCase().trim();
     const nom = (agent.nom || '').toUpperCase();
-    const fullWithCivilite = [civilite, prenoms, nom].filter(Boolean).join(' ').trim();
-    const full = [prenoms, nom].filter(Boolean).join(' ').trim();
+    const fullWithCivilite = [civilite, nom, prenoms].filter(Boolean).join(' ').trim();
+    const full = [nom, prenoms].filter(Boolean).join(' ').trim();
 
     return {
         civilite,
@@ -604,6 +603,7 @@ class PDFKitGenerationService {
                                 fullWithCivilite: nomComplet,
                                 matricule: agent.matricule,
                                 poste: poste,
+                                emploi: getAgentEmploi(agent),
                                 fonctionActuelle: poste,
                                 direction: displayDirectionName,
                                 serviceNom: displayDirectionName,
@@ -626,6 +626,7 @@ class PDFKitGenerationService {
                                 fullWithCivilite: nomComplet,
                                 matricule: agent.matricule,
                                 poste: poste,
+                                emploi: getAgentEmploi(agent),
                                 fonctionActuelle: poste,
                                 direction: displayDirectionName,
                                 serviceNom: displayDirectionName,
@@ -668,18 +669,16 @@ class PDFKitGenerationService {
 
                 // === SIGNATURE === (même logique que attestation : position fixe remontée, à droite)
                 const pageHeight = doc.page.height;
-                const signatureBlockHeight = 115;
-                const gapSignatureFooter = 14;
-                const signatureStartY = (pageHeight - 115) - signatureBlockHeight - gapSignatureFooter;
                 const bottomMargin = 55;
                 const footerY = pageHeight - bottomMargin - 30;
+                const signatureStartY = footerY - 225;
 
                 await attachActiveSignature(validateur);
                 const signatureInfoAbsence = await resolveSignatureInfo(validateur);
                 drawStandardSignatureRight(
                     doc,
                     signatureStartY,
-                    signatureInfoAbsence, { signatureWidth: 320, imageWidth: 130, imageHeight: 72, spacing: 8, respectStartY: true }
+                    signatureInfoAbsence, { signatureWidth: 320, spacing: 8, respectStartY: true }
                 );
 
                 // === FOOTER === (bien au-dessus de la marge pour que les 2 lignes restent sur la 1re page)
@@ -1166,9 +1165,9 @@ class PDFKitGenerationService {
                 const generatedAt = resolveGenerationDate(demande, { generatedAt: demande && demande.date_generation });
                 const dateGeneration = generatedAt.toLocaleDateString('fr-FR');
                 const agentMinistryName = agent.ministere_nom || '';
-                const agentDirectionName = agent.direction_nom || agent.service_nom || '';
-                const { ministryName: validatorMinistryName, directionName: validatorDirectionName } =
-                    resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const agentDirectionName = validatorDirectionName;
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
                     dateString: generatedAt,
@@ -1383,18 +1382,16 @@ class PDFKitGenerationService {
 
                 // === SIGNATURE === (position fixe, remontée pour réduire l'espace avec le texte)
                 const pageHeight = doc.page.height;
-                const signatureBlockHeight = 115;
-                const gapSignatureFooter = 14;
-                const signatureStartY = (pageHeight - 115) - signatureBlockHeight - gapSignatureFooter;
                 const bottomMargin = 40;
                 const footerY = pageHeight - bottomMargin - 28;
+                const signatureStartY = footerY - 225;
 
                 await attachActiveSignature(validateur);
                 const signatureInfoPresence = await resolveSignatureInfo(validateur);
                 drawStandardSignatureRight(
                     doc,
                     signatureStartY,
-                    signatureInfoPresence, { signatureWidth: 320, imageWidth: 130, imageHeight: 72, spacing: 8, respectStartY: true }
+                    signatureInfoPresence, { signatureWidth: 320, spacing: 8, respectStartY: true }
                 );
 
                 // === FOOTER === (rester sur la première page : ligne + 2 lignes de texte au-dessus de la marge)
@@ -1540,6 +1537,7 @@ class PDFKitGenerationService {
                     }
                 }
                 await hydrateAgentWithLatestFunction(validateur);
+                await hydrateAgentWithLatestFunction(agent);
                 await attachActiveSignature(validateur);
 
                 const generatedAt = resolveGenerationDate(demande, { generatedAt: demande && demande.date_generation });
@@ -1581,19 +1579,19 @@ class PDFKitGenerationService {
                     agent.service_nom = headerDirectionName;
                 }
 
-                const agentDirectionName = headerDirectionName;
-
                 const validatorMinistryName = (validateur && validateur.ministere_nom) ||
                     headerContext.ministryName ||
                     agentMinistryName;
-                const validatorDirectionName = headerContext.directionName ||
+                const validatorDirectionName =
                     (validateur && validateur.direction_nom) ||
                     (validateur && validateur.service_nom) ||
                     (validateur && validateur.structure_nom) ||
                     (userInfo && userInfo.direction_nom) ||
                     (userInfo && userInfo.service_nom) ||
                     (userInfo && userInfo.structure_nom) ||
-                    headerDirectionName;
+                    'DIRECTION DES RESSOURCES HUMAINES';
+
+                const agentDirectionName = validatorDirectionName;
 
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
@@ -1655,6 +1653,85 @@ class PDFKitGenerationService {
                     day: 'numeric'
                 }) : 'Date non spécifiée';
 
+                // Récupération des informations d'emploi, grade et échelon pour le template
+                let emploi = agent.emploi_libele || agent.emploi_actuel_libele || '';
+                let gradeLibelle = agent.grade_libele || '';
+                let classeEchelon = '';
+                try {
+                    const db = require('../config/database');
+
+                    // Récupérer l'emploi le plus récent
+                    const emploiQuery = `
+                        SELECT e.libele as emploi_libele, ea.designation_poste
+                        FROM emploi_agents ea
+                        LEFT JOIN emplois e ON ea.id_emploi = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const emploiResult = await db.query(emploiQuery, [agent.id]);
+                    if (emploiResult.rows.length > 0) {
+                        emploi = emploiResult.rows[0].emploi_libele || emploiResult.rows[0].designation_poste || emploi;
+                    }
+
+                    // Récupérer le grade le plus récent depuis agent_grades (préfectoral ou non)
+                    const agentGradeQuery = `
+                        SELECT g.libele as grade_libelle, ag.date_entree
+                        FROM grades_agents ag
+                        LEFT JOIN grades g ON ag.id_grade = g.id
+                        WHERE ag.id_agent = $1
+                        ORDER BY COALESCE(ag.date_entree, ag.created_at) DESC, ag.id DESC LIMIT 1
+                    `;
+                    const agentGradeResult = await db.query(agentGradeQuery, [agent.id]);
+
+                    if (agentGradeResult.rows.length > 0) {
+                        gradeLibelle = agentGradeResult.rows[0].grade_libelle || gradeLibelle;
+                    } else if (agent.id_grade) {
+                        const gradeQuery = `SELECT libele FROM grades WHERE id = $1`;
+                        const gradeResult = await db.query(gradeQuery, [agent.id_grade]);
+                        if (gradeResult.rows.length > 0) {
+                            gradeLibelle = gradeResult.rows[0].libele || gradeLibelle;
+                        }
+                    }
+
+                    // Récupérer l'échelon le plus récent depuis echelons_agents
+                    const echelonQuery = `
+                        SELECT e.libele as echelon_libelle, ea.date_entree
+                        FROM echelons_agents ea
+                        LEFT JOIN echelons e ON ea.id_echelon = e.id
+                        WHERE ea.id_agent = $1
+                        ORDER BY ea.id DESC LIMIT 1
+                    `;
+                    const echelonResult = await db.query(echelonQuery, [agent.id]);
+
+                    let echelonLibelle = '';
+                    let dateEntreeEchelon = null;
+                    if (echelonResult.rows.length > 0) {
+                        echelonLibelle = echelonResult.rows[0].echelon_libelle || '';
+                        dateEntreeEchelon = echelonResult.rows[0].date_entree;
+                    }
+
+                    if (!echelonLibelle && agent.id_echelon) {
+                        const fallbackEchelonQuery = `SELECT libele FROM echelons WHERE id = $1`;
+                        const fallbackEchelonResult = await db.query(fallbackEchelonQuery, [agent.id_echelon]);
+                        if (fallbackEchelonResult.rows.length > 0) {
+                            echelonLibelle = fallbackEchelonResult.rows[0].libele || '';
+                        }
+                    }
+
+                    if (!echelonLibelle) {
+                        echelonLibelle = agent.echelon_libele || agent.echelon_libelle || '';
+                    }
+
+                    if (echelonLibelle) {
+                        classeEchelon = echelonLibelle;
+                        if (dateEntreeEchelon) {
+                            const dateEchStr = new Date(dateEntreeEchelon).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+                            classeEchelon += ` au ${dateEchStr}`;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erreur récupération emploi/grade/échelon:', err);
+                }
 
                 let textePrincipal = `Le Directeur soussigné(e), atteste que ${agentNamePartsTravail.fullWithCivilite}, matricule ${agent.matricule}, ${getAgentPosteOuEmploi(agent).toUpperCase().replace(/,\s*$/, '')}, à la ${displayDirectionName || ''}, est en service dans ledit Ministère depuis le ${dateDebut} jusqu'à ce jour.`;
                 let phraseCloture = 'En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.';
@@ -1664,26 +1741,47 @@ class PDFKitGenerationService {
                     if (configResult.rows.length > 0) {
                         const template = configResult.rows[0].value;
                         if (template && template.body) {
-                            textePrincipal = replaceTemplatePlaceholders(template.body, {
+                            let templateBody = template.body;
+                            const finalGrade = gradeLibelle || agent.grade_libele || agent.grade || '';
+
+                            if (templateBody && !finalGrade) {
+                                templateBody = templateBody.replace(/,\s*grade\s*\{grade\}/gi, '');
+                                templateBody = templateBody.replace(/grade\s*\{grade\}\s*,?/gi, '');
+                            }
+
+                            textePrincipal = replaceTemplatePlaceholders(templateBody, {
                                 fullWithCivilite: agentNamePartsTravail.fullWithCivilite,
+                                civilite: agentNamePartsTravail.civilite,
+                                prenoms: agentNamePartsTravail.prenoms,
+                                nom: agentNamePartsTravail.nom,
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
-                                classeInfo: '',
+                                emploi: (emploi || getAgentEmploi(agent)).toUpperCase(),
+                                grade: gradeLibelle || agent.grade_libele || agent.grade || '',
+                                classeInfo: classeEchelon || '',
                                 direction: displayDirectionName || '',
+                                serviceNom: displayDirectionName || '',
                                 dateDebut: dateDebut,
                                 // fallback for other templates
-                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                                fonctionActuelle: (agent.fonction_resolved || agent.fonction_actuelle_libele || agent.fonction_actuelle || agent.poste || getAgentPosteOuEmploi(agent)).toUpperCase()
                             });
                         }
                         if (template && template.footer) {
                             phraseCloture = replaceTemplatePlaceholders(template.footer, {
                                 fullWithCivilite: agentNamePartsTravail.fullWithCivilite,
+                                civilite: agentNamePartsTravail.civilite,
+                                prenoms: agentNamePartsTravail.prenoms,
+                                nom: agentNamePartsTravail.nom,
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
-                                classeInfo: '',
+                                emploi: (emploi || getAgentEmploi(agent)).toUpperCase(),
+                                grade: gradeLibelle || agent.grade_libele || agent.grade || '',
+                                classeInfo: classeEchelon || '',
                                 direction: displayDirectionName || '',
+                                serviceNom: displayDirectionName || '',
                                 dateDebut: dateDebut,
-                                fonctionActuelle: getAgentPosteOuEmploi(agent).toUpperCase()
+                                // fallback for other templates
+                                fonctionActuelle: (agent.fonction_resolved || agent.fonction_actuelle_libele || agent.fonction_actuelle || agent.poste || getAgentPosteOuEmploi(agent)).toUpperCase()
                             });
                         }
                     }
@@ -1715,9 +1813,7 @@ class PDFKitGenerationService {
                 await attachActiveSignature(validateur);
                 const pageHeight = doc.page.height;
                 const footerY = pageHeight - 80;
-                const signatureBlockHeight = 155;
-                const minGapAboveFooter = 20;
-                const maxSignatureY = footerY - signatureBlockHeight - minGapAboveFooter;
+                const maxSignatureY = footerY - 225;
                 const signatureY = Math.min(Math.max(yPosition + 35, 560), maxSignatureY);
                 const signatureInfoTravail = await resolveSignatureInfo(validateur);
                 yPosition = drawStandardSignatureRight(
@@ -1726,8 +1822,8 @@ class PDFKitGenerationService {
                     signatureInfoTravail,
                     {
                         signatureWidth: 320,
-                        imageWidth: 150,
-                        imageHeight: 95,
+
+
                         spacing: 10,
                         roleFontSize: SUBTITLE_FONT_SIZE + 1,
                         nameFontSize: BODY_FONT_SIZE + 1,
@@ -1896,9 +1992,9 @@ class PDFKitGenerationService {
                 const generatedAt = resolveGenerationDate(demande, { generatedAt: demande && demande.date_generation });
                 const dateGeneration = generatedAt.toLocaleDateString('fr-FR');
                 const agentMinistryName = agent.ministere_nom || '';
-                const agentDirectionName = agent.direction_nom || agent.service_nom || '';
-                const { ministryName: validatorMinistryName, directionName: validatorDirectionName } =
-                    resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur, userInfo });
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const agentDirectionName = validatorDirectionName;
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
                     dateString: generatedAt,
@@ -1956,6 +2052,7 @@ class PDFKitGenerationService {
                                 nom: agentNamePartsSortie.nom,
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                emploi: getAgentEmploi(agent).toUpperCase(),
                                 direction: agent.service_nom || 'DIRECTION',
                                 lieu: demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || 'PAYS DE DESTINATION',
                                 dateDebut: dateDebutStr,
@@ -1973,6 +2070,7 @@ class PDFKitGenerationService {
                                 nom: agentNamePartsSortie.nom,
                                 matricule: agent.matricule,
                                 poste: getAgentPosteOuEmploi(agent).toUpperCase(),
+                                emploi: getAgentEmploi(agent).toUpperCase(),
                                 direction: agent.service_nom || 'DIRECTION',
                                 lieu: demande.lieu || demande.destination || demande.pays_destination || demande.lieu_voyage || 'PAYS DE DESTINATION',
                                 dateDebut: dateDebutStr,
@@ -1988,7 +2086,8 @@ class PDFKitGenerationService {
                     console.error('Erreur lors du chargement du template d\'autorisation de sortie du territoire:', error);
                 }
 
-                textePrincipal = textePrincipal.replace(/\s+/g, ' ');
+                textePrincipal = textePrincipal.replace(/[ \t]+/g, ' ').replace(/\n\s+/g, '\n');
+                textePrincipal = textePrincipal.replace(/(?:<br>|\n)*\s*(<strong>)?\s*Motif\s*(<\/strong>)?\s*:/ig, '\n\n$1Motif$2 :');
                 textePrincipal = correctDocumentPrepositions(textePrincipal);
                 yPosition = writeRichText(doc, textePrincipal, 50, yPosition, {
                     align: 'justify',
@@ -2021,8 +2120,8 @@ class PDFKitGenerationService {
                 // Décaler à droite : bloc à partir de 40 % de la largeur (au lieu de 20 %)
                 const signatureStartX = leftMargin + (usableWidth * 0.4);
                 const signatureWidth = usableWidth * 0.6;
-                const signatureImageW = 150;
-                const signatureImageH = 90;
+                const signatureImageW = 250;
+                const signatureImageH = 150;
 
                 if (signatureInfo.role || signatureInfo.name || signatureInfo.imagePath) {
                     let sigY = yPosition;
@@ -2054,8 +2153,8 @@ class PDFKitGenerationService {
                             .replace(/\s+/g, ' ')
                             .trim();
                         const nameWidth = pageWidth - rightMargin - signatureStartX;
-                        let nameFontSize = BODY_FONT_SIZE;
-                        const minNameFontSize = BODY_FONT_SIZE - 1;
+                        let nameFontSize = SUBTITLE_FONT_SIZE;
+                        const minNameFontSize = 9;
                         doc.font(BOLD_FONT).fontSize(nameFontSize);
                         let textWidth = doc.widthOfString(oneLineName);
                         while (textWidth > nameWidth && nameFontSize > minNameFontSize) {
@@ -2280,6 +2379,8 @@ class PDFKitGenerationService {
                     d.motif_conge, d.motif, d.annee_au_titre_conge, d.nombre_jours,
                     a.id as agent_id,
                     a.prenom, a.nom, a.matricule, a.sexe, a.fonction_actuelle,
+                    a.nom_conjointe,
+                    a.id_situation_matrimoniale,
                     a.id_direction, a.id_sous_direction,
                     COALESCE(a.id_ministere, s.id_ministere) AS id_ministere,
                     c.libele as civilite,
@@ -2287,6 +2388,10 @@ class PDFKitGenerationService {
                     s.libelle as direction_nom,
                     m.nom as ministere_nom,
                     m.sigle as ministere_sigle,
+                    ta.libele as type_agent_libele,
+                    ea_actuel.emploi_libele as emploi_libele,
+                    ea_actuel.designation_poste as emploi_designation_poste,
+                    fa_actuel.fonction_libele as fonction_actuelle_libele,
                     val.id as validateur_id,
                     val.prenom as validateur_prenom, val.nom as validateur_nom,
                     val.sexe as validateur_sexe,
@@ -2301,6 +2406,24 @@ class PDFKitGenerationService {
                 LEFT JOIN demandes d ON doc.id_demande = d.id
                 LEFT JOIN agents a ON doc.id_agent_destinataire = a.id
                 LEFT JOIN civilites c ON a.id_civilite = c.id
+                LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ea.id_agent)
+                        ea.id_agent,
+                        e.libele as emploi_libele,
+                        ea.designation_poste as designation_poste
+                    FROM emploi_agents ea
+                    LEFT JOIN emplois e ON ea.id_emploi = e.id
+                    ORDER BY ea.id_agent, ea.date_entree DESC NULLS LAST, ea.created_at DESC NULLS LAST
+                ) ea_actuel ON a.id = ea_actuel.id_agent
+                LEFT JOIN (
+                    SELECT DISTINCT ON (fa2.id_agent)
+                        fa2.id_agent,
+                        f2.libele as fonction_libele
+                    FROM fonction_agents fa2
+                    LEFT JOIN fonctions f2 ON fa2.id_fonction = f2.id
+                    ORDER BY fa2.id_agent, fa2.date_entree DESC NULLS LAST, fa2.created_at DESC NULLS LAST
+                ) fa_actuel ON a.id = fa_actuel.id_agent
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN agents val ON doc.id_agent_generateur = val.id
@@ -2349,12 +2472,27 @@ class PDFKitGenerationService {
 
             const ministryName = row.ministere_nom || '';
             const directionName = row.direction_nom || row.service_nom || '';
-            const civilite = row.sexe === 'F' ? 'Mlle' : 'M.';
-            const nomComplet = `${civilite} ${row.nom} ${row.prenom}`;
-            const fonctionActuelle = row.fonction_actuelle || 'Agent';
-            const designationPoste = row.fonction_actuelle || row.poste || 'Agent';
-            const echelon = row.echelon_libelle || '1er échelon';
-            const classe = row.classe || 'deuxième classe';
+            const { normalizeCivilite, getAgentPosteOuEmploi } = require('./utils/agentFunction');
+            const civilite = normalizeCivilite(row.civilite, row.sexe);
+
+            // Gestion du nom pour les femmes mariées : format NOM_EPOUX NEE NOM_NAISSANCE
+            const nomNaissance = (row.nom || '').toUpperCase().trim();
+            const isMariee = row.sexe === 'F' && row.nom_conjointe && String(row.nom_conjointe).trim() !== '';
+            const nomAffiche = isMariee
+                ? `${nomNaissance}`
+                : nomNaissance;
+            const prenomAffiche = (row.prenom || '').toUpperCase().trim();
+
+            // Nom complet avec civilité : NOM (éventuellement NEE) puis PRENOMS
+            const nomComplet = [civilite, nomAffiche, prenomAffiche].filter(Boolean).join(' ');
+
+            // Emploi prioritaire sur fonction pour tous les agents
+            const designationPoste = getAgentPosteOuEmploi({
+                emploi_libele: row.emploi_libele,
+                emploi_designation_poste: row.emploi_designation_poste,
+                fonction_actuelle: row.fonction_actuelle_libele || row.fonction_actuelle,
+                poste: row.poste
+            });
             const serviceNom = row.direction_nom || row.service_nom || 'Service non renseigné';
             const dateEntreeFonction = row.date_entree ? new Date(row.date_entree).toLocaleDateString('fr-FR', {
                 year: 'numeric',
@@ -2502,9 +2640,9 @@ class PDFKitGenerationService {
                         const differenceMs = dateFin.getTime() - dateDebut.getTime();
                         const nombreJours = Math.ceil(differenceMs / (1000 * 60 * 60 * 24)) + 1;
 
-                        texteSupplementaire = `Bénéficiaire d'un congé annuel de ${nombreJours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
+                        texteSupplementaire = `Bénéficiaire d'un congé annuel de ${nombreJours} jours consécutifs au titre de l'année ${anneeConge} conformement à la décision de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
                     } else if (numeroDecisionCessation && anneeConge && dateDecisionFormatee && row.nombre_jours) {
-                        texteSupplementaire = `Bénéficiaire d'un congé annuel de ${row.nombre_jours} jours consécutifs au titre de l'année ${anneeConge} conformement à la cessation de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
+                        texteSupplementaire = `Bénéficiaire d'un congé annuel de ${row.nombre_jours} jours consécutifs au titre de l'année ${anneeConge} conformement à la décision de congé ${numeroDecisionCessation} du ${dateDecisionFormatee}.`;
                     }
                 }
 
@@ -2623,13 +2761,14 @@ class PDFKitGenerationService {
 
             let yPosition = titleYCessation + 60;
 
-            // Formatage des noms
-            const agentNameParts = formatAgentName({
-                prenom: row.prenom,
-                nom: row.nom,
-                sexe: row.sexe,
-                civilite: row.civilite
-            });
+            // Formatage des noms pour le corps du document
+            // Nom de l'agent : NOM_EPOUX NEE NOM_NAISSANCE si femme mariée
+            const agentNameParts = {
+                nom: nomAffiche,
+                prenoms: prenomAffiche,
+                civilite: civilite,
+                fullWithCivilite: nomComplet
+            };
             const validateurNameParts = formatAgentName({
                 prenom: row.validateur_prenom,
                 nom: row.validateur_nom,
@@ -2694,7 +2833,7 @@ class PDFKitGenerationService {
             const interesseGenre = row.sexe === 'F' ? 'e' : '';
 
 
-            let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.prenoms} ${agentNameParts.nom}, matricule ${row.matricule}, ${designationPoste}, a cessé le service à la ${serviceNom} le ${dateCessation}.`;
+            let textePrincipal = `Je soussigné${validateurGenre}, ${validateurNomComplet}, ${validateurFonction}, certifie que ${civilite} ${agentNameParts.nom} ${agentNameParts.prenoms}, matricule ${row.matricule}, ${designationPoste}, a cessé le service à la ${serviceNom} le ${dateCessation}.`;
             let phraseCloture = `A l'issue de son congé, l'intéressé${interesseGenre} reprendra le service à son poste le ${dateRepriseFormatee}.`;
 
             try {
@@ -2707,8 +2846,8 @@ class PDFKitGenerationService {
                             validateurNomComplet: validateurNomComplet,
                             validateurFonction: validateurFonction,
                             civilite: civilite,
-                            prenoms: agentNameParts.prenoms,
-                            nom: agentNameParts.nom,
+                            nom: agentNameParts.nom,         // NOM (+ NEE si femme mariée)
+                            prenoms: agentNameParts.prenoms, // PRENOMS
                             matricule: row.matricule,
                             poste: designationPoste,
                             direction: serviceNom,
@@ -2718,7 +2857,8 @@ class PDFKitGenerationService {
                             fullWithCivilite: agentNameParts.fullWithCivilite,
                             fonctionActuelle: designationPoste,
                             serviceNom: serviceNom,
-                            designationPoste: designationPoste
+                            designationPoste: designationPoste,
+                            emploi: designationPoste
                         });
                     }
                     if (template && template.footer) {
@@ -2727,8 +2867,8 @@ class PDFKitGenerationService {
                             validateurNomComplet: validateurNomComplet,
                             validateurFonction: validateurFonction,
                             civilite: civilite,
-                            prenoms: agentNameParts.prenoms,
-                            nom: agentNameParts.nom,
+                            nom: agentNameParts.nom,         // NOM (+ NEE si femme mariée)
+                            prenoms: agentNameParts.prenoms, // PRENOMS
                             matricule: row.matricule,
                             poste: designationPoste,
                             direction: serviceNom,
@@ -2738,7 +2878,8 @@ class PDFKitGenerationService {
                             fullWithCivilite: agentNameParts.fullWithCivilite,
                             fonctionActuelle: designationPoste,
                             serviceNom: serviceNom,
-                            designationPoste: designationPoste
+                            designationPoste: designationPoste,
+                            emploi: designationPoste
                         });
                     }
                 }
@@ -2796,9 +2937,9 @@ class PDFKitGenerationService {
             const rightMargin = (doc.page.margins && doc.page.margins.right) || 50;
             const usableWidth = pageWidth - leftMargin - rightMargin;
             const footerY = pageHeight - 80;
-            const signatureBlockHeight = 140;
+            const signatureBlockHeight = 220;
             const minGapAboveFooter = 18;
-            const maxSignatureY = footerY - signatureBlockHeight - minGapAboveFooter;
+            const maxSignatureY = footerY - 225;
             const signatureY = Math.min(Math.max(doc.y + 95, 585), maxSignatureY);
             const signatureStartX = leftMargin + (usableWidth * 0.45);
             const signatureWidth = usableWidth * 0.55;
@@ -2819,14 +2960,14 @@ class PDFKitGenerationService {
                 if (signatureInfo.imagePath && fs.existsSync(signatureInfo.imagePath)) {
                     try {
                         // Centrer l'image dans la zone de signature
-                        const imageWidth = 145;
-                        const imageHeight = 92;
+                        const imageWidth = 250;
+                        const imageHeight = 150;
                         const imageX = signatureStartX + (signatureWidth / 2) - (imageWidth / 2);
                         doc.image(signatureInfo.imagePath, imageX, sigY, {
                             fit: [imageWidth, imageHeight],
                             align: 'center'
                         });
-                        sigY += imageHeight + 10;
+                        sigY += imageHeight + 20;
                     } catch (error) {
                         console.error('❌ Erreur lors de l\'insertion de la signature:', error);
                     }
@@ -2834,7 +2975,7 @@ class PDFKitGenerationService {
 
                 if (signatureInfo.name) {
                     const fullName = String(signatureInfo.name || '').trim();
-                    let nameFontSize = BODY_FONT_SIZE + 1;
+                    let nameFontSize = SUBTITLE_FONT_SIZE;
                     doc.font(BOLD_FONT).fontSize(nameFontSize);
                     let nameWidth = doc.widthOfString(fullName);
                     const maxNameWidth = signatureWidth;
@@ -3339,15 +3480,7 @@ class PDFKitGenerationService {
                     texte1Parts.push(`matricule ${agent.matricule}`);
                 }
 
-                // 3. Date et lieu de naissance
-                if (dateNaissanceStr) {
-                    const naissancePart = `née le ${dateNaissanceStr}`;
-                    if (lieuNaissance) {
-                        texte1Parts.push(`${naissancePart} à ${lieuNaissance.toUpperCase()}`);
-                    } else {
-                        texte1Parts.push(naissancePart);
-                    }
-                }
+
 
                 // 4. Emploi
                 if (emploiRecent) {
@@ -3357,6 +3490,16 @@ class PDFKitGenerationService {
                 // 5. Grade
                 if (grade) {
                     texte1Parts.push(`grade ${grade}`);
+                }
+
+                // 3. Date et lieu de naissance
+                if (dateNaissanceStr) {
+                    const naissancePart = `née le ${dateNaissanceStr}`;
+                    if (lieuNaissance) {
+                        texte1Parts.push(`${naissancePart} à ${lieuNaissance.toUpperCase()}`);
+                    } else {
+                        texte1Parts.push(naissancePart);
+                    }
                 }
 
                 // 6. Affectation (classe retirée selon demande)
@@ -3458,8 +3601,8 @@ class PDFKitGenerationService {
                     doc,
                     yPosition,
                     signatureInfo, {
-                    imageWidth: 180,
-                    imageHeight: 90,
+
+
                     signatureWidth: 450,
                     spacing: 15,
                     roleFontSize: 15,
@@ -3754,11 +3897,8 @@ class PDFKitGenerationService {
 
                 // Préparer les informations pour le header
                 const agentMinistryName = agent.ministere_nom || '';
-                // Pour les notes de service mutation, la direction dans le header doit toujours être "DIRECTION DES RESSOURCES HUMAINES"
-                const agentDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
-                const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur });
-                // Forcer aussi validatorDirectionName pour les notes de service mutation (drawOfficialHeaderPDF utilise validatorDirectionName en priorité)
-                const validatorDirectionName = 'DIRECTION DES RESSOURCES HUMAINES';
+                const agentDirectionName = agent.direction_nom || agent.service_nom || '';
+                const { ministryName: validatorMinistryName, directionName: validatorDirectionName } = resolveOfficialHeaderContext({ agent, validateur });
 
                 // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS' pour ajouter /DRH/SDGP
                 const ministereNom = validatorMinistryName || agentMinistryName || options.userInfo?.ministere_nom || '';
@@ -4047,8 +4187,8 @@ class PDFKitGenerationService {
                     yPosition,
                     signatureInfo,
                     {
-                        imageWidth: 180,
-                        imageHeight: 90,
+
+
                         signatureWidth: 450,
                         spacing: 15,
                         roleFontSize: 15,

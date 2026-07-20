@@ -527,7 +527,7 @@ export function exportHierarchicalReportExcel(opts) {
     const labelPartant = isRetirementReport ? 'Total agents partant à la retraite' : 'Total';
 
     const headers = [
-        '#', 'Matricule', 'Nom', 'Prénoms', 'Emploi', 'Grade', 'Echelon', 'Fonction',
+        '#', 'Matricule', 'Genre', 'Nom', 'Prénoms', 'Emploi', 'Grade', 'Echelon', 'Fonction',
         'Date de naissance', 'Date de Première prise de service', 'Date prise service Ministère', 'Date entree fonction',
         'Catégorie', 'Position', 'Adresse', 'Lieu de naissance',
         'Téléphone 1', 'Téléphone 2', 'Email', 'Nationalité', 'Statut agent', 'Statut emploi',
@@ -551,6 +551,7 @@ export function exportHierarchicalReportExcel(opts) {
     const buildAgentRow = (agent) => {
         const row = [globalIndex++];
         row.push(agent.matricule || '-');
+        row.push(agent.sexe || '-');
         row.push(agent.nom || '-');
         row.push(agent.prenom || '-');
         row.push(agent.emploi_libele || '-');
@@ -871,7 +872,7 @@ export function exportHierarchicalReportExcel(opts) {
     }
 
     const columnWidths = [
-        6, 11, 16, 35, 35, 8, 14, 28, 12, 12, 12, 12, 12, 12, 28, 20, 13, 13, 26, 12, 12, 12,
+        6, 11, 6, 18, 35, 35, 8, 14, 28, 12, 12, 12, 12, 12, 12, 28, 20, 13, 13, 26, 12, 12, 12,
         18, 12, 16, 18, 10, 16, 38, 12, 12, 12, 12, 12
     ].slice(0, headers.length);
 

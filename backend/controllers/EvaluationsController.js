@@ -9,18 +9,22 @@ class EvaluationsController extends BaseController {
     getRetirementExclusionCondition(agentAlias = 'a', gradeAlias = 'g') {
         return `
             (
+                COALESCE(${agentAlias}.id_type_d_agent, 0) != 1
+                OR
                 (
-                    ${agentAlias}.date_retraite IS NULL
-                    AND (
-                        ${agentAlias}.date_de_naissance IS NULL
-                        OR DATE_PART('year', AGE(CURRENT_DATE, ${agentAlias}.date_de_naissance)) <
-                            CASE
-                                WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(${gradeAlias}.libele) IN ('A4', 'A5', 'A6', 'A7') THEN 65
-                                ELSE 60
-                            END
+                    (
+                        ${agentAlias}.date_retraite IS NULL
+                        AND (
+                            ${agentAlias}.date_de_naissance IS NULL
+                            OR DATE_PART('year', AGE(CURRENT_DATE, ${agentAlias}.date_de_naissance)) <
+                                CASE
+                                    WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                    ELSE 60
+                                END
+                        )
                     )
+                    OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > CURRENT_DATE)
                 )
-                OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > CURRENT_DATE)
             )
         `;
     }

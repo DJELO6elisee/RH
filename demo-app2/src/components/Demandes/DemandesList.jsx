@@ -192,14 +192,7 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
-    if (loading) {
-        return (
-            <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
-                <Spinner color="primary" />
-                <span className="ml-2">Chargement des autorisations...</span>
-            </div>
-        );
-    }
+
 
     return (
         <Card>
@@ -319,7 +312,14 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {demandes.length === 0 ? (
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4">
+                                            <Spinner color="primary" />
+                                            <p className="mt-2 mb-0">Chargement des autorisations...</p>
+                                        </td>
+                                    </tr>
+                                ) : demandes.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="text-center text-muted py-4">
                                             <i className="fa fa-inbox fa-2x mb-2 d-block"></i>
@@ -490,7 +490,12 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
                     </div>
                 ) : (
                     <div className="demande-mobile-list">
-                        {demandes.length === 0 ? (
+                        {loading ? (
+                            <div className="text-center py-4">
+                                <Spinner color="primary" />
+                                <p className="mt-2 mb-0">Chargement des autorisations...</p>
+                            </div>
+                        ) : demandes.length === 0 ? (
                             <div className="text-center text-muted py-4">
                                 <i className="fa fa-inbox fa-2x mb-2 d-block"></i>
                                 Aucune demande trouvée

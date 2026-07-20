@@ -442,15 +442,7 @@ const AgentEmploisPage = () => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
-    if (loading) {
-        return (
-            <Page title="Gestion des Emplois">
-                <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
-                    <Spinner color="primary" />
-                </div>
-            </Page>
-        );
-    }
+    // Le spinner global a été supprimé pour conserver le focus sur le champ de recherche
 
     return (
         <Page title="Gestion des Emplois">
@@ -559,72 +551,84 @@ const AgentEmploisPage = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {paginatedAgents.map((agent, index) => (
-                                            <tr key={agent.id}>
-                                                <td className="fw-bold text-center">
-                                                    {((currentPage - 1) * itemsPerPage) + index + 1}
-                                                </td>
-                                                <td className="fw-bold">
-                                                    {agent.matricule || 'N/A'}
-                                                </td>
-                                                <td className="fw-bold">{agent.nom}</td>
-                                                <td>{agent.prenom}</td>
-                                                <td className="fw-bold text-center">
-                                                    {agent.nb_emplois || 0}
-                                                </td>
-                                                <td>
-                                                    {(() => {
-                                                        const nbEmplois = parseInt(agent.nb_emplois) || 0;
-                                                        if (nbEmplois === 1) {
-                                                            return (
-                                                                <div className="d-flex align-items-center gap-2">
-                                                                    <span>{agent.dernier_emploi_nom || '-'}</span>
-                                                                    <Button
-                                                                        color="info"
-                                                                        size="sm"
-                                                                        onClick={() => toggleModalEmplois(agent)}
-                                                                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                                                                    >
-                                                                        Voir/Modifier
-                                                                    </Button>
-                                                                </div>
-                                                            );
-                                                        } else if (nbEmplois > 1) {
-                                                            return (
-                                                                <div className="d-flex align-items-center gap-2">
-                                                                    <span>{agent.dernier_emploi_nom || '-'}</span>
-                                                                    <Button
-                                                                        color="info"
-                                                                        size="sm"
-                                                                        onClick={() => toggleModalEmplois(agent)}
-                                                                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                                                                    >
-                                                                        Voir
-                                                                    </Button>
-                                                                </div>
-                                                            );
-                                                        } else {
-                                                            return <span className="text-muted">Aucun emploi</span>;
-                                                        }
-                                                    })()}
-                                                </td>
-                                                <td>
-                                                    {agent.dernier_emploi_date ? formatDate(agent.dernier_emploi_date) : '-'}
-                                                </td>
-                                                <td>
-                                                    <div className="d-flex gap-2">
-                                                        <Button
-                                                            color="secondary"
-                                                            size="sm"
-                                                            onClick={() => toggleModal(agent)}
-                                                            style={{ backgroundColor: 'black', borderColor: 'black', color: 'white' }}
-                                                        >
-                                                            Ajouter Emploi
-                                                        </Button>
-                                                    </div>
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-5">
+                                                    <Spinner color="primary" />
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ) : paginatedAgents.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-4 text-muted">Aucun agent trouvé</td>
+                                            </tr>
+                                        ) : (
+                                            paginatedAgents.map((agent, index) => (
+                                                <tr key={agent.id}>
+                                                    <td className="fw-bold text-center">
+                                                        {((currentPage - 1) * itemsPerPage) + index + 1}
+                                                    </td>
+                                                    <td className="fw-bold">
+                                                        {agent.matricule || 'N/A'}
+                                                    </td>
+                                                    <td className="fw-bold">{agent.nom}</td>
+                                                    <td>{agent.prenom}</td>
+                                                    <td className="fw-bold text-center">
+                                                        {agent.nb_emplois || 0}
+                                                    </td>
+                                                    <td>
+                                                        {(() => {
+                                                            const nbEmplois = parseInt(agent.nb_emplois) || 0;
+                                                            if (nbEmplois === 1) {
+                                                                return (
+                                                                    <div className="d-flex align-items-center gap-2">
+                                                                        <span>{agent.dernier_emploi_nom || '-'}</span>
+                                                                        <Button
+                                                                            color="info"
+                                                                            size="sm"
+                                                                            onClick={() => toggleModalEmplois(agent)}
+                                                                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                                                        >
+                                                                            Voir/Modifier
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            } else if (nbEmplois > 1) {
+                                                                return (
+                                                                    <div className="d-flex align-items-center gap-2">
+                                                                        <span>{agent.dernier_emploi_nom || '-'}</span>
+                                                                        <Button
+                                                                            color="info"
+                                                                            size="sm"
+                                                                            onClick={() => toggleModalEmplois(agent)}
+                                                                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                                                        >
+                                                                            Voir
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            } else {
+                                                                return <span className="text-muted">Aucun emploi</span>;
+                                                            }
+                                                        })()}
+                                                    </td>
+                                                    <td>
+                                                        {agent.dernier_emploi_date ? formatDate(agent.dernier_emploi_date) : '-'}
+                                                    </td>
+                                                    <td>
+                                                        <div className="d-flex gap-2">
+                                                            <Button
+                                                                color="secondary"
+                                                                size="sm"
+                                                                onClick={() => toggleModal(agent)}
+                                                                style={{ backgroundColor: 'black', borderColor: 'black', color: 'white' }}
+                                                            >
+                                                                Ajouter Emploi
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </Table>
                             </div>

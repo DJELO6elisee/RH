@@ -91,6 +91,9 @@ router.get('/:id/historique-retrait-restauration', requireRoleOrAssigned, agents
 // Diagnostic : Comprendre pourquoi des agents apparaissent dans la liste "Agents à la Retraite"
 router.get('/diagnose-retired', requireRoleOrAssigned, agentsController.diagnoseRetiredAgents.bind(agentsController));
 
+// Liste des agents en instance d'affectation
+router.get('/instance-affectation', requireRoleOrAssigned, agentsController.getAgentsInstanceAffectation.bind(agentsController));
+
 // ========================================
 // ROUTES AVEC PARAMÈTRE :id (doivent être EN DERNIER)
 // ========================================
@@ -155,5 +158,8 @@ router.patch('/:id/retirer', requireRoleOrAssigned, agentsController.delete.bind
 
 // Retirer un agent (route DELETE - remplace la suppression)
 router.delete('/:id', requireRoleOrAssigned, agentsController.delete.bind(agentsController));
+
+// Mettre un agent en instance d'affectation
+router.put('/:id/instance-affectation', requireRoleOrAssigned, agentsController.mettreEnInstanceAffectation.bind(agentsController));
 
 module.exports = router;

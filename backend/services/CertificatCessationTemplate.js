@@ -6,7 +6,7 @@
 
 const { HEADER_CSS, buildHeaderHTML, resolveOfficialHeaderContext } = require('./officialHeader');
 const { formatDocumentReference, getDocumentReference } = require('./utils/documentReference');
-const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel, getAgentDirectionToDisplay } = require('./utils/agentFunction');
+const { getResolvedFunctionLabel, getAgentPosteOuEmploi, getAgentEmploi, normalizeFunctionLabel, getAgentDirectionToDisplay } = require('./utils/agentFunction');
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
@@ -22,14 +22,45 @@ function toTitleCase(value = '') {
 
 function formatNameParts(agent = {}) {
     const { normalizeCivilite } = require('./utils/agentFunction');
-    const civilite = normalizeCivilite(agent.civilite, agent.sexe);
+    let civilite = normalizeCivilite(agent.civilite, agent.sexe);
+    
+    const civUpper = civilite.toUpperCase().replace(/\./g, '').trim();
+    if (civUpper === 'MME' || civUpper === 'MADAME') {
+        civilite = 'MADAME';
+    } else if (civUpper === 'MLLE' || civUpper === 'MLE' || civUpper === 'MADEMOISELLE') {
+        civilite = 'MADEMOISELLE';
+    } else if (civUpper === 'M' || civUpper === 'MONSIEUR') {
+        civilite = 'MONSIEUR';
+    }
+
     const prenoms = (agent.prenom || '').toUpperCase().trim();
-    const nom = (agent.nom || '').toUpperCase();
+    const nom = (agent.nom || '').toUpperCase().trim();
+
+    // Gestion des femmes mariées : format "NOM_EPOUX NEE NOM_NAISSANCE PRENOMS"
+    // Une femme est considérée mariée si :
+    //  - id_situation_matrimoniale === 2 ("Marié(e)" dans la base) ET nom_conjointe est renseigné
+    //  - OU le nom_conjointe est explicitement renseigné ET l'agent est de sexe F
+    const isMariee = (
+        agent.sexe === 'F' &&
+        agent.nom_conjointe &&
+        String(agent.nom_conjointe).trim() !== ''
+    );
+
+    let nomAffiche = nom;
+    if (isMariee) {
+        const nomConjoint = String(agent.nom_conjointe).toUpperCase().trim();
+        // Format officiel : NOM_EPOUX NEE NOM_NAISSANCE (PRENOMS restent séparés)
+        nomAffiche = `${nomConjoint} NEE ${nom}`;
+    }
+
     return {
         civilite,
         prenoms,
-        nom,
-        fullWithCivilite: [civilite, prenoms, nom].filter(Boolean).join(' ').trim()
+        nom: nomAffiche,
+        nomNaissance: nom,
+        nomConjoint: isMariee ? String(agent.nom_conjointe).toUpperCase().trim() : '',
+        isMariee,
+        fullWithCivilite: [civilite, nomAffiche, prenoms].filter(Boolean).join(' ').trim()
     };
 }
 
@@ -403,11 +434,11 @@ class CertificatCessationTemplate {
             numeroActeDecision: numeroActePourHeader
         });
 
-        const civilite = agent.sexe === 'F' ? 'Mlle' : 'M.';
         const nameParts = formatNameParts(agent);
+        const civilite = nameParts.civilite;
         const signatureInfo = await resolveSignature(validateur);
-        const fonctionActuelle = getAgentPosteOuEmploi(agent);
-        const designationPoste = fonctionActuelle;
+        // Utiliser getAgentPosteOuEmploi : emploi pour les contractuels, fonction pour les fonctionnaires
+        const designationPoste = getAgentPosteOuEmploi(agent);
         const serviceNom = getAgentDirectionToDisplay(agent, agent.service_nom || 'Service non renseigné');
         
         // Formatage du nom du validateur avec épouse si applicable
@@ -475,7 +506,7 @@ class CertificatCessationTemplate {
                     </div>
                 </div>`;
 
-        let bodyTemplate = "Je soussigné{validateurGenre}, <strong>{validateurNomComplet}</strong>, <strong>{validateurFonction}</strong>, certifie que {civilite} <strong>{prenoms} {nom}</strong>, matricule <strong>{matricule}</strong>, <strong>{designationPoste}</strong>, a cessé le service à la <strong>{serviceNom}</strong> le <strong>{dateCessation}</strong>.";
+        let bodyTemplate = "Je soussigné{validateurGenre}, <strong>{validateurNomComplet}</strong>, <strong>{validateurFonction}</strong>, certifie que {civilite} <strong>{nom} {prenoms}</strong>, matricule <strong>{matricule}</strong>, <strong>{designationPoste}</strong>, a cessé le service à la <strong>{serviceNom}</strong> le <strong>{dateCessation}</strong>.";
         let motifTitleTemplate = "MOTIF DE LA CESSATION";
         let repriseTextTemplate = "A l'issue de son congé, l'intéressé{interesseGenre} reprendra le service à son poste le <strong>{dateRepriseFormatee}</strong>.";
 

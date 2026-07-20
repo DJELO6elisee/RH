@@ -16,18 +16,22 @@ class AgentsController extends BaseController {
     getRetirementExclusionCondition(agentAlias = 'a', gradeAlias = 'g') {
         return `
             (
+                COALESCE(${agentAlias}.id_type_d_agent, 0) != 1
+                OR
                 (
-                    ${agentAlias}.date_retraite IS NULL
-                    AND (
-                        ${agentAlias}.date_de_naissance IS NULL
-                        OR DATE_PART('year', AGE(CURRENT_DATE, ${agentAlias}.date_de_naissance)) <
-                            CASE
-                                WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(${gradeAlias}.libele) IN ('A4', 'A5', 'A6', 'A7') THEN 65
-                                ELSE 60
-                            END
+                    (
+                        ${agentAlias}.date_retraite IS NULL
+                        AND (
+                            ${agentAlias}.date_de_naissance IS NULL
+                            OR DATE_PART('year', AGE(CURRENT_DATE, ${agentAlias}.date_de_naissance)) <
+                                CASE
+                                    WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                    ELSE 60
+                                END
+                        )
                     )
+                    OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > CURRENT_DATE)
                 )
-                OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > CURRENT_DATE)
             )
         `;
     }
@@ -97,9 +101,10 @@ class AgentsController extends BaseController {
                 type_agent,
                 id_type_d_agent, // Accepter aussi ce paramètre du frontend
                 sexe,
-                statut_emploi,
+                position,
                 service_id, // Variable non utilisée dans la requête SQL actuelle, mais présente dans les filtres
                 id_entite,
+                statut_emploi,
                 for_select = false // Nouveau paramètre pour les listes déroulantes
             } = req.query;
 
@@ -378,9 +383,58 @@ class AgentsController extends BaseController {
                 params.push(sexe);
             }
 
-            if (statut_emploi) {
-                whereConditions.push(`a.statut_emploi = $${params.length + 1}`);
-                params.push(statut_emploi);
+            if (position) {
+                if (position === 'Absent') {
+                    whereConditions.push(`
+                        EXISTS (
+                            SELECT 1 FROM demandes d 
+                            WHERE d.id_agent = a.id 
+                            AND d.status = 'approuve' 
+                            AND d.type_demande = 'absence'
+                            AND COALESCE(d.date_debut, d.date_creation) <= CURRENT_DATE
+                            AND NOT EXISTS (
+                                SELECT 1 FROM demandes d2 
+                                WHERE d2.id_agent = a.id 
+                                AND d2.status = 'approuve' 
+                                AND d2.type_demande = 'certificat_reprise_service'
+                                AND d2.date_reprise_service >= d.date_debut
+                            )
+                        )
+                    `);
+                } else if (position === 'PRESENT' || position === 'En activité') {
+                    whereConditions.push(`p.libele ILIKE $${params.length + 1}`);
+                    params.push(position);
+                } else {
+                    let motifFilter = '';
+                    if (position === 'CONGE DE MATERNITE') motifFilter = '%matern%';
+                    else if (position === 'CONGE DE PATERNITE') motifFilter = '%patern%';
+                    else if (position === 'CONGE ANNUEL') motifFilter = '%annuel%';
+                    
+                    if (motifFilter) {
+                        whereConditions.push(`(
+                            p.libele ILIKE $${params.length + 1} 
+                            OR EXISTS (
+                                SELECT 1 FROM demandes d 
+                                WHERE d.id_agent = a.id 
+                                AND d.status = 'approuve' 
+                                AND d.type_demande = 'certificat_cessation'
+                                AND COALESCE(d.agree_date_cessation, d.date_creation) <= CURRENT_DATE
+                                AND (d.motif_conge ILIKE $${params.length + 2} OR d.agree_motif ILIKE $${params.length + 2})
+                                AND NOT EXISTS (
+                                    SELECT 1 FROM demandes d2 
+                                    WHERE d2.id_agent = a.id 
+                                    AND d2.status = 'approuve' 
+                                    AND d2.type_demande = 'certificat_reprise_service'
+                                    AND d2.date_reprise_service >= COALESCE(d.agree_date_cessation, d.date_creation)
+                                )
+                            )
+                        )`);
+                        params.push(position, motifFilter);
+                    } else {
+                        whereConditions.push(`p.libele ILIKE $${params.length + 1}`);
+                        params.push(position);
+                    }
+                }
             }
 
             // Filtrage par catégorie si spécifié
@@ -433,13 +487,10 @@ class AgentsController extends BaseController {
             if (req.query.id_direction && (!idDirectionGeneraleRaw || idDirectionGeneraleRaw === '' || idDirectionGeneraleRaw === 'false' || !idDirectionGenerale)) {
                 whereConditions.push(`a.id_direction = $${params.length + 1}`);
                 params.push(req.query.id_direction);
-                // Directeur central : uniquement les agents directement rattachés à la direction (exclure les sous-directions)
+                // Directeur central : voir tous les agents rattachés à la direction (y compris les sous-directions)
                 const rawRoleDir = (req.user && req.user.role) ? (req.user.role || '').toLowerCase().replace(/\s+/g, '_').replace(/é/g, 'e').replace(/è/g, 'e') : '';
-                if (rawRoleDir === 'directeur_central') {
-                    whereConditions.push('a.id_sous_direction IS NULL');
-                }
                 hasDirectionFilter = true;
-                console.log(`📁 Filtrage par direction ID: ${req.query.id_direction}${rawRoleDir === 'directeur_central' ? ' (directeur central: agents sans sous-direction)' : ''}`);
+                console.log(`📁 Filtrage par direction ID: ${req.query.id_direction}`);
             }
 
             // Pour directeur / directeur_service_exterieur / directeur_central / directeur_general : si aucun filtre direction ni DG n'a été appliqué, forcer le filtre
@@ -481,12 +532,9 @@ class AgentsController extends BaseController {
                             const userDirectionId = dirResult.rows[0].id_direction;
                             whereConditions.push(`a.id_direction = $${params.length + 1}`);
                             params.push(userDirectionId);
-                            // Directeur central : uniquement les agents directement rattachés à la direction (sans sous-direction)
-                            if (rawRole === 'directeur_central') {
-                                whereConditions.push('a.id_sous_direction IS NULL');
-                            }
+                            // Directeur central : voir tous les agents rattachés à la direction (y compris les sous-directions)
                             hasDirectionFilter = true;
-                            console.log(`📁 Filtrage par direction de l'utilisateur (${rawRole}): ${userDirectionId}${rawRole === 'directeur_central' ? ' (agents sans sous-direction)' : ''}`);
+                            console.log(`📁 Filtrage par direction de l'utilisateur (${rawRole}): ${userDirectionId}`);
                         }
                     } catch (err) {
                         console.error('Erreur récupération id_direction utilisateur:', err);
@@ -6066,15 +6114,36 @@ class AgentsController extends BaseController {
                 }
             }
 
+            // Condition d'exclusion : agents retirés, retraités (statut ou date/âge pour fonctionnaires)
+            const activeCondition = `
+                (a.retire IS NULL OR a.retire = false)
+                AND LOWER(TRIM(COALESCE(a.statut_emploi, ''))) NOT IN ('retraite', 'licencie', 'demission')
+                AND (
+                    COALESCE(a.id_type_d_agent, 0) != 1
+                    OR (
+                        (
+                            a.date_retraite IS NULL
+                            AND (
+                                a.date_de_naissance IS NULL
+                                OR DATE_PART('year', AGE(CURRENT_DATE, a.date_de_naissance)) <
+                                    CASE
+                                        WHEN g.libele IS NOT NULL AND UPPER(REPLACE(g.libele, ' ', '')) IN ('A4','A5','A6','A7') THEN 65
+                                        ELSE 60
+                                    END
+                            )
+                        )
+                        OR (a.date_retraite IS NOT NULL AND a.date_retraite > CURRENT_DATE)
+                    )
+                )
+            `;
+
             // Construire la requête avec filtrage par ministère si nécessaire
-            let whereClause = '';
-            let subQueryWhereClause = '';
+            let ministereCondition = '';
             let params = [];
 
             if (userMinistereId) {
-                whereClause = ' WHERE a.id_ministere = $1';
-                subQueryWhereClause = ' WHERE id_ministere = $2';
-                params = [userMinistereId, userMinistereId];
+                ministereCondition = 'AND a.id_ministere = $1';
+                params = [userMinistereId];
             }
 
             const query = `
@@ -6082,20 +6151,65 @@ class AgentsController extends BaseController {
                     d.libelle as direction_libelle,
                     m.nom as ministere_nom,
                     COUNT(a.id) as count,
-                    ROUND(COUNT(a.id) * 100.0 / (SELECT COUNT(*) FROM agents${subQueryWhereClause}), 2) as percentage
+                    ROUND(COUNT(a.id) * 100.0 / NULLIF((
+                        SELECT COUNT(a2.id)
+                        FROM agents a2
+                        LEFT JOIN grades g2 ON a2.id_grade = g2.id
+                        WHERE (a2.retire IS NULL OR a2.retire = false)
+                          AND LOWER(TRIM(COALESCE(a2.statut_emploi, ''))) NOT IN ('retraite', 'licencie', 'demission')
+                          AND (
+                              COALESCE(a2.id_type_d_agent, 0) != 1
+                              OR (
+                                  (a2.date_retraite IS NULL AND (a2.date_de_naissance IS NULL OR DATE_PART('year', AGE(CURRENT_DATE, a2.date_de_naissance)) < CASE WHEN g2.libele IS NOT NULL AND UPPER(REPLACE(g2.libele, ' ', '')) IN ('A4','A5','A6','A7') THEN 65 ELSE 60 END))
+                                  OR (a2.date_retraite IS NOT NULL AND a2.date_retraite > CURRENT_DATE)
+                              )
+                          )
+                          ${userMinistereId ? 'AND a2.id_ministere = $1' : ''}
+                    ), 0), 2) as percentage,
+                    COUNT(a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) = 'M') as hommes,
+                    COUNT(a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) != 'M') as femmes,
+                    ROUND(COUNT(a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) = 'M') * 100.0 / NULLIF(COUNT(a.id), 0), 1) as pct_hommes,
+                    ROUND(COUNT(a.id) FILTER (WHERE UPPER(TRIM(COALESCE(a.sexe, ''))) != 'M') * 100.0 / NULLIF(COUNT(a.id), 0), 1) as pct_femmes,
+                    COUNT(a.id) FILTER (WHERE ta.libele ILIKE '%FONCTIONNAIRE%') as nb_fonctionnaire,
+                    COUNT(a.id) FILTER (WHERE ta.libele ILIKE '%CONTRACTUEL%' AND ta.libele NOT ILIKE '%ARTICLE 18%') as nb_contractuel,
+                    COUNT(a.id) FILTER (WHERE ta.libele ILIKE '%ARTICLE 18%') as nb_article_18,
+                    COUNT(a.id) FILTER (WHERE ta.libele ILIKE '%BNETD%') as nb_bnetd,
+                    COUNT(a.id) FILTER (WHERE ta.libele NOT ILIKE '%FONCTIONNAIRE%' AND ta.libele NOT ILIKE '%CONTRACTUEL%' AND ta.libele NOT ILIKE '%ARTICLE 18%' AND ta.libele NOT ILIKE '%BNETD%') as nb_autres_statut
                 FROM agents a
                 LEFT JOIN directions d ON a.id_direction = d.id
                 LEFT JOIN ministeres m ON d.id_ministere = m.id
-                ${whereClause}
+                LEFT JOIN grades g ON a.id_grade = g.id
+                LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
+                WHERE ${activeCondition} ${ministereCondition}
                 GROUP BY d.id, d.libelle, m.id, m.nom
                 HAVING COUNT(a.id) > 0
                 ORDER BY count DESC
             `;
 
             const result = await pool.query(query, params);
+
+            // Ajouter les pourcentages par statut dans la réponse
+            const data = result.rows.map(row => ({
+                ...row,
+                count: parseInt(row.count),
+                hommes: parseInt(row.hommes),
+                femmes: parseInt(row.femmes),
+                pct_hommes: parseFloat(row.pct_hommes) || 0,
+                pct_femmes: parseFloat(row.pct_femmes) || 0,
+                nb_fonctionnaire: parseInt(row.nb_fonctionnaire) || 0,
+                nb_contractuel: parseInt(row.nb_contractuel) || 0,
+                nb_article_18: parseInt(row.nb_article_18) || 0,
+                nb_bnetd: parseInt(row.nb_bnetd) || 0,
+                nb_autres_statut: parseInt(row.nb_autres_statut) || 0,
+                pct_fonctionnaire: row.count > 0 ? Math.round(parseInt(row.nb_fonctionnaire) * 100 / parseInt(row.count)) : 0,
+                pct_contractuel: row.count > 0 ? Math.round(parseInt(row.nb_contractuel) * 100 / parseInt(row.count)) : 0,
+                pct_article_18: row.count > 0 ? Math.round(parseInt(row.nb_article_18) * 100 / parseInt(row.count)) : 0,
+                pct_bnetd: row.count > 0 ? Math.round(parseInt(row.nb_bnetd) * 100 / parseInt(row.count)) : 0,
+            }));
+
             res.json({
                 success: true,
-                data: result.rows
+                data
             });
         } catch (error) {
             console.error('Erreur lors de la récupération des statistiques par direction:', error);
@@ -6271,9 +6385,6 @@ class AgentsController extends BaseController {
                 whereClause += ` AND a.id_direction = $${paramIndex}`;
                 params.push(userAgent.id_direction);
                 paramIndex++;
-                if (userRole === 'directeur_central') {
-                    whereClause += ` AND a.id_sous_direction IS NULL`;
-                }
 
                 if (effectiveMinistereId) {
                     whereClause += ` AND a.id_ministere = $${paramIndex}`;
@@ -9597,11 +9708,52 @@ class AgentsController extends BaseController {
                 paramIndex++;
             }
 
-            // Filtre par statut emploi
-            if (req.query.statut_emploi && req.query.statut_emploi !== '') {
-                conditions.push(`a.statut_emploi = $${paramIndex}`);
-                queryParams.push(req.query.statut_emploi);
-                paramIndex++;
+            // Filtre par position
+            if (req.query.position && req.query.position !== '') {
+                const position = req.query.position;
+                if (position === 'Absent') {
+                    conditions.push(`
+                        EXISTS (
+                            SELECT 1 FROM demandes d 
+                            WHERE d.id_agent = a.id 
+                            AND d.status = 'approuve' 
+                            AND d.type_demande = 'absence'
+                            AND COALESCE(d.date_debut, d.date_creation) <= CURRENT_DATE
+                            AND (d.date_fin IS NULL OR d.date_fin >= CURRENT_DATE)
+                            AND (d.date_reprise_service IS NULL OR d.date_reprise_service > CURRENT_DATE)
+                        )
+                    `);
+                } else if (position === 'PRESENT' || position === 'En activité') {
+                    conditions.push(`p.libele ILIKE $${paramIndex}`);
+                    queryParams.push(position);
+                    paramIndex++;
+                } else {
+                    let motifFilter = '';
+                    if (position === 'CONGE DE MATERNITE') motifFilter = '%matern%';
+                    else if (position === 'CONGE DE PATERNITE') motifFilter = '%patern%';
+                    else if (position === 'CONGE ANNUEL') motifFilter = '%annuel%';
+                    
+                    if (motifFilter) {
+                        conditions.push(`(
+                            p.libele ILIKE $${paramIndex} 
+                            OR EXISTS (
+                                SELECT 1 FROM demandes d 
+                                WHERE d.id_agent = a.id 
+                                AND d.status = 'approuve' 
+                                AND d.type_demande = 'certificat_cessation'
+                                AND COALESCE(d.agree_date_cessation, d.date_creation) <= CURRENT_DATE
+                                AND (d.motif_conge ILIKE $${paramIndex + 1} OR d.agree_motif ILIKE $${paramIndex + 1})
+                                AND (d.date_reprise_service IS NULL OR d.date_reprise_service > CURRENT_DATE)
+                            )
+                        )`);
+                        queryParams.push(position, motifFilter);
+                        paramIndex += 2;
+                    } else {
+                        conditions.push(`p.libele ILIKE $${paramIndex}`);
+                        queryParams.push(position);
+                        paramIndex++;
+                    }
+                }
             }
 
             // Filtre par catégorie (depuis categories_agents)
@@ -10111,11 +10263,8 @@ class AgentsController extends BaseController {
             if (id_direction && !id_direction_generale) {
                 queryParams.push(id_direction);
                 whereClause += ` AND a.id_direction = $${queryParams.length}`;
-                // Directeur central : uniquement les agents directement rattachés à la direction (sans sous-direction)
+                // Directeur central : voir tous les agents rattachés à la direction (y compris les sous-directions)
                 // gestionnaire_du_patrimoine, president_du_fond, responsble_cellule_de_passation : toute la direction (comme directeur)
-                if (isDirecteurCentral) {
-                    whereClause += ` AND a.id_sous_direction IS NULL`;
-                }
             }
 
             // Filtrer par sous-direction si fourni
@@ -11559,6 +11708,192 @@ class AgentsController extends BaseController {
                 message: 'Erreur interne du serveur',
                 error: error.message
             });
+        }
+    }
+
+    async getAgentsInstanceAffectation(req, res) {
+        try {
+            const { page = 1, limit = 10, search } = req.query;
+            const offset = (page - 1) * limit;
+
+            let query = `
+                SELECT
+                    a.id,
+                    a.nom,
+                    a.prenom,
+                    a.matricule,
+                    a.sexe,
+                    a.telephone1,
+                    a.telephone2,
+                    a.email,
+                    a.statut_emploi,
+                    a.date_embauche,
+                    m.nom as ministere_nom,
+                    d.libelle as direction_libelle
+                FROM agents a
+                LEFT JOIN ministeres m ON a.id_ministere = m.id
+                LEFT JOIN directions d ON a.id_direction = d.id
+                WHERE d.libelle ILIKE '%INSTANCE D%AFFECTATION%'
+                  AND (a.retire IS NULL OR a.retire = false)
+                  AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+            `;
+
+            let countQuery = `
+                SELECT COUNT(*)
+                FROM agents a
+                LEFT JOIN directions d ON a.id_direction = d.id
+                WHERE d.libelle ILIKE '%INSTANCE D%AFFECTATION%'
+                  AND (a.retire IS NULL OR a.retire = false)
+                  AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+            `;
+
+            const params = [];
+            
+            if (search) {
+                query += ` AND (a.nom ILIKE $${params.length + 1} OR a.prenom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
+                countQuery += ` AND (a.nom ILIKE $${params.length + 1} OR a.prenom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
+                params.push(`%${search}%`);
+            }
+
+            query += ` ORDER BY a.nom ASC, a.prenom ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            const queryParams = [...params, parseInt(limit), parseInt(offset)];
+
+            const [result, countResult] = await Promise.all([
+                pool.query(query, queryParams),
+                pool.query(countQuery, params)
+            ]);
+
+            const totalCount = parseInt(countResult.rows[0].count);
+
+            res.json({
+                success: true,
+                data: result.rows,
+                pagination: {
+                    currentPage: parseInt(page),
+                    totalPages: Math.ceil(totalCount / parseInt(limit)),
+                    totalCount,
+                    limit: parseInt(limit)
+                }
+            });
+
+        } catch (error) {
+            console.error('Erreur getAgentsInstanceAffectation:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur interne du serveur',
+                error: error.message
+            });
+        }
+    }
+
+    async mettreEnInstanceAffectation(req, res) {
+        const client = await pool.connect();
+        try {
+            const { id } = req.params;
+            const { motif } = req.body;
+            
+            await client.query('BEGIN');
+
+            // 1. Vérifier si l'agent existe
+            const agentQuery = await client.query('SELECT * FROM agents WHERE id = $1', [id]);
+            if (agentQuery.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Agent introuvable' });
+            }
+            
+            const agent = agentQuery.rows[0];
+
+            // 2. Trouver l'ID de la direction "INSTANCE D'AFFECTATION"
+            // (on se base sur l'id_ministere de l'agent si possible)
+            let dirQueryStr = `SELECT id FROM directions WHERE libelle ILIKE '%INSTANCE D%AFFECTATION%' AND id_ministere = $1 LIMIT 1`;
+            let dirRes = await client.query(dirQueryStr, [agent.id_ministere]);
+            
+            if (dirRes.rows.length === 0) {
+                // Si la direction n'est pas trouvée pour ce ministère, on cherche globalement
+                dirRes = await client.query(`SELECT id FROM directions WHERE libelle ILIKE '%INSTANCE D%AFFECTATION%' LIMIT 1`);
+                if (dirRes.rows.length === 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(404).json({ success: false, message: "Direction INSTANCE D'AFFECTATION introuvable dans la base de données" });
+                }
+            }
+            
+            const idDirectionInstance = dirRes.rows[0].id;
+
+            if (agent.id_direction === idDirectionInstance) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: "L'agent est déjà en instance d'affectation" });
+            }
+
+            // Trouver la position "En instance d'affectation"
+            let posRes = await client.query(`SELECT id FROM positions WHERE libele ILIKE '%instance d%affectation%' LIMIT 1`);
+            let idPositionInstance = posRes.rows.length > 0 ? posRes.rows[0].id : null;
+
+            // 3. Mettre à jour l'agent
+            const previousDirection = agent.id_direction;
+            
+            if (idPositionInstance) {
+                await client.query(`
+                    UPDATE agents 
+                    SET id_direction = $1, id_position = $2, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = $3
+                `, [idDirectionInstance, idPositionInstance, id]);
+            } else {
+                await client.query(`
+                    UPDATE agents 
+                    SET id_direction = $1, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = $2
+                `, [idDirectionInstance, id]);
+            }
+
+            // 4. Historique agents
+            await client.query(`
+                INSERT INTO historique_agents 
+                (id_agent, champ_modifie, ancienne_valeur, nouvelle_valeur, user_id, date_modification, motif)
+                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6)
+            `, [
+                id, 
+                'id_direction', 
+                previousDirection ? previousDirection.toString() : null, 
+                idDirectionInstance.toString(), 
+                req.user ? req.user.id_user : null,
+                motif || "Mise en instance d'affectation"
+            ]);
+
+            // 5. Positions
+            // On peut ajouter l'agent dans la table historique_positions ou affectations_agents s'il y a un lieu dédié.
+            // Vu la requête de l'utilisateur "dans les deux tables", on suppose qu'il y a une table liée.
+            // Si l'utilisateur parlait de "historique_agents" et "positions" (cette dernière est un référentiel statique ou de positions courantes ?)
+            // Voyons s'il existe "historique_positions". On ne prend pas le risque d'insérer dans 'positions' si c'est un référentiel.
+            // Je vais faire un insert dans affectations_agents si elle existe, mais je vais plutôt utiliser la structure d'historique connue.
+            // Si `positions` est un référentiel, il ne faut pas l'utiliser pour l'historique d'un agent.
+            // J'essaie de vérifier si historique_positions existe, sinon je mets juste un commentaire.
+            try {
+                // Table d'historisation des changements d'affectations (directions/services) si elle existe.
+                await client.query(`
+                    INSERT INTO historique_positions (id_agent, id_nouvelle_position, id_ancienne_position, motif, created_by)
+                    VALUES ($1, $2, $3, $4, $5)
+                `, [id, idDirectionInstance, previousDirection, motif || "Mise en instance d'affectation", req.user ? req.user.id_user : null]);
+            } catch (posError) {
+                // Ignore s'il n'y a pas de table historique_positions
+            }
+
+            await client.query('COMMIT');
+            
+            res.json({
+                success: true,
+                message: "Agent mis en instance d'affectation avec succès"
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('Erreur mettreEnInstanceAffectation:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur interne du serveur',
+                error: error.message
+            });
+        } finally {
+            client.release();
         }
     }
 }

@@ -1,0 +1,186 @@
+/* ============================================================
+   RESPONSIVE MOBILE - Sidebar, Header, Layout
+   ============================================================ */
+
+/* ── Overlay sombre quand la sidebar est ouverte sur mobile ── */
+.mobile-sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1040;
+  backdrop-filter: blur(2px);
+  animation: overlayFadeIn 0.25s ease;
+}
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.mobile-sidebar-overlay.active {
+  display: block;
+}
+
+/* ── Bouton hamburger mobile ── */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1060;
+  background: #2c3e50;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  transition: background 0.2s;
+}
+.mobile-menu-toggle:hover {
+  background: #34495e;
+}
+
+/* ── MOBILE : < 768px ── */
+@media (max-width: 767.98px) {
+
+  /* Afficher le bouton hamburger */
+  .mobile-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── AgentSidebar ── */
+  .agent-sidebar {
+    position: fixed !important;
+    left: -260px !important;
+    top: 0 !important;
+    width: 260px !important;
+    height: 100vh !important;
+    z-index: 1050 !important;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    overflow-y: auto !important;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+  }
+  .agent-sidebar.mobile-open {
+    left: 0 !important;
+  }
+
+  /* ── FilteredSidebar (cr-sidebar) ── */
+  .cr-sidebar {
+    transform: translateX(-100%) !important;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    z-index: 1050 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    height: 100vh !important;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+  }
+  .cr-sidebar--open {
+    transform: translateX(0) !important;
+  }
+
+  /* ── Contenu principal (layout agent) ── */
+  .agent-main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 60px !important; /* espace pour le bouton hamburger */
+  }
+
+  /* ── Contenu principal (layout DRH/admin) ── */
+  .cr-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 60px !important;
+  }
+
+  /* ── Header DRH/admin ── */
+  .cr-header {
+    padding-left: 55px !important; /* espace pour le bouton hamburger fixe */
+  }
+
+  /* ── Masquer le bouton toggle dans le header sur mobile 
+     (on utilise le bouton fixe à la place) ── */
+  .cr-header .mr-2 {
+    display: none !important;
+  }
+}
+
+/* ── TABLET : 768px - 991px ── */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .mobile-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .agent-sidebar {
+    position: fixed !important;
+    left: -260px !important;
+    z-index: 1050 !important;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .agent-sidebar.mobile-open {
+    left: 0 !important;
+  }
+
+  .agent-main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 60px !important;
+  }
+
+  .cr-sidebar {
+    transform: translateX(-100%) !important;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .cr-sidebar--open {
+    transform: translateX(0) !important;
+  }
+
+  .cr-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 60px !important;
+  }
+
+  .cr-header {
+    padding-left: 55px !important;
+  }
+
+  .cr-header .mr-2 {
+    display: none !important;
+  }
+}
+
+/* ── Bouton déconnexion dans la sidebar : toujours visible ── */
+.sidebar-logout-btn {
+  width: 100%;
+  margin-top: 16px;
+  background: #e74c3c;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+.sidebar-logout-btn:hover {
+  background: #c0392b;
+}
+
+/* ── Masquer le bouton déconnexion dupliqué dans le header user-card ──
+   On le garde seulement dans la sidebar sur mobile ── */
+@media (max-width: 767.98px) {
+  /* Le popover user-card dans le header cache le bouton déconnexion 
+     pour éviter la duplication */
+  .cr-user-card .list-group-item:last-child {
+    display: none !important;
+  }
+}

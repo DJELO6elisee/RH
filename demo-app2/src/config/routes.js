@@ -339,6 +339,14 @@ export const backendRoutes = [
         category: 'Gestion du Personnel'
     },
     {
+        id: 'agents-instance-affectation',
+        name: 'Gestion des agents en instance d\'affectation',
+        path: '/agents-instance-affectation',
+        icon: 'MdPerson',
+        description: 'Gestion des agents mis en instance d\'affectation',
+        category: 'Gestion du Personnel'
+    },
+    {
         id: 'positions-agents',
         name: 'Positions actuelles des agents',
         path: '/positions-agents',

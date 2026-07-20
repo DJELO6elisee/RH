@@ -155,16 +155,22 @@ class AttestationTravailTemplate {
 
         const replacePlaceholders = (text) => {
             return text
-                .replace(/{validateurGenre}/g, validateurGenre || '')
-                .replace(/{validateurNomComplet}/g, validateurNomComplet || '')
-                .replace(/{validateurFonction}/g, validateurFonction || '')
-                .replace(/{fullWithCivilite}/g, nameParts.fullWithCivilite || '')
-                .replace(/{matricule}/g, agent.matricule || '')
-                .replace(/{fonctionActuelle}/g, fonctionActuelle || '')
-                .replace(/{poste}/g, fonctionActuelle || '')
-                .replace(/{directionToDisplay}/g, directionToDisplay || '')
-                .replace(/{direction}/g, directionToDisplay || '')
-                .replace(/{dateDebut}/g, dateDebut || '');
+                .replace(/\{\s*validateurGenre\s*\}/gi, validateurGenre || '')
+                .replace(/\{\s*validateurNomComplet\s*\}/gi, validateurNomComplet || '')
+                .replace(/\{\s*validateurFonction\s*\}/gi, validateurFonction || '')
+                .replace(/\{\s*fullWithCivilite\s*\}/gi, nameParts.fullWithCivilite || '')
+                .replace(/\{\s*civilite\s*\}/gi, nameParts.civilite || '')
+                .replace(/\{\s*prenoms\s*\}/gi, nameParts.prenoms || '')
+                .replace(/\{\s*nom\s*\}/gi, nameParts.nom || '')
+                .replace(/\{\s*matricule\s*\}/gi, agent.matricule || '')
+                .replace(/\{\s*fonctionActuelle\s*\}/gi, fonctionActuelle || '')
+                .replace(/\{\s*poste\s*\}/gi, fonctionActuelle || '')
+                .replace(/\{\s*emploi\s*\}/gi, fonctionActuelle || '')
+                .replace(/\{\s*grade\s*\}/gi, agent.grade || '')
+                .replace(/\{\s*directionToDisplay\s*\}/gi, directionToDisplay || '')
+                .replace(/\{\s*direction\s*\}/gi, directionToDisplay || '')
+                .replace(/\{\s*serviceNom\s*\}/gi, directionToDisplay || '')
+                .replace(/\{\s*dateDebut\s*\}/gi, dateDebut || '');
         };
 
         const { correctDocumentPrepositions } = require('./utils/frenchGrammar');

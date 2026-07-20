@@ -17,7 +17,7 @@ class DecisionsController {
             const idSousDirection = options.id_sous_direction != null ? parseInt(options.id_sous_direction, 10) : null;
 
             const prefix = `N°`;
-            const suffix = `MINTOUR/DRH/SDGP ${year}`;
+            const suffix = `MINTOUR/DRH/SDGP/${year}`;
 
             // Dernier numéro pour cette année et ce périmètre (direction ou sous-direction)
             // Utiliser annee_decision si la colonne est renseignée, sinon fallback sur numero_acte LIKE
@@ -68,7 +68,7 @@ class DecisionsController {
             console.error('❌ Erreur lors de la génération du numéro de décision:', error);
             const currentYear = new Date().getFullYear();
             const timestamp = String((Date.now() % 1000) || 1).padStart(3, '0');
-            return `DECISION N° ${timestamp} MINTOUR/DRH/SDGP ${currentYear}`;
+            return `DECISION N° ${timestamp} MINTOUR/DRH/SDGP/${currentYear}`;
         }
     }
 

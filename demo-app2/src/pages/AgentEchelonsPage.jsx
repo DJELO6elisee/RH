@@ -322,15 +322,7 @@ const AgentEchelonsPage = () => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
-    if (loading) {
-        return (
-            <Page title="Gestion des Échelons">
-                <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
-                    <Spinner color="primary" />
-                </div>
-            </Page>
-        );
-    }
+    // Le spinner global a été supprimé pour conserver le focus sur le champ de recherche
 
     return (
         <Page title="Gestion des Échelons">
@@ -379,53 +371,65 @@ const AgentEchelonsPage = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {agents.map((agent, index) => (
-                                            <tr key={agent.id}>
-                                                <td className="fw-bold text-center">
-                                                    {((currentPage - 1) * itemsPerPage) + index + 1}
-                                                </td>
-                                                <td className="fw-bold">{agent.matricule || 'N/A'}</td>
-                                                <td className="fw-bold">{agent.nom}</td>
-                                                <td>{agent.prenom}</td>
-                                                <td className="fw-bold text-center">
-                                                    {agent.nb_echelons || 0}
-                                                </td>
-                                                <td>
-                                                    {(() => {
-                                                        const nbEchelons = parseInt(agent.nb_echelons) || 0;
-                                                        if (nbEchelons > 0) {
-                                                            return (
-                                                                <div className="d-flex align-items-center gap-2">
-                                                                    <span>{agent.dernier_echelon_nom || '-'}</span>
-                                                                    <Button
-                                                                        color="info"
-                                                                        size="sm"
-                                                                        onClick={() => toggleModalEchelons(agent)}
-                                                                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                                                                    >
-                                                                        {nbEchelons > 1 ? 'Voir' : 'Voir/Modifier'}
-                                                                    </Button>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        return <span className="text-muted">Aucun échelon</span>;
-                                                    })()}
-                                                </td>
-                                                <td>
-                                                    {agent.dernier_echelon_date ? formatDate(agent.dernier_echelon_date) : '-'}
-                                                </td>
-                                                <td>
-                                                    <Button
-                                                        color="secondary"
-                                                        size="sm"
-                                                        onClick={() => toggleModal(agent)}
-                                                        style={{ backgroundColor: 'black', borderColor: 'black', color: 'white' }}
-                                                    >
-                                                        Attribuer Échelon
-                                                    </Button>
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-5">
+                                                    <Spinner color="primary" />
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ) : agents.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-4 text-muted">Aucun agent trouvé</td>
+                                            </tr>
+                                        ) : (
+                                            agents.map((agent, index) => (
+                                                <tr key={agent.id}>
+                                                    <td className="fw-bold text-center">
+                                                        {((currentPage - 1) * itemsPerPage) + index + 1}
+                                                    </td>
+                                                    <td className="fw-bold">{agent.matricule || 'N/A'}</td>
+                                                    <td className="fw-bold">{agent.nom}</td>
+                                                    <td>{agent.prenom}</td>
+                                                    <td className="fw-bold text-center">
+                                                        {agent.nb_echelons || 0}
+                                                    </td>
+                                                    <td>
+                                                        {(() => {
+                                                            const nbEchelons = parseInt(agent.nb_echelons) || 0;
+                                                            if (nbEchelons > 0) {
+                                                                return (
+                                                                    <div className="d-flex align-items-center gap-2">
+                                                                        <span>{agent.dernier_echelon_nom || '-'}</span>
+                                                                        <Button
+                                                                            color="info"
+                                                                            size="sm"
+                                                                            onClick={() => toggleModalEchelons(agent)}
+                                                                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                                                        >
+                                                                            {nbEchelons > 1 ? 'Voir' : 'Voir/Modifier'}
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return <span className="text-muted">Aucun échelon</span>;
+                                                        })()}
+                                                    </td>
+                                                    <td>
+                                                        {agent.dernier_echelon_date ? formatDate(agent.dernier_echelon_date) : '-'}
+                                                    </td>
+                                                    <td>
+                                                        <Button
+                                                            color="secondary"
+                                                            size="sm"
+                                                            onClick={() => toggleModal(agent)}
+                                                            style={{ backgroundColor: 'black', borderColor: 'black', color: 'white' }}
+                                                        >
+                                                            Attribuer Échelon
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </Table>
                             </div>

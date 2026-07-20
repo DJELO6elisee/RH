@@ -90,44 +90,60 @@ const DocumentsGeneresPage = () => {
 
                         <TabContent activeTab={activeTab}>
                             <TabPane tabId="tous">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="tous" />
-                                </div>
+                                {activeTab === 'tous' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="tous" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="absence">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="absence" />
-                                </div>
+                                {activeTab === 'absence' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="absence" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="certificat_reprise_service">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="certificat_reprise_service" />
-                                </div>
+                                {activeTab === 'certificat_reprise_service' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="certificat_reprise_service" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="sortie_territoire">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="sortie_territoire" />
-                                </div>
+                                {activeTab === 'sortie_territoire' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="sortie_territoire" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="attestation_presence">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="attestation_presence" />
-                                </div>
+                                {activeTab === 'attestation_presence' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="attestation_presence" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="attestation_travail">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="attestation_travail" />
-                                </div>
+                                {activeTab === 'attestation_travail' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="attestation_travail" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="certificat_cessation">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="certificat_cessation" />
-                                </div>
+                                {activeTab === 'certificat_cessation' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="certificat_cessation" />
+                                    </div>
+                                )}
                             </TabPane>
                             <TabPane tabId="certificat_non_jouissance_conge">
-                                <div className="mt-3">
-                                    <DocumentsGenerated typeDemande="certificat_non_jouissance_conge" />
-                                </div>
+                                {activeTab === 'certificat_non_jouissance_conge' && (
+                                    <div className="mt-3">
+                                        <DocumentsGenerated typeDemande="certificat_non_jouissance_conge" />
+                                    </div>
+                                )}
                             </TabPane>
                         </TabContent>
                     </Col>

@@ -251,6 +251,56 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
     const [loadingHistorique, setLoadingHistorique] = useState(false);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [validationAction, setValidationAction] = useState(null); // 'approuve' ou 'rejete'
+    const [previewDocUrl, setPreviewDocUrl] = useState(null);
+    const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+
+    useEffect(() => {
+        if (previewDocUrl) {
+            setIsLoadingPdf(true);
+            const token = localStorage.getItem('token');
+            // Construire l'URL complète si chemin relatif
+            // Utiliser /api/uploads pour contourner les restrictions serveur
+            let normalizedPath = previewDocUrl;
+            if (!previewDocUrl.startsWith('http')) {
+                // Remplacer /uploads/ par /api/uploads/ pour passer par le backend
+                normalizedPath = previewDocUrl.startsWith('/uploads/')
+                    ? previewDocUrl.replace('/uploads/', '/api/uploads/')
+                    : previewDocUrl;
+            }
+            const fullUrl = normalizedPath.startsWith('http') 
+                ? normalizedPath 
+                : `https://tourisme.2ise-groupe.com${normalizedPath}`;
+            fetch(fullUrl, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error('Erreur serveur: ' + res.status);
+                    const contentType = res.headers.get('content-type') || '';
+                    if (contentType.includes('text/html')) {
+                        throw new Error('Le serveur a renvoyé du HTML au lieu du fichier');
+                    }
+                    return res.blob();
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    setPreviewBlobUrl(url);
+                    setIsLoadingPdf(false);
+                })
+                .catch(err => {
+                    console.error("Erreur chargement PDF", err);
+                    setIsLoadingPdf(false);
+                    // Ouvrir dans un nouvel onglet comme fallback
+                    window.open(fullUrl, '_blank');
+                });
+        } else {
+            if (previewBlobUrl) {
+                URL.revokeObjectURL(previewBlobUrl);
+                setPreviewBlobUrl(null);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [previewDocUrl]);
 
     const loadHistorique = useCallback(async () => {
         if (!demande) return;
@@ -465,11 +515,11 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
         );
     }
 
-    // Pour les demandes à valider : demandes d'autres agents OU propre demande du DRH en phase de finalisation OU propre demande déjà approuvée (tous agents)
     if (!isOwnDemand || isDRHViewingOwnDemandeForFinalisation || isOwnDemandAlreadyApproved) {
         // Vue "Demande approuvée - document généré" pour tout agent (y compris DRH) qui consulte sa propre demande déjà validée
         if (isOwnDemandAlreadyApproved) {
             return (
+                <>
                 <Modal isOpen={isOpen} toggle={toggle} size="lg">
                     <ModalHeader toggle={toggle}>
                         <i className="fa fa-file-text me-2"></i>
@@ -525,6 +575,7 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                         </Button>
                     </ModalFooter>
                 </Modal>
+            </>
             );
         }
 
@@ -751,7 +802,8 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
         };
 
         return (
-            <Modal isOpen={isOpen} toggle={toggle} size="lg">
+            <>
+            <Modal isOpen={isOpen} toggle={toggle} size="lg" scrollable>
                 <ModalHeader toggle={toggle}>
                     <i className="fa fa-file-text me-2"></i>
                     Détails de la demande - Validation
@@ -795,6 +847,29 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                             })()
                             )}
                         </pre>
+                        
+                        {demande.documents_joints && demande.documents_joints.length > 0 && (
+                            <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                                <h6 style={{ marginBottom: '10px', color: '#495057' }}>
+                                    <i className="fa fa-paperclip me-2"></i>
+                                    Documents joints
+                                </h6>
+                                <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
+                                    {demande.documents_joints.map((doc, index) => (
+                                        <li key={index} style={{ marginBottom: '8px' }}>
+                                            <button 
+                                                type="button"
+                                                onClick={(e) => { e.preventDefault(); setPreviewDocUrl(doc.chemin); }}
+                                                style={{ textDecoration: 'none', color: '#0056b3', display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                            >
+                                                <i className="fa fa-file-pdf me-2" style={{ color: '#dc3545' }}></i>
+                                                {doc.nom_original || `Document joint ${index + 1}`}
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         
                         {/* Boutons d'action */}
                         <div style={{ 
@@ -899,11 +974,46 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                     </Button>
                 </ModalFooter>
             </Modal>
+            
+            {/* Modal de prévisualisation du document */}
+            <Modal isOpen={!!previewDocUrl} toggle={() => setPreviewDocUrl(null)} size="xl" style={{ maxWidth: '90vw' }}>
+                <ModalHeader toggle={() => setPreviewDocUrl(null)}>
+                    Prévisualisation du document
+                </ModalHeader>
+                <ModalBody style={{ height: '80vh', padding: 0 }}>
+                    {isLoadingPdf ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                            <div className="spinner-border text-primary" role="status">
+                                <span className="visually-hidden">Chargement...</span>
+                            </div>
+                        </div>
+                    ) : (
+                        previewBlobUrl && (
+                            <iframe 
+                                src={previewBlobUrl} 
+                                style={{ width: '100%', height: '100%', border: 'none' }}
+                                title="Prévisualisation du document"
+                            />
+                        )
+                    )}
+                </ModalBody>
+                <ModalFooter>
+                    <a href={previewDocUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" download>
+                        <i className="fa fa-download me-2"></i>
+                        Ouvrir / Télécharger
+                    </a>
+                    <Button color="secondary" onClick={() => setPreviewDocUrl(null)}>
+                        Fermer
+                    </Button>
+                </ModalFooter>
+            </Modal>
+            </>
         );
     }
 
     // Pour les autres types de demandes, affichage normal avec informations générales
     return (
+        <>
         <Modal isOpen={isOpen} toggle={toggle} size="lg">
             <ModalHeader toggle={toggle}>
                 <i className="fa fa-file-text me-2"></i>
@@ -1326,6 +1436,40 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                 </Button>
             </ModalFooter>
         </Modal>
+
+        {/* Modal de prévisualisation du document */}
+        <Modal isOpen={!!previewDocUrl} toggle={() => setPreviewDocUrl(null)} size="xl" style={{ maxWidth: '90vw' }}>
+            <ModalHeader toggle={() => setPreviewDocUrl(null)}>
+                Prévisualisation du document
+            </ModalHeader>
+            <ModalBody style={{ height: '80vh', padding: 0 }}>
+                    {isLoadingPdf ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                            <div className="spinner-border text-primary" role="status">
+                                <span className="visually-hidden">Chargement...</span>
+                            </div>
+                        </div>
+                    ) : (
+                        previewBlobUrl && (
+                            <iframe 
+                                src={previewBlobUrl} 
+                                style={{ width: '100%', height: '100%', border: 'none' }}
+                                title="Prévisualisation du document"
+                            />
+                        )
+                    )}
+            </ModalBody>
+            <ModalFooter>
+                <a href={previewDocUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" download>
+                    <i className="fa fa-download me-2"></i>
+                    Ouvrir / Télécharger
+                </a>
+                <Button color="secondary" onClick={() => setPreviewDocUrl(null)}>
+                    Fermer
+                </Button>
+            </ModalFooter>
+        </Modal>
+        </>
     );
 };
 

@@ -5,7 +5,7 @@
 
 const { HEADER_CSS, buildHeaderHTML, resolveOfficialHeaderContext, pickFirstNonEmptyString } = require('./officialHeader');
 const { formatDocumentReference } = require('./utils/documentReference');
-const { getResolvedFunctionLabel, getAgentPosteOuEmploi, normalizeFunctionLabel } = require('./utils/agentFunction');
+const { getResolvedFunctionLabel, getAgentPosteOuEmploi, getAgentEmploi, normalizeFunctionLabel } = require('./utils/agentFunction');
 const { attachActiveSignature } = require('./utils/signatureUtils');
 const path = require('path');
 const fs = require('fs');
@@ -124,6 +124,7 @@ class AutorisationSortieTerritoireTemplate {
         const civilite = agent.sexe === 'F' ? 'Mlle' : 'M.';
         const nameParts = formatNameParts(agentWithSigle);
         const fonctionActuelle = getAgentPosteOuEmploi(agent);
+        const emploiActuel = getAgentEmploi(agent);
         const serviceNom = agent.service_nom || 'Service non renseigné';
 
         const signatureInfo = await resolveSignature(validateurWithSigle || validateur);
@@ -158,6 +159,7 @@ class AutorisationSortieTerritoireTemplate {
             return text
                 .replace(/{fullWithCivilite}/g, nameParts.fullWithCivilite || '')
                 .replace(/{matricule}/g, agent.matricule || '')
+                .replace(/{emploi}/g, emploiActuel ? emploiActuel.toUpperCase() : '')
                 .replace(/{fonctionActuelle}/g, fonctionActuelle ? fonctionActuelle.toUpperCase() : '')
                 .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
                 .replace(/{lieu}/g, demande.lieu || 'PAYS DE DESTINATION')
@@ -167,7 +169,9 @@ class AutorisationSortieTerritoireTemplate {
         };
 
         const { correctDocumentPrepositions } = require('./utils/frenchGrammar');
-        const resolvedBody = correctDocumentPrepositions(replacePlaceholders(bodyTemplate));
+        let bodyToRender = replacePlaceholders(bodyTemplate);
+        bodyToRender = bodyToRender.replace(/(?:<br>|\n)*\s*(<strong>)?\s*Motif\s*(<\/strong>)?\s*:/ig, '<br><br>$1Motif$2 :');
+        const resolvedBody = correctDocumentPrepositions(bodyToRender);
         const resolvedFooter = replacePlaceholders(footerTemplate);
 
         return `

@@ -23,13 +23,13 @@ function toTitleCase(value = '') {
 function formatNameParts(agent = {}) {
     const { normalizeCivilite } = require('./utils/agentFunction');
     const civilite = normalizeCivilite(agent.civilite, agent.sexe);
-    const prenoms = (agent.prenom || '').toUpperCase().trim();
     const nom = (agent.nom || '').toUpperCase();
+    const prenoms = (agent.prenom || '').toUpperCase().trim();
     return {
         civilite,
-        prenoms,
         nom,
-        fullWithCivilite: [civilite, prenoms, nom].filter(Boolean).join(' ').trim()
+        prenoms,
+        fullWithCivilite: [civilite, nom, prenoms].filter(Boolean).join(' ').trim()
     };
 }
 
@@ -1088,7 +1088,7 @@ class DocumentGenerationService {
                     annee = anneeMatch[1];
                 }
             }
-            
+
             const anneeLabel = annee ? `Année ${annee}` : 'Année non spécifiée';
             const titre = `Certificat de Non Jouissance de Congé - ${agent.prenom} ${agent.nom} - ${anneeLabel}`;
 
@@ -1871,7 +1871,7 @@ class DocumentGenerationService {
 
             // Vérifier l'existence des fichiers PDF
             const documentsWithPDFStatus = await Promise.all(
-                result.rows.map(async(doc) => {
+                result.rows.map(async (doc) => {
                     const pdfExists = doc.chemin_fichier ?
                         await PDFGenerationService.pdfExists(doc.chemin_fichier) : false;
 
@@ -2026,14 +2026,14 @@ class DocumentGenerationService {
     static async generateNoteDeServiceHTML(agent, validateur, options = {}) {
         // Date de génération
         const generationDate = options.date_generation ? new Date(options.date_generation) : new Date();
-        
+
         // Récupérer les informations nécessaires
         const nameParts = formatNameParts(agent);
         const civilite = agent.civilite || (agent.sexe === 'F' ? 'Mlle' : 'M.');
         const prenoms = nameParts.prenoms;
         const nom = nameParts.nom;
         const matricule = agent.matricule || '';
-        
+
         // Date de naissance formatée
         let dateNaissanceStr = '';
         let lieuNaissance = agent.lieu_de_naissance || '';
@@ -2048,11 +2048,11 @@ class DocumentGenerationService {
 
         // Fonction/Poste (emploi pour fonctionnaire, fonction pour autres - depuis emploi_agents / fonction_agents)
         const fonction = getAgentPosteOuEmploi(agent);
-        
+
         // Récupérer le grade et l'échelon depuis les tables d'historique
         let grade = '';
         let echelon = '';
-        
+
         if (agent.id) {
             try {
 
@@ -2069,7 +2069,7 @@ class DocumentGenerationService {
                 if (gradeResult.rows.length > 0) {
                     grade = gradeResult.rows[0].grade_libelle || '';
                 }
-                
+
                 // Récupérer l'échelon le plus récent
                 const echelonQuery = `
                     SELECT e.libele as echelon_libelle
@@ -2087,7 +2087,7 @@ class DocumentGenerationService {
                 console.error('⚠️ Erreur lors de la récupération du grade et de l\'échelon:', error);
             }
         }
-        
+
         // Si pas trouvé dans l'historique, utiliser les valeurs de l'objet agent
         if (!grade) {
             grade = agent.grade_libele || agent.grade_libelle || agent.grade || '';
@@ -2095,7 +2095,7 @@ class DocumentGenerationService {
         if (!echelon) {
             echelon = agent.echelon_libelle || agent.echelon_libele || '';
         }
-        
+
         // Classe et échelon
         let classeEchelon = '';
         if (agent.categorie_libele && echelon) {
@@ -2103,7 +2103,7 @@ class DocumentGenerationService {
         } else if (agent.categorie_libele) {
             classeEchelon = `de ${agent.categorie_libele}`;
         }
-        
+
         // Date d'entrée en fonction pour la classification
         let dateClassification = '';
         if (options.date_effet) {
@@ -2124,7 +2124,7 @@ class DocumentGenerationService {
 
         // Direction/Service d'affectation
         const direction = agent.direction_libelle || agent.service_libelle || agent.direction_nom || agent.service_nom || 'DIRECTION';
-        
+
         // Déterminer le genre de l'agent pour la phrase d'affectation
         const genre = agent.sexe === 'F' ? 'F' : 'M';
         const phraseAffectation = formatAffectationPhrase(direction, genre);
@@ -2163,7 +2163,7 @@ class DocumentGenerationService {
         if (!numeroDocument) {
             const documentId = options.documentId || options.document_id || null;
             let documentDateGeneration = options.date_generation || generationDate;
-            
+
             // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
             if (documentId && !documentDateGeneration) {
                 try {
@@ -2183,12 +2183,12 @@ class DocumentGenerationService {
             } else if (!documentDateGeneration) {
                 documentDateGeneration = generationDate;
             }
-            
+
             // Convertir en Date si c'est une string
             if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
                 documentDateGeneration = new Date(documentDateGeneration);
             }
-            
+
             let sequentialNumber = '';
             const idMinistere = agent?.id_ministere ?? null;
             try {
@@ -2222,7 +2222,7 @@ class DocumentGenerationService {
                     `;
                     const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
                     const positionResult = await db.query(positionQuery, positionParams);
-                    
+
                     const position = parseInt(positionResult.rows[0]?.position || 1, 10);
                     sequentialNumber = String(position).padStart(4, '0');
                 } else {
@@ -2250,14 +2250,14 @@ class DocumentGenerationService {
                 const { generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
                 sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('note_de_service', documentId, idMinistere);
             }
-            
+
             const sigle = resolvedSigle || '';
-            
+
             // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS'
-            const isMinTourismeEtLoisirs = ministryName && 
-                ministryName.toUpperCase().includes('TOURISME') && 
+            const isMinTourismeEtLoisirs = ministryName &&
+                ministryName.toUpperCase().includes('TOURISME') &&
                 ministryName.toUpperCase().includes('LOISIRS');
-            
+
             if (sigle) {
                 if (isMinTourismeEtLoisirs) {
                     numeroDocument = `${sequentialNumber}/${sigle}/DRH/SDGP`;
@@ -2349,7 +2349,7 @@ class DocumentGenerationService {
     
     <div class="content">
         <p>
-            <span class="agent-name">${civilite} ${prenoms} ${nom}</span>, 
+            <span class="agent-name">${civilite} ${nom} ${prenoms}</span>, 
             matricule ${matricule}${dateNaissanceStr ? `, née le ${dateNaissanceStr}${lieuNaissance ? ` à ${lieuNaissance.toUpperCase()}` : ''}` : ''}, 
             ${fonction}${grade ? `, grade ${grade}` : ''}${classeEchelon ? `, ${classeEchelon}` : ''}${dateClassification ? ` au ${dateClassification}` : ''}, 
             ${phraseAffectation}.
@@ -2452,14 +2452,14 @@ class DocumentGenerationService {
     static async generateMutationHTML(demande, agent, validateur, options = {}) {
         // Date de génération
         const generationDate = resolveDemandeGenerationDate(demande) || new Date();
-        
+
         // Récupérer les informations nécessaires
         const nameParts = formatNameParts(agent);
         const civilite = agent.civilite || (agent.sexe === 'F' ? 'Mlle' : 'M.');
         const prenoms = nameParts.prenoms;
         const nom = nameParts.nom;
         const matricule = agent.matricule || '';
-        
+
         // Date de naissance formatée
         let dateNaissanceStr = '';
         let lieuNaissance = agent.lieu_de_naissance || '';
@@ -2474,11 +2474,11 @@ class DocumentGenerationService {
 
         // Fonction/Poste (emploi pour fonctionnaire, fonction pour autres - depuis emploi_agents / fonction_agents)
         const fonction = getAgentPosteOuEmploi(agent);
-        
+
         // Récupérer le grade et l'échelon depuis les tables d'historique
         let grade = '';
         let echelon = '';
-        
+
         if (agent.id) {
             try {
 
@@ -2495,7 +2495,7 @@ class DocumentGenerationService {
                 if (gradeResult.rows.length > 0) {
                     grade = gradeResult.rows[0].grade_libelle || '';
                 }
-                
+
                 // Récupérer l'échelon le plus récent
                 const echelonQuery = `
                     SELECT e.libele as echelon_libelle
@@ -2513,7 +2513,7 @@ class DocumentGenerationService {
                 console.error('⚠️ Erreur lors de la récupération du grade et de l\'échelon:', error);
             }
         }
-        
+
         // Si pas trouvé dans l'historique, utiliser les valeurs de l'objet agent
         if (!grade) {
             grade = agent.grade_libele || agent.grade_libelle || agent.grade || '';
@@ -2525,7 +2525,7 @@ class DocumentGenerationService {
                 echelon = agent.echelon_libele;
             }
         }
-        
+
         // Fonction helper pour parser les dates sans problème de fuseau horaire
         const parseDateLocal = (dateString) => {
             if (!dateString) return null;
@@ -2593,7 +2593,7 @@ class DocumentGenerationService {
         if (!numeroDocument) {
             const documentId = options.documentId || options.document_id || null;
             let documentDateGeneration = options.date_generation || generationDate;
-            
+
             // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
             if (documentId && !documentDateGeneration) {
                 try {
@@ -2613,12 +2613,12 @@ class DocumentGenerationService {
             } else if (!documentDateGeneration) {
                 documentDateGeneration = generationDate;
             }
-            
+
             // Convertir en Date si c'est une string
             if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
                 documentDateGeneration = new Date(documentDateGeneration);
             }
-            
+
             let sequentialNumber = '';
             const idMinistere = agent?.id_ministere ?? null;
             try {
@@ -2652,7 +2652,7 @@ class DocumentGenerationService {
                     `;
                     const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
                     const positionResult = await db.query(positionQuery, positionParams);
-                    
+
                     const position = parseInt(positionResult.rows[0]?.position || 1, 10);
                     sequentialNumber = String(position).padStart(4, '0');
                 } else {
@@ -2680,14 +2680,14 @@ class DocumentGenerationService {
                 const { generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
                 sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('note_de_service_mutation', documentId, idMinistere);
             }
-            
+
             const sigle = resolvedSigle || '';
-            
+
             // Vérifier si le ministère est 'MINISTERE DU TOURISME ET DES LOISIRS'
-            const isMinTourismeEtLoisirs = ministryName && 
-                ministryName.toUpperCase().includes('TOURISME') && 
+            const isMinTourismeEtLoisirs = ministryName &&
+                ministryName.toUpperCase().includes('TOURISME') &&
                 ministryName.toUpperCase().includes('LOISIRS');
-            
+
             if (sigle) {
                 if (isMinTourismeEtLoisirs) {
                     numeroDocument = `${sequentialNumber}/${sigle}/DRH/SDGP`;
@@ -2785,7 +2785,7 @@ class DocumentGenerationService {
     
     <div class="content">
         <p>
-            <span class="agent-name">${civilite} ${prenoms} ${nom}</span>, 
+            <span class="agent-name">${civilite} ${nom} ${prenoms}</span>, 
             matricule ${matricule}${dateNaissanceStr ? `, née le ${dateNaissanceStr}${lieuNaissance ? ` à ${lieuNaissance.toUpperCase()}` : ''}` : ''}, 
             ${fonction}${grade ? `, grade ${grade}` : ''}${echelon ? `, échelon ${echelon}` : ''}${dateClassification ? ` au ${dateClassification}` : ''}, 
             ${mutationText}
@@ -2834,7 +2834,7 @@ class DocumentGenerationService {
 
             // Créer le titre du document
             const datePriseService = options.date_prise_service || new Date();
-            const datePriseServiceStr = datePriseService instanceof Date 
+            const datePriseServiceStr = datePriseService instanceof Date
                 ? datePriseService.toLocaleDateString('fr-FR')
                 : new Date(datePriseService).toLocaleDateString('fr-FR');
             const titre = `Certificat de Prise de Service - ${agent.prenom} ${agent.nom} - ${datePriseServiceStr}`;
@@ -2907,29 +2907,29 @@ class DocumentGenerationService {
      */
     static async generateCertificatPriseServiceHTML(agent, validateur, options = {}) {
 
-        
+
         // Date de génération
         const generationDate = new Date();
-        
+
         // Récupérer les informations nécessaires
         const nameParts = formatNameParts(agent);
         const civilite = agent.civilite || (agent.sexe === 'F' ? 'Mlle' : 'M.');
         const prenoms = nameParts.prenoms;
         const nom = nameParts.nom;
         const matricule = agent.matricule || '';
-        
+
         // Fonction/Poste de l'agent (emploi pour fonctionnaire, fonction pour autres - depuis emploi_agents / fonction_agents)
         const fonction = getAgentPosteOuEmploi(agent);
-        
+
         // Direction/Service d'affectation de l'agent (toujours utiliser la direction de l'agent dans le texte)
         const directionAgent = agent.direction_libelle || agent.service_libelle || agent.direction_nom || agent.service_nom || 'DIRECTION';
-        
+
         // Vérifier si l'agent est à la Direction des Ressources Humaines (pour déterminer le signataire et le soulignement)
         const isDirectionRH = directionAgent && (
             directionAgent.toUpperCase().includes('RESSOURCES HUMAINES') ||
             directionAgent.toUpperCase().includes('DRH')
         );
-        
+
         // Déterminer le signataire : si l'agent est à la DRH, utiliser le DRH, sinon le Directeur de la direction
         let signataire = validateur;
         if (isDirectionRH) {
@@ -2937,7 +2937,7 @@ class DocumentGenerationService {
             // Le validateur devrait déjà être le DRH dans ce cas
             signataire = validateur;
         }
-        
+
         // Formater le nom du signataire avec "épouse" si applicable
         // Format dans l'image: "Yawa Florentine ASSARI épouse AKPALE" (prénoms + nom + épouse + nom époux)
         const validateurNameParts = formatNameParts(signataire);
@@ -2950,11 +2950,11 @@ class DocumentGenerationService {
             // Format standard: "PRENOMS NOM" (sans civilité pour le signataire dans le texte principal)
             signataireNomComplet = `${validateurNameParts.prenoms} ${validateurNameParts.nom}`;
         }
-        
+
         // Récupérer la fonction du signataire
         await hydrateAgentWithLatestFunction(signataire);
         const signataireFonction = normalizeFunctionLabel(getResolvedFunctionLabel(signataire), 'Le Directeur');
-        
+
         // Récupérer la direction du validateur si elle n'est pas déjà disponible
         if (validateur && validateur.id && !validateur.direction_nom && !validateur.service_nom) {
             try {
@@ -2978,21 +2978,21 @@ class DocumentGenerationService {
                 console.error('⚠️ Erreur lors de la récupération de la direction du validateur:', error);
             }
         }
-        
+
         // Déterminer le genre du signataire pour "soussigné(e)"
         const signataireGenre = signataire.sexe === 'F' ? 'e' : '';
-        
+
         // Date de prise de service
         // Priorité ABSOLUE: options.date_prise_service (fournie explicitement) > date_prise_service_dans_la_direction > date_prise_service > date_embauche
         // IMPORTANT: Si options.date_prise_service existe, elle DOIT être utilisée en priorité absolue
         let datePriseService = null;
-        
+
         console.log('🔍 Vérification des dates disponibles dans generateCertificatPriseServiceHTML:');
         console.log('  - options.date_prise_service:', options.date_prise_service, typeof options.date_prise_service, options.date_prise_service instanceof Date);
         console.log('  - agent.date_prise_service_dans_la_direction:', agent.date_prise_service_dans_la_direction, typeof agent.date_prise_service_dans_la_direction);
         console.log('  - agent.date_prise_service:', agent.date_prise_service, typeof agent.date_prise_service);
         console.log('  - agent.date_embauche:', agent.date_embauche, typeof agent.date_embauche);
-        
+
         // PRIORITÉ ABSOLUE: options.date_prise_service
         if (options.date_prise_service) {
             // La date a été fournie explicitement dans les options, l'utiliser en priorité absolue
@@ -3015,7 +3015,7 @@ class DocumentGenerationService {
             datePriseService = new Date();
             console.log('⚠️ [DERNIER RECOURS] Aucune date disponible, utilisation de la date actuelle:', datePriseService);
         }
-        
+
         console.log('📅 Date de prise de service dans generateCertificatPriseServiceHTML:', {
             options_date_prise_service: options.date_prise_service,
             agent_date_prise_service_dans_la_direction: agent.date_prise_service_dans_la_direction,
@@ -3025,26 +3025,26 @@ class DocumentGenerationService {
             type_date_finale: typeof datePriseService,
             is_date_object: datePriseService instanceof Date
         });
-        
+
         // Convertir en objet Date si nécessaire
-        let datePriseServiceObj = datePriseService instanceof Date 
-            ? datePriseService 
+        let datePriseServiceObj = datePriseService instanceof Date
+            ? datePriseService
             : new Date(datePriseService);
-            
+
         // Vérifier que la date est valide
         if (isNaN(datePriseServiceObj.getTime())) {
             console.error('❌ Date de prise de service invalide dans HTML, utilisation de la date actuelle');
             datePriseServiceObj = new Date();
         }
-        
+
         const datePriseServiceStr = datePriseServiceObj.toLocaleDateString('fr-FR', {
             day: '2-digit',
             month: 'long',
             year: 'numeric'
         });
-        
+
         console.log('✅ Date de prise de service formatée pour HTML:', datePriseServiceStr);
-        
+
         // Récupérer la note de service associée pour obtenir son numéro et sa date
         // Rechercher uniquement les 'note_de_service' (pas les mutations)
         let noteServiceReference = '';
@@ -3074,10 +3074,10 @@ class DocumentGenerationService {
                     LIMIT 1
                 `;
                 const noteServiceResult = await db.query(noteServiceQuery, [agent.id]);
-                
+
                 if (noteServiceResult.rows.length > 0) {
                     const noteService = noteServiceResult.rows[0];
-                    
+
                     // Trouver la position exacte en comptant uniquement les note_de_service du même ministère
                     // avec la même date ou antérieures, en tenant compte de l'ordre par date_generation
                     // Le numéro n'est pas stocké, il est toujours calculé dynamiquement
@@ -3108,23 +3108,23 @@ class DocumentGenerationService {
                         ? [noteService.date_generation, noteService.id, idMinistereNote]
                         : [noteService.date_generation, noteService.id];
                     const positionResult = await db.query(positionQuery, positionParams);
-                    
+
                     const position = parseInt(positionResult.rows[0]?.position || 1, 10);
                     const paddedPosition = String(position).padStart(4, '0');
-                    
+
                     // Récupérer le sigle du ministère
-                    const sigle = noteService.ministere_sigle || 
-                                agent?.ministere_sigle || 
-                                validateur?.ministere_sigle || '';
-                    
+                    const sigle = noteService.ministere_sigle ||
+                        agent?.ministere_sigle ||
+                        validateur?.ministere_sigle || '';
+
                     // Vérifier si c'est le ministère du tourisme et des loisirs
-                    const ministereNom = noteService.ministere_nom || 
-                                        agent?.ministere_nom || 
-                                        validateur?.ministere_nom || '';
-                    const isMinTourismeEtLoisirs = ministereNom && 
-                        ministereNom.toUpperCase().includes('TOURISME') && 
+                    const ministereNom = noteService.ministere_nom ||
+                        agent?.ministere_nom ||
+                        validateur?.ministere_nom || '';
+                    const isMinTourismeEtLoisirs = ministereNom &&
+                        ministereNom.toUpperCase().includes('TOURISME') &&
                         ministereNom.toUpperCase().includes('LOISIRS');
-                    
+
                     // Générer le numéro de document avec la position
                     if (sigle) {
                         if (isMinTourismeEtLoisirs) {
@@ -3135,7 +3135,7 @@ class DocumentGenerationService {
                     } else {
                         noteServiceReference = paddedPosition;
                     }
-                    
+
                     if (noteService.date_generation) {
                         const noteDate = new Date(noteService.date_generation);
                         noteServiceDate = noteDate.toLocaleDateString('fr-FR', {
@@ -3144,7 +3144,7 @@ class DocumentGenerationService {
                             year: 'numeric'
                         });
                     }
-                    
+
                     console.log('✅ Note de service trouvée:', {
                         reference: noteServiceReference,
                         date: noteServiceDate,
@@ -3158,44 +3158,44 @@ class DocumentGenerationService {
                 console.error('⚠️ Erreur lors de la récupération de la note de service:', error);
             }
         }
-        
+
         // Construire le texte principal selon le format de l'image
         // Format: "Je soussigné(e), [Nom signataire], [Fonction], certifie que [Civilité] [Nom] [Prénoms], matricule [matricule], [Fonction], a effectivement pris service à la [Direction] le [date], conformément à la note de service N° [numéro] du [date]."
-        
+
         // Récupérer la direction du validateur (signataire) pour construire la phrase dynamiquement
         const validateurDirectionName = (signataire && (signataire.direction_nom || signataire.service_nom || signataire.structure_nom)) ||
-                                        (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                                        '';
-        
+            (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
+            '';
+
         // Récupérer le nom du ministère
         const ministryNameForText = (signataire && (signataire.ministere_nom || signataire.ministereNom))
             || agent.ministere_nom || '';
-        
+
         // Construire la phrase selon la direction (éviter "Directeur de Direction...")
         let fonctionTexte = validateurDirectionName ? formatDirecteurFromDirection(validateurDirectionName) : signataireFonction;
-        
+
         // Construire le texte principal
         let textePrincipal = `Je soussigné${signataireGenre}, <strong>${signataireNomComplet}</strong>, ${fonctionTexte}`;
-        
+
         // Ajouter le nom du ministère si disponible
         if (ministryNameForText) {
             textePrincipal += ` du ${ministryNameForText}`;
         }
-        
+
         // Format du nom de l'agent : "Monsieur TANO Kouakou Habib" (civilité + nom + prénoms)
         textePrincipal += `, certifie que <strong>${civilite} ${nom} ${prenoms}</strong>, matricule ${matricule}, <strong>${fonction}</strong>`;
-        
+
         // Ajouter la direction de l'agent (sans soulignement)
         // La direction affichée est toujours celle de l'agent, peu importe le signataire
         textePrincipal += `, a effectivement pris service à la ${directionAgent} le ${datePriseServiceStr}`;
-        
+
         // Ajouter la référence à la note de service si disponible
         if (noteServiceReference && noteServiceDate) {
             textePrincipal += `, conformément à la note de service N° ${noteServiceReference} du ${noteServiceDate}`;
         }
-        
+
         textePrincipal += '.';
-        
+
         // Préparer le header officiel
         // Pour le certificat de prise de service, la direction et le ministère dans le header doivent être ceux du validateur
         const resolvedSigle = pickFirstNonEmptyString([
@@ -3207,7 +3207,7 @@ class DocumentGenerationService {
         const ministryName = (validateur && (validateur.ministere_nom || validateur.ministereNom))
             || (userInfo && userInfo.ministere_nom)
             || agent.ministere_nom || '';
-        
+
         // Utiliser la direction du validateur pour le header (pas celle de l'agent)
         const directionName = (validateur && (validateur.direction_nom || validateur.directionNom || validateur.service_nom))
             || (userInfo && (userInfo.direction_nom || userInfo.service_nom))
@@ -3218,7 +3218,7 @@ class DocumentGenerationService {
         if (!numeroDocument) {
             const documentId = options.documentId || options.document_id || null;
             let documentDateGeneration = options.date_generation;
-            
+
             // Si le document existe mais n'a pas de date_generation, utiliser la date actuelle ou la date de création
             if (documentId && !documentDateGeneration) {
                 try {
@@ -3238,12 +3238,12 @@ class DocumentGenerationService {
             } else if (!documentDateGeneration) {
                 documentDateGeneration = generationDate;
             }
-            
+
             // Convertir en Date si c'est une string
             if (documentDateGeneration && !(documentDateGeneration instanceof Date)) {
                 documentDateGeneration = new Date(documentDateGeneration);
             }
-            
+
             const idMinistere = agent?.id_ministere ?? validateur?.id_ministere ?? null;
             try {
                 if (documentId) {
@@ -3276,17 +3276,17 @@ class DocumentGenerationService {
                     `;
                     const positionParams = idMinistere != null ? [documentDateGeneration, documentId, idMinistere] : [documentDateGeneration, documentId];
                     const positionResult = await db.query(positionQuery, positionParams);
-                    
+
                     const position = parseInt(positionResult.rows[0]?.position || 1, 10);
                     const paddedPosition = String(position).padStart(5, '0');
-                    
+
                     // Vérifier si c'est le ministère du tourisme et des loisirs
-                    const ministereNom = agent?.ministere_nom || 
-                                        validateur?.ministere_nom || '';
-                    const isMinTourismeEtLoisirs = ministereNom && 
-                        ministereNom.toUpperCase().includes('TOURISME') && 
+                    const ministereNom = agent?.ministere_nom ||
+                        validateur?.ministere_nom || '';
+                    const isMinTourismeEtLoisirs = ministereNom &&
+                        ministereNom.toUpperCase().includes('TOURISME') &&
                         ministereNom.toUpperCase().includes('LOISIRS');
-                    
+
                     // Générer le numéro de document avec la position
                     if (resolvedSigle) {
                         if (isMinTourismeEtLoisirs) {
@@ -3315,14 +3315,14 @@ class DocumentGenerationService {
                     const count = parseInt(countResult.rows[0]?.count || 0, 10);
                     const nextNumber = count + 1;
                     const paddedPosition = String(nextNumber).padStart(5, '0');
-                    
+
                     // Vérifier si c'est le ministère du tourisme et des loisirs
-                    const ministereNom = agent?.ministere_nom || 
-                                        validateur?.ministere_nom || '';
-                    const isMinTourismeEtLoisirs = ministereNom && 
-                        ministereNom.toUpperCase().includes('TOURISME') && 
+                    const ministereNom = agent?.ministere_nom ||
+                        validateur?.ministere_nom || '';
+                    const isMinTourismeEtLoisirs = ministereNom &&
+                        ministereNom.toUpperCase().includes('TOURISME') &&
                         ministereNom.toUpperCase().includes('LOISIRS');
-                    
+
                     // Générer le numéro de document avec la position
                     if (resolvedSigle) {
                         if (isMinTourismeEtLoisirs) {
@@ -3340,7 +3340,7 @@ class DocumentGenerationService {
                 const { generateSequentialNoteDeServiceDocumentNumber } = require('./utils/documentReference');
                 const sequentialNumber = await generateSequentialNoteDeServiceDocumentNumber('certificat_prise_service', null, idMinistere);
                 const sigle = resolvedSigle || '';
-                
+
                 if (sigle) {
                     numeroDocument = `${sequentialNumber}/${sigle}`;
                 } else {

@@ -479,9 +479,25 @@
 
 .navbar.agent-mobile-nav {
     background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%) !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    position: relative;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
     z-index: 1100;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    padding: 0.5rem 1rem !important;
+}
+
+/* Compense la hauteur de la navbar fixe (56px) */
+.agent-mobile-nav ~ *,
+.agent-mobile-nav + div,
+.agent-mobile-content-wrapper {
+    padding-top: 56px;
 }
 
 .navbar.agent-mobile-nav .navbar-brand {

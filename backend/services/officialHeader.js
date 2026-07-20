@@ -228,20 +228,21 @@ function parseDateInput(dateInput, fallback = null) {
   return fallback;
 }
 
-function formatFullFrenchDate(dateInput, fallback = null) {
+function formatFullFrenchDate(dateInput, fallback = null, withWeekday = true) {
   const date = parseDateInput(dateInput, fallback);
+
   if (!date || Number.isNaN(date.getTime())) {
     return '';
   }
+
   const formatter = new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
+    ...(withWeekday && { weekday: 'long' }),
     day: 'numeric',
     month: 'long',
-    year: 'numeric'
+    year: 'numeric',
   });
-  const formatted = formatter.format(date);
-  // Retourner tout en minuscule
-  return formatted.toLowerCase();
+
+  return formatter.format(date).toLowerCase();
 }
 
 const LABEL_SPLIT_RULES = [
@@ -561,7 +562,7 @@ async function drawOfficialHeaderPDF(doc, {
   doc.fillColor('#000000');
   let currentY = topY;
 
-  doc.font('Times-Bold').fontSize(14);
+  doc.font('Courier-Bold').fontSize(14);
   if (ministryLabel) {
     doc.text(ministryLabel, leftX, currentY, { width: sectionWidth, align: 'left' });
     const ministryHeight = doc.heightOfString(ministryLabel, { width: sectionWidth });
@@ -579,7 +580,7 @@ async function drawOfficialHeaderPDF(doc, {
     currentY = ministrySeparatorY + canopySpacing;
   }
 
-  doc.font('Times-Bold').fontSize(12);
+  doc.font('Courier-Bold').fontSize(12);
   if (directionLabel) {
     doc.text(directionLabel, leftX, currentY, { width: sectionWidth, align: 'left' });
     const directionHeight = doc.heightOfString(directionLabel, { width: sectionWidth });
@@ -611,7 +612,7 @@ async function drawOfficialHeaderPDF(doc, {
   }
 
   // Calculer la hauteur de la section droite
-  doc.font('Times-Bold').fontSize(13);
+  doc.font('Courier-Bold').fontSize(13);
   const republicLine = "REPUBLIQUE DE COTE D'IVOIRE".replace(/\s+/g, '\u00A0');
   const republicWidth = doc.widthOfString(republicLine);
   const republicX = rightX + (sectionWidth - republicWidth) / 2;
@@ -619,7 +620,7 @@ async function drawOfficialHeaderPDF(doc, {
     lineBreak: false
   });
 
-  doc.font('Times-Roman').fontSize(12);
+  doc.font('Courier').fontSize(12);
   doc.text('Union-Discipline-Travail', rightX, topY + 18, { width: sectionWidth, align: 'center' });
 
   const rightSeparatorWidth = Math.min(90, sectionWidth - 40);
@@ -642,15 +643,15 @@ async function drawOfficialHeaderPDF(doc, {
 
   // Dessiner le numéro de document à gauche à cette Y commune
   // Note : documentNumber est calculé par le caller (getDocumentReference dans documentReference.js), ce module ne fait qu'afficher la valeur reçue.
-  doc.font('Times-Bold').fontSize(11);
+  doc.font('Courier-Bold').fontSize(11);
   const referenceText = documentNumber && documentNumber.trim() ? `N° ${documentNumber.trim()}` : 'N° 00000';
   doc.text(referenceText, leftX, commonLineY, { width: sectionWidth, align: 'left' });
   const referenceHeight = doc.heightOfString(referenceText, { width: sectionWidth });
 
   // Dessiner la date à droite à la même Y commune
-  let formattedDate = formatFullFrenchDate(dateString ?? generatedAt, generatedAt ?? null);
+  let formattedDate = formatFullFrenchDate(dateString ?? generatedAt, generatedAt ?? null, false);
   if (!formattedDate) {
-    formattedDate = formatFullFrenchDate(new Date());
+    formattedDate = formatFullFrenchDate(new Date(), null, false);
   }
   let resolvedCity = city;
   if (!city || city.toUpperCase() === 'ABIDJAN') {
@@ -660,7 +661,7 @@ async function drawOfficialHeaderPDF(doc, {
     resolvedCity = resolvedCity.charAt(0).toUpperCase() + resolvedCity.slice(1).toLowerCase();
   }
   const dateLine = `${resolvedCity}, le ${formattedDate}`;
-  doc.font('Times-Roman').fontSize(11);
+  doc.font('Courier').fontSize(11);
   doc.text(dateLine, rightX, commonLineY, { width: sectionWidth, align: 'right' });
   const dateHeight = doc.heightOfString(dateLine, { width: sectionWidth });
 
@@ -668,20 +669,20 @@ async function drawOfficialHeaderPDF(doc, {
   let finalBottomY = commonLineY + Math.max(referenceHeight, dateHeight);
 
   // Si une décision existe, placer la décision sous le numéro de référence à gauche (avec libellé "Décision : ")
-  let decisionHeight = 0;
-  if (numeroActeDecision) {
-    const decisionText = ('DECISION ' + (numeroActeDecision || '').trim());
-    doc.font('Times-Roman').fontSize(9);
-    doc.fillColor('#000000');
-    const decisionY = finalBottomY + 5;
-    decisionHeight = doc.heightOfString(decisionText, { width: sectionWidth });
-    doc.text(decisionText, leftX, decisionY, {
-      align: 'left',
-      width: sectionWidth,
-      lineGap: 2
-    });
-    finalBottomY = decisionY + decisionHeight + 5;
-  }
+  // let decisionHeight = 0;
+  // if (numeroActeDecision) {
+  //   const decisionText = ('DECISION ' + (numeroActeDecision || '').trim());
+  //   doc.font('Courier').fontSize(9);
+  //   doc.fillColor('#000000');
+  //   const decisionY = finalBottomY + 5;
+  //   decisionHeight = doc.heightOfString(decisionText, { width: sectionWidth });
+  //   doc.text(decisionText, leftX, decisionY, {
+  //     align: 'left',
+  //     width: sectionWidth,
+  //     lineGap: 2
+  //   });
+  //   finalBottomY = decisionY + decisionHeight + 5;
+  // }
 
   // Calculer le bas de la section armoirie
   const crestBottom = crestStartY + crestWidth + 10;
@@ -697,7 +698,7 @@ const HEADER_CSS = `
     align-items: flex-start;
     width: 100%;
     margin-bottom: 20px;
-    font-family: 'Times New Roman', Georgia, serif;
+    font-family: 'Courier New', Georgia, serif;
     color: #000;
     gap: 16px;
   }
@@ -786,7 +787,7 @@ const HEADER_CSS = `
     padding: 0 0 0 0;
     margin-top: 25px;
     margin-bottom: 16px;
-    font-family: 'Times New Roman', Georgia, serif;
+    font-family: 'Courier New', Georgia, serif;
     color: #000;
     font-size: 11px;
   }
@@ -923,7 +924,7 @@ function extractCityFromDirectionName(directionName) {
     while (index !== -1) {
       const charBefore = index > 0 ? source[index - 1] : null;
       const charAfter = index + target.length < source.length ? source[index + target.length] : null;
-      
+
       if (!isWordChar(charBefore) && !isWordChar(charAfter)) {
         return true;
       }
@@ -949,7 +950,7 @@ function extractCityFromDirectionName(directionName) {
   cleaned = cleaned.trim().replace(/\s+/g, ' ');
 
   const prefixRegex = /^(?:direction\s+regionale|direction\s+departementale|dir\.\s+regionale|dir\.\s+departementale|direct°\s+regionale|direct°\s+departementale|bureau|delegation|district)\s*(?:de\s+|d['’]|du\s+|des\s+)?/i;
-  
+
   let cityCandidate = '';
   const match = cleaned.match(prefixRegex);
   if (match) {
@@ -1001,9 +1002,9 @@ function buildHeaderHTML({ documentNumber = '', dateString = '', generatedAt = n
   const directionHtml = directionFormatted
     ? directionFormatted.replace(/\u00A0/g, '&nbsp;').replace(/\r?\n/g, '<br/>')
     : '&nbsp;';
-  let formattedDate = formatFullFrenchDate(dateString || generatedAt, generatedAt || null);
+  let formattedDate = formatFullFrenchDate(dateString || generatedAt, generatedAt || null, false);
   if (!formattedDate) {
-    formattedDate = formatFullFrenchDate(new Date());
+    formattedDate = formatFullFrenchDate(new Date(), null, false);
   }
   let resolvedCity = city;
   if (!city || city.toUpperCase() === 'ABIDJAN') {

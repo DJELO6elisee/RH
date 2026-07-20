@@ -116,46 +116,65 @@ async function hydrateAgentWithLatestFunction(agent) {
 
 function normalizeCivilite(civilite = '', sexe = null) {
     if (!civilite && sexe) {
-        return sexe === 'F' ? 'Mme' : 'M.';
+        return sexe === 'F' ? 'MADAME' : 'MONSIEUR';
     }
     
     if (!civilite) {
-        return 'M.';
+        return 'MONSIEUR';
     }
     
     const normalized = civilite.trim().toLowerCase();
     
-    // Abréviations pour les civilités courantes
-    const abbreviations = {
-        'monsieur': 'M.',
-        'm.': 'M.',
-        'm': 'M.',
-        'madame': 'Mme',
-        'mme': 'Mme',
-        'mademoiselle': 'Mlle',
-        'mlle': 'Mlle',
-        'mle': 'Mlle'
+    const expansions = {
+        'monsieur': 'MONSIEUR',
+        'm.': 'MONSIEUR',
+        'm': 'MONSIEUR',
+        'madame': 'MADAME',
+        'mme': 'MADAME',
+        'mademoiselle': 'MADEMOISELLE',
+        'mlle': 'MADEMOISELLE',
+        'mle': 'MADEMOISELLE'
     };
     
-    return abbreviations[normalized] || civilite;
+    return expansions[normalized] || civilite.toUpperCase();
 }
 
 /**
- * Retourne le libellé à afficher pour le poste/emploi d'un agent dans les documents.
- * - FONCTIONNAIRE : emploi issu de la table emploi_agents (emploi_libele, emploi_designation_poste).
- * - Autres types : fonction issue de la table fonction_agents (fonction_actuelle).
- * @param {Object} agent - Objet agent avec type_agent_libele, emploi_libele, emploi_designation_poste, fonction_actuelle, poste
+ * Retourne le libellé à afficher pour le poste/emploi d'un agent dans les documents officiels.
+ * Priorité : emploi (emploi_libele ou designation_poste) > fonction actuelle > fallback 'Agent'.
+ * L'emploi est prioritaire pour tous les types d'agents car c'est la désignation administrative
+ * qui doit figurer dans les documents de cessation, reprise, etc.
+ * @param {Object} agent - Objet agent avec emploi_libele, emploi_designation_poste, fonction_actuelle, poste
  * @returns {string}
  */
 function getAgentPosteOuEmploi(agent = {}) {
-    const isFonctionnaire = agent.type_agent_libele && String(agent.type_agent_libele).toUpperCase() === 'FONCTIONNAIRE';
-    if (isFonctionnaire) {
-        // Pour les fonctionnaires, on utilise la fonction
-        return agent.fonction_resolved || agent.fonction_actuelle || agent.poste || 'Agent';
-    } else {
-        // Pour les contractuels (et autres), on utilise l'emploi
-        return agent.emploi_libele || agent.emploi_designation_poste || agent.emploi_actuel_libele || agent.emploi || 'Agent';
+    // L'emploi est TOUJOURS prioritaire dans les documents administratifs
+    const emploi = agent.emploi_libele
+        || agent.emploi_designation_poste
+        || agent.emploi_actuel_libele
+        || agent.emploi
+        || '';
+
+    if (emploi && emploi.trim()) {
+        return emploi.trim();
     }
+
+    // Fallback sur la fonction si aucun emploi n'est trouvé
+    const fonction = agent.fonction_resolved
+        || agent.fonction_actuelle_libele
+        || agent.fonction_actuelle
+        || agent.poste
+        || '';
+
+    if (fonction && fonction.trim()) {
+        return fonction.trim();
+    }
+
+    return 'Agent';
+}
+
+function getAgentEmploi(agent = {}) {
+    return agent.emploi_libele || agent.emploi_designation_poste || agent.emploi_actuel_libele || agent.emploi || 'Agent';
 }
 
 function getAgentDirectionToDisplay(agent = {}, defaultDirection = '') {
@@ -202,6 +221,7 @@ module.exports = {
     hydrateAgentWithLatestFunction,
     getResolvedFunctionLabel,
     getAgentPosteOuEmploi,
+    getAgentEmploi,
     formatAgentDisplayName,
     normalizeFunctionLabel,
     normalizeCivilite,

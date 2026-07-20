@@ -109,8 +109,15 @@
 --     updated_at = CURRENT_TIMESTAMP
 -- WHERE username = 'DRHMINTEST01'; 
 -- Ou utilisez : WHERE email = 'l_emal@agent.com';
+UPDATE demandes 
+SET 
+    niveau_evolution_demande = 'valide_par_drh',
+    niveau_actuel = 'drh'
+WHERE 
+    type_demande NOT IN ('absence', 'certificat_cessation', 'mutation')
+    AND status = 'en_attente';
 
-ALTER TABLE emplois ALTER COLUMN libele_court TYPE varchar(100);
+-- ALTER TABLE emplois ALTER COLUMN libele_court TYPE varchar(100);
 -- ALTER TABLE fonctions ALTER COLUMN libele TYPE VARCHAR(255);
 -- UPDATE agents
 -- SET date_de_naissance = '1970-03-09'

@@ -22,9 +22,10 @@ import {
 } from 'reactstrap';
 import { useAuth } from '../../contexts/AuthContext';
 
-const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
+const DemandesDRHList = ({ onDemandeClick, onBulkValidate, typeDemande = '' }) => {
     const { user } = useAuth();
     const [demandes, setDemandes] = useState([]);
+    const [selectedDemandes, setSelectedDemandes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState({
@@ -45,6 +46,13 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
     // Référence pour vérifier si le composant est monté
     const isMountedRef = useRef(true);
     const isTypeLocked = !!typeDemande;
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         console.log('🔍 DemandesDRHList - useEffect déclenché');
@@ -230,6 +238,7 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
             if (isMountedRef.current) {
                 setDemandes(filteredItems);
                 setPagination(data.pagination || {});
+                setSelectedDemandes([]); // Reset selection when new data loads
                 console.log('🔍 setDemandes appelé avec:', filteredItems);
             } else {
                 console.log('🔍 Composant démonté, mise à jour de l\'état annulée');
@@ -326,6 +335,35 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
         }));
     };
 
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            const currentDemandes = (filters.type_demande
+                ? demandes.filter(d => (d.type_demande || '').toLowerCase() === filters.type_demande.toLowerCase())
+                : demandes);
+            // Only select pending ones if we want to limit bulk action
+            const selectableIds = currentDemandes.filter(d => filters.statut === 'en_attente').map(d => d.id);
+            setSelectedDemandes(selectableIds);
+        } else {
+            setSelectedDemandes([]);
+        }
+    };
+
+    const handleSelectRow = (e, id) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+            setSelectedDemandes(prev => [...prev, id]);
+        } else {
+            setSelectedDemandes(prev => prev.filter(demandeId => demandeId !== id));
+        }
+    };
+
+    const handleBulkValidationClick = () => {
+        if (selectedDemandes.length > 0 && typeof onBulkValidate === 'function') {
+            onBulkValidate(selectedDemandes);
+            // On peut optionnellement vider la sélection ici, mais c'est mieux de le faire après le succès
+        }
+    };
+
     const getStatusBadge = (status) => {
         const statusConfig = {
             'en_attente': { color: 'warning', text: 'En attente', style: { color: '#000', fontWeight: 'bold' } },
@@ -392,14 +430,7 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
-    if (loading) {
-        return (
-            <div className="text-center py-4">
-                <Spinner color="primary" />
-                <p className="mt-2">Chargement des autorisations...</p>
-            </div>
-        );
-    }
+
 
     return (
         <Card>
@@ -565,7 +596,163 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
                     </Col>
                 </Row>
 
+                {/* Bouton de validation groupée */}
+                {filters.statut === 'en_attente' && selectedDemandes.length > 0 && (
+                    <Row className="mb-3">
+                        <Col>
+                            <Button color="success" onClick={handleBulkValidationClick}>
+                                <i className="fa fa-check-circle me-2"></i>
+                                Valider la sélection ({selectedDemandes.length})
+                            </Button>
+                        </Col>
+                    </Row>
+                )}
+
                 {/* Table des autorisations */}
+                {isMobile ? (
+                    <div className="demandes-mobile-list mt-3">
+                        {loading ? (
+                            <div className="text-center py-4">
+                                <Spinner color="primary" />
+                                <p className="mt-2 mb-0">Chargement des autorisations...</p>
+                            </div>
+                        ) : demandes.length === 0 ? (
+                            <div className="text-center text-muted py-4">
+                                <i className="fa fa-inbox fa-2x mb-2 d-block"></i>
+                                {filters.statut === 'historique' 
+                                    ? 'Aucune autorisation dans l\'historique' 
+                                    : 'Aucune autorisation en attente'
+                                }
+                            </div>
+                        ) : (
+                            (filters.type_demande
+                                ? demandes.filter(d => (d.type_demande || '').toLowerCase() === filters.type_demande.toLowerCase())
+                                : demandes
+                            ).map((demande) => (
+                                <div key={demande.id} className="demande-mobile-card mb-3 p-3 border rounded shadow-sm bg-white" onClick={() => {
+                                    if (typeof onDemandeClick === 'function') {
+                                        onDemandeClick('view', demande);
+                                    }
+                                }}>
+                                    <div className="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
+                                        <span className="fw-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                                            {getTypeDemandeLabel(demande.type_demande)}
+                                        </span>
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            {filters.statut === 'en_attente' && (
+                                                <Input 
+                                                    type="checkbox" 
+                                                    checked={selectedDemandes.includes(demande.id)}
+                                                    onChange={(e) => handleSelectRow(e, demande.id)}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mb-2">
+                                        <div className="fw-bold">{demande.agent ? `${demande.agent.prenom} ${demande.agent.nom}` : 'Agent non trouvé'}</div>
+                                        <div className="text-muted small"><i className="fa fa-id-card me-2"></i>{demande.agent ? demande.agent.matricule : 'N/A'}</div>
+                                        <div className="text-muted small mt-1"><i className="fa fa-calendar me-2"></i>{formatDate(demande.date_creation)}</div>
+                                    </div>
+                                    
+                                    <div className="d-flex flex-column gap-2 bg-light p-2 rounded mb-3">
+                                        <div className="d-flex flex-column">
+                                            <span className="text-muted small fw-bold">Motif</span>
+                                            <span className="small">{demande.description || 'Aucun motif'}</span>
+                                        </div>
+                                        <div className="d-flex flex-column">
+                                            <span className="text-muted small fw-bold">Période / Date</span>
+                                            <span className="small">
+                                                {(demande.type_demande || '').toLowerCase() === 'certificat_cessation' ? (
+                                                    `Date de cessation : ${demande.agree_date_cessation ? formatDate(demande.agree_date_cessation) : 'Non renseignée'}`
+                                                ) : (demande.type_demande || '').toLowerCase() === 'certificat_reprise_service' ? (
+                                                    `Fin congés: ${demande.date_fin_conges ? formatDate(demande.date_fin_conges) : 'Non renseignée'} | Reprise: ${demande.date_reprise_service ? formatDate(demande.date_reprise_service) : 'Non renseignée'}`
+                                                ) : (demande.type_demande || '').toLowerCase() === 'certificat_non_jouissance_conge' ? (
+                                                    `Année : ${demande.annee_non_jouissance_conge || (demande.description ? demande.description.match(/année\s+(\d{4})/i)?.[1] : null) || 'Non renseignée'}`
+                                                ) : (
+                                                    demande.date_debut && demande.date_fin ? `${formatDate(demande.date_debut)} au ${formatDate(demande.date_fin)}` : 'Non renseigné'
+                                                )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="d-flex flex-wrap gap-2 mb-3">
+                                        <div className="d-flex flex-column">
+                                            <span className="text-muted small fw-bold mb-1">Statut</span>
+                                            <div>{filters.statut === 'historique' && demande.statut_libelle ? <Badge color={getStatusBadge(demande.status).color}>{demande.statut_libelle}</Badge> : getStatusBadge(demande.status)}</div>
+                                        </div>
+                                        <div className="d-flex flex-column">
+                                            <span className="text-muted small fw-bold mb-1">Phase</span>
+                                            <div>{getPhaseBadge(demande.phase)}</div>
+                                        </div>
+                                        <div className="d-flex flex-column">
+                                            <span className="text-muted small fw-bold mb-1">Priorité</span>
+                                            <div>
+                                                <Badge 
+                                                    color={demande.priorite === 'urgente' ? 'warning' : demande.priorite === 'critique' ? 'danger' : 'secondary'}
+                                                >
+                                                    {demande.priorite === 'critique' ? 'Exceptionnelle' : demande.priorite === 'urgente' ? 'Urgente' : (demande.priorite === 'normale' || !demande.priorite) ? 'Normale' : demande.priorite}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        <div className="d-flex flex-column w-100">
+                                            <span className="text-muted small fw-bold mb-1">Niveau d'évolution</span>
+                                            <div>
+                                                {filters.statut === 'historique' && demande.niveau_libelle ? (
+                                                    <Badge color={getNiveauEvolutionBadge(demande.niveau_evolution_demande, demande.phase).color}>{demande.niveau_libelle}</Badge>
+                                                ) : (
+                                                    getNiveauEvolutionBadge((() => {
+                                                        const roleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '_').replace(/é/g, 'e').replace(/è/g, 'e');
+                                                        const isWaitingForDirector = demande.niveau_actuel === 'directeur' || ['soumis', 'valide_par_sous_directeur'].includes((demande.niveau_evolution_demande || ''));
+                                                        return (roleNorm === 'directeur_central' && isWaitingForDirector) ? 'valide_par_directeur_central' : demande.niveau_evolution_demande;
+                                                    })(), demande.phase)
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="d-flex gap-2 w-100 border-top pt-2">
+                                        <Button
+                                            type="button"
+                                            color="outline-primary"
+                                            className="flex-grow-1"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (typeof onDemandeClick === 'function') {
+                                                    onDemandeClick('view', demande);
+                                                }
+                                            }}
+                                        >
+                                            <i className="fa fa-eye me-1"></i> Voir
+                                        </Button>
+                                        
+                                        {filters.statut === 'en_attente' && (
+                                            <>
+                                                {demande.phase === 'retour' && demande.niveau_evolution_demande === 'retour_drh' ? (
+                                                    <Button
+                                                        color="outline-info"
+                                                        className="flex-grow-1"
+                                                        onClick={(e) => { e.stopPropagation(); onDemandeClick('transmit', demande); }}
+                                                    >
+                                                        <i className="fa fa-paper-plane me-1"></i> Trans.
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        color="outline-success"
+                                                        className="flex-grow-1"
+                                                        onClick={(e) => { e.stopPropagation(); onDemandeClick('validate', demande); }}
+                                                    >
+                                                        <i className="fa fa-check me-1"></i> OK
+                                                    </Button>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                ) : (
                 <div className="table-responsive" style={{
                     maxHeight: '600px',
                     overflowX: 'auto',
@@ -582,6 +769,21 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
                     }}>
                         <thead>
                             <tr>
+                                {filters.statut === 'en_attente' && (
+                                    <th style={{ width: '4%', textAlign: 'center' }}>
+                                        <Input 
+                                            type="checkbox" 
+                                            onChange={handleSelectAll}
+                                            checked={
+                                                demandes.length > 0 && 
+                                                (filters.type_demande
+                                                    ? demandes.filter(d => (d.type_demande || '').toLowerCase() === filters.type_demande.toLowerCase() && d.status === 'en_attente')
+                                                    : demandes.filter(d => d.status === 'en_attente')
+                                                ).length === selectedDemandes.length && selectedDemandes.length > 0
+                                            }
+                                        />
+                                    </th>
+                                )}
                                 <th style={{ width: '10%' }}>Agent</th>
                                 <th style={{ width: '10%' }}>Type</th>
                                 <th style={{ width: '13%' }}>Motif</th>
@@ -603,9 +805,16 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {demandes.length === 0 ? (
+                            {loading ? (
                                 <tr>
-                                    <td colSpan="10" className="text-center text-muted py-4">
+                                    <td colSpan={filters.statut === 'en_attente' ? "11" : "10"} className="text-center py-4">
+                                        <Spinner color="primary" />
+                                        <p className="mt-2 mb-0">Chargement des autorisations...</p>
+                                    </td>
+                                </tr>
+                            ) : demandes.length === 0 ? (
+                                <tr>
+                                    <td colSpan={filters.statut === 'en_attente' ? "11" : "10"} className="text-center text-muted py-4">
                                         <i className="fa fa-inbox fa-2x mb-2 d-block"></i>
                                         {filters.statut === 'historique' 
                                             ? 'Aucune autorisation dans l\'historique' 
@@ -619,7 +828,20 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
                                     : demandes
                                 ).map((demande) => (
                                     <tr key={demande.id} style={{ cursor: 'pointer' }}>
-                                        <td>
+                                        {filters.statut === 'en_attente' && (
+                                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                                <Input 
+                                                    type="checkbox" 
+                                                    checked={selectedDemandes.includes(demande.id)}
+                                                    onChange={(e) => handleSelectRow(e, demande.id)}
+                                                />
+                                            </td>
+                                        )}
+                                        <td onClick={() => {
+                                            if (typeof onDemandeClick === 'function') {
+                                                onDemandeClick('view', demande);
+                                            }
+                                        }}>
                                             <div style={{ 
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
@@ -860,6 +1082,7 @@ const DemandesDRHList = ({ onDemandeClick, typeDemande = '' }) => {
                         </tbody>
                     </Table>
                 </div>
+                )}
 
                 {/* Pagination */}
                 {pagination.total_pages > 1 && (

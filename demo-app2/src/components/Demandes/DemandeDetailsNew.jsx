@@ -266,6 +266,32 @@ const DemandeDetailsNew = ({ isOpen, toggle, demande, onValidationSuccess }) => 
                         </Col>
                     </Row>
                 )}
+
+                {/* Documents joints */}
+                {demandeData.documents_joints && demandeData.documents_joints.length > 0 && (
+                    <Row>
+                        <Col>
+                            <div className="mb-4">
+                                <h6 className="text-primary mb-3">
+                                    <i className="fa fa-paperclip me-2"></i>
+                                    DOCUMENTS JOINTS
+                                </h6>
+                                <div className="border p-3 rounded">
+                                    <ul className="mb-0 list-unstyled">
+                                        {demandeData.documents_joints.map((doc, index) => (
+                                            <li key={index} className="mb-2">
+                                                <a href={`https://tourisme.2ise-groupe.com${doc.chemin}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-primary d-inline-flex align-items-center">
+                                                    <i className="fa fa-file-pdf me-2"></i>
+                                                    {doc.nom_original || `Document joint ${index + 1}`}
+                                                </a>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        </Col>
+                    </Row>
+                )}
             </ModalBody>
             <ModalFooter>
                 <Button color="secondary" onClick={toggle}>

@@ -24,6 +24,8 @@ import { useAuth } from '../../contexts/AuthContext';
 const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, includeCertificatPriseService = false }) => {
     const { user } = useAuth();
     const [documents, setDocuments] = useState([]);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedDocument, setSelectedDocument] = useState(null);
@@ -51,7 +53,7 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
 
     useEffect(() => {
         loadDocuments();
-    }, [user?.id, filters, typeDemande, includeCertificatPriseService]);
+    }, [user?.id, filters, typeDemande, includeCertificatPriseService, currentPage]);
 
     // Nettoyage lors du démontage du composant
     useEffect(() => {
@@ -135,7 +137,7 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
             console.log('🔑 Token présent:', !!token);
 
             const response = await fetch(
-                `${apiUrl}?${queryParams}`,
+                `${apiUrl}?${queryParams}&_t=${new Date().getTime()}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -164,7 +166,13 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
             // Vérifier si le composant est encore monté avant de mettre à jour l'état
             if (isMountedRef.current) {
                 setDocuments(data.data || []);
-                setCurrentPage(1); // Réinitialiser à la première page
+                if (data.pagination) {
+                    setTotalPages(data.pagination.totalPages);
+                    setTotalItems(data.pagination.totalItems);
+                } else {
+                    setTotalPages(Math.ceil((data.data || []).length / itemsPerPage) || 1);
+                    setTotalItems((data.data || []).length);
+                }
             }
 
         } catch (err) {
@@ -431,11 +439,17 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
         return match;
     });
 
-    // Pagination
-    const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    const currentDocuments = filteredDocuments.slice(startIndex, endIndex);
+    // Pagination (Support hybride)
+    let currentDocuments = documents;
+    let displayTotalPages = totalPages;
+
+    // Si on a plus de documents que la limite (API non paginée), on passe en pagination client
+    if (documents.length > itemsPerPage) {
+        displayTotalPages = Math.ceil(documents.length / itemsPerPage);
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        currentDocuments = documents.slice(startIndex, endIndex);
+    }
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
@@ -674,7 +688,7 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                             )}
 
                             {/* Pagination */}
-                            {totalPages > 1 && (
+                            {displayTotalPages > 1 && (
                                 <Pagination>
                                     <PaginationItem disabled={currentPage === 1}>
                                         <PaginationLink
@@ -682,14 +696,14 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                                             onClick={() => handlePageChange(currentPage - 1)}
                                         />
                                     </PaginationItem>
-                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    {Array.from({ length: displayTotalPages }, (_, i) => i + 1).map(page => (
                                         <PaginationItem key={page} active={page === currentPage}>
                                             <PaginationLink onClick={() => handlePageChange(page)}>
                                                 {page}
                                             </PaginationLink>
                                         </PaginationItem>
                                     ))}
-                                    <PaginationItem disabled={currentPage === totalPages}>
+                                    <PaginationItem disabled={currentPage === displayTotalPages}>
                                         <PaginationLink
                                             next
                                             onClick={() => handlePageChange(currentPage + 1)}

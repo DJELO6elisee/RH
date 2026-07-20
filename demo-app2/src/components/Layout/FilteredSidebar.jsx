@@ -242,7 +242,7 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
     // Routes autorisées selon le type d'organisation
     const allowedRoutes = {
         'ministere': [
-            'agents', 'positions-agents', 'fiche-signaletique', 'grades', 'directions-generales', 'directions', 'services', 'sous-directions', 'directions-entites-ministres', 'fonctions', 'positions', 'echelons', 'emplois',
+            'agents', 'agents-instance-affectation', 'positions-agents', 'fiche-signaletique', 'grades', 'directions-generales', 'directions', 'services', 'sous-directions', 'directions-entites-ministres', 'fonctions', 'positions', 'echelons', 'emplois',
             'type_d_agents', 'retraites', 'verification-retraite', 'prolongement-retraite', 'planning-previsionnel-conges',
             'categories', 'diplomes', 'distinctions', 'specialites',
             'langues', 'niveau_langues', 'logiciels', 'niveau_informatiques',

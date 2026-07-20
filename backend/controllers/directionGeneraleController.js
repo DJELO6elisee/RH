@@ -496,8 +496,11 @@ exports.getAgentsByDirectionGenerale = async(req, res) => {
         AND a.id_sous_direction IS NULL
         AND (a.retire IS NULL OR a.retire = false)
         AND (
-          (a.date_retraite IS NULL AND (a.date_de_naissance IS NULL OR DATE_PART('year', AGE(CURRENT_DATE, a.date_de_naissance)) < CASE WHEN g.libele IS NOT NULL AND UPPER(g.libele) IN ('A4', 'A5', 'A6', 'A7') THEN 65 ELSE 60 END))
-          OR (a.date_retraite IS NOT NULL AND a.date_retraite > CURRENT_DATE)
+          COALESCE(a.id_type_d_agent, 0) != 1 OR
+          (
+            (a.date_retraite IS NULL AND (a.date_de_naissance IS NULL OR DATE_PART('year', AGE(CURRENT_DATE, a.date_de_naissance)) < CASE WHEN g.libele IS NOT NULL AND UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65 ELSE 60 END))
+            OR (a.date_retraite IS NOT NULL AND a.date_retraite > CURRENT_DATE)
+          )
         )
         AND NOT (
           a.id_type_d_agent = 1

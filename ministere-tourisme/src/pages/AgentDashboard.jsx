@@ -3250,12 +3250,12 @@ const AgentDashboard = () => {
         if (window.confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
             try {
                 await logout();
-                // Redirection propre vers la page de login
-                history.replace('/login');
+                // Redirection propre vers la page d'accueil
+                history.replace('/');
             } catch (error) {
                 console.error('Erreur lors de la déconnexion:', error);
                 // Redirection même en cas d'erreur
-                history.replace('/login');
+                history.replace('/');
             }
         }
     };
@@ -4799,36 +4799,38 @@ const AgentDashboard = () => {
     }
 
     return (
-        <div style={{ minHeight: '100vh' }}>
+        <div style={{ minHeight: '100vh', paddingTop: isMobile ? '56px' : 0 }}>
             {/* Détecteur de nouvelle version */}
             <VersionChecker checkInterval={3000} />
             
             {/* Navbar mobile */}
             {isMobile && (
-                <Navbar color="primary" dark expand="md" className="d-md-none agent-mobile-nav">
-                    <NavbarBrand className="text-white">
-                        <i className="fa fa-user me-2"></i>
+                <Navbar color="primary" dark expand="md" className="d-md-none agent-mobile-nav" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '0.5rem 1rem', flexWrap: 'nowrap' }}>
+                    <button 
+                        onClick={() => setSidebarOpen(!sidebarOpen)}
+                        style={{ 
+                            width: '38px',
+                            height: '38px',
+                            border: '1px solid rgba(255,255,255,0.5)', 
+                            borderRadius: '6px',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            flexShrink: 0,
+                            padding: '0'
+                        }}
+                    >
+                        <span style={{ display: 'block', width: '18px', height: '2px', backgroundColor: '#fff', borderRadius: '2px' }}></span>
+                        <span style={{ display: 'block', width: '18px', height: '2px', backgroundColor: '#fff', borderRadius: '2px' }}></span>
+                        <span style={{ display: 'block', width: '18px', height: '2px', backgroundColor: '#fff', borderRadius: '2px' }}></span>
+                    </button>
+                    <NavbarBrand className="text-white" style={{ flex: 1, marginLeft: '10px', marginBottom: 0 }}>
                         Espace Agent
                     </NavbarBrand>
-                    <Button 
-                        color="link" 
-                        className="navbar-toggler"
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                        style={{ border: 'none', padding: '0.25rem 0.5rem' }}
-                    >
-                        <span className="navbar-toggler-icon"></span>
-                    </Button>
-                    <div className="d-flex align-items-center">
-                        <Button 
-                            color="danger" 
-                            size="sm" 
-                            onClick={handleLogout}
-                            className="me-2"
-                        >
-                            <FaSignOutAlt className="me-1" />
-                            Déconnexion
-                        </Button>
-                    </div>
                 </Navbar>
             )}
 
@@ -4844,42 +4846,64 @@ const AgentDashboard = () => {
             {isMobile && (
                 <div className={`agent-mobile-sidebar ${sidebarOpen ? 'show' : ''}`}>
                     <div className="agent-mobile-sidebar-header">
-                        <div className="d-flex align-items-center justify-content-between mb-3">
-                            <h5 className="text-white mb-0">
-                                <i className="fa fa-user me-2"></i>
-                                Menu
-                            </h5>
-                            <Button 
-                                color="link" 
-                                className="text-white p-0"
-                                onClick={() => setSidebarOpen(false)}
-                                style={{ fontSize: '1.5rem', lineHeight: '1' }}
-                            >
-                                <i className="fa fa-times"></i>
-                            </Button>
-                        </div>
-                        {agentData && (
-                            <div className="text-center mb-3">
-                                {profilePhotoUrl ? (
-                                    <img 
-                                        src={profilePhotoUrl}
-                                        onError={handleProfilePhotoError}
-                                        alt="Photo de profil" 
-                                        className="rounded-circle mb-2"
-                                        style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-                                    />
-                                ) : (
-                                    <div className="bg-white text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-2" 
-                                         style={{ width: '50px', height: '50px' }}>
-                                        <i className="fa fa-user"></i>
+                        {/* Header compact : photo + nom + matricule + bouton fermer */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {/* Avatar */}
+                            {profilePhotoUrl ? (
+                                <img
+                                    src={profilePhotoUrl}
+                                    onError={handleProfilePhotoError}
+                                    alt="Photo de profil"
+                                    style={{
+                                        width: '42px', height: '42px',
+                                        borderRadius: '50%', objectFit: 'cover',
+                                        border: '2px solid rgba(255,255,255,0.5)',
+                                        flexShrink: 0
+                                    }}
+                                />
+                            ) : (
+                                <div style={{
+                                    width: '42px', height: '42px',
+                                    borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0, border: '2px solid rgba(255,255,255,0.4)'
+                                }}>
+                                    <i className="fa fa-user" style={{ color: '#fff', fontSize: '18px' }}></i>
+                                </div>
+                            )}
+                            {/* Nom + Matricule */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                    color: '#fff', fontWeight: 600,
+                                    fontSize: '0.9rem', lineHeight: 1.2,
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                }}>
+                                    {agentData ? `${agentData.prenom} ${agentData.nom}` : 'Espace Agent'}
+                                </div>
+                                {agentData && (
+                                    <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.75rem', marginTop: '2px' }}>
+                                        {agentData.matricule}
                                     </div>
                                 )}
-                                <h6 className="text-white mb-1">{agentData.prenom} {agentData.nom}</h6>
-                                <small className="text-light">{agentData.matricule}</small>
                             </div>
-                        )}
+                            {/* Bouton fermer */}
+                            <button
+                                onClick={() => setSidebarOpen(false)}
+                                style={{
+                                    background: 'rgba(255,255,255,0.15)',
+                                    border: '1px solid rgba(255,255,255,0.3)',
+                                    borderRadius: '6px',
+                                    color: '#fff',
+                                    width: '32px', height: '32px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', flexShrink: 0, fontSize: '16px'
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
-                    <Nav vertical className="agent-mobile-sidebar-nav" style={{ display: 'flex', flexDirection: 'column', flexWrap: 'nowrap', alignItems: 'stretch', width: '100%' }}>
+                    <Nav vertical className="agent-mobile-sidebar-nav" style={{ display: 'flex', flexDirection: 'column', flexWrap: 'nowrap', alignItems: 'stretch', width: '100%', boxSizing: 'border-box' }}>
                         {/* Tableau de bord - Premier lien en haut (réservé aux utilisateurs avec privilèges de gestion) */}
                         {hasManagementPrivileges() && (
                             <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
@@ -6115,7 +6139,7 @@ const AgentDashboard = () => {
                             <Row className="agent-fade-in">
                                 <Col xs={12} lg={6} className="mb-4">
                                     <Card className="h-100 shadow-sm">
-                                        <CardHeader className="py-2 px-3 d-flex justify-content-between align-items-center" style={{ background: '#f8f9fa', borderBottom: '1px solid #eee' }}>
+                                        <CardHeader className="py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style={{ background: '#f8f9fa', borderBottom: '1px solid #eee' }}>
                                             <CardTitle className="mb-0" style={{ fontSize: '0.95rem', fontWeight: 600, color: '#495057' }}>
                                                 Informations de base
                                             </CardTitle>
@@ -6436,7 +6460,7 @@ const AgentDashboard = () => {
                                 </Col>
                                 <Col xs={12} lg={6} className="mb-4">
                                     <Card className="h-100 shadow-sm">
-                                        <CardHeader className="py-2 px-3 d-flex justify-content-between align-items-center" style={{ background: '#f8f9fa', borderBottom: '1px solid #eee' }}>
+                                        <CardHeader className="py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style={{ background: '#f8f9fa', borderBottom: '1px solid #eee' }}>
                                             <CardTitle className="mb-0" style={{ fontSize: '0.95rem', fontWeight: 600, color: '#495057' }}>
                                                 Contact
                                             </CardTitle>
@@ -7464,6 +7488,47 @@ const AgentDashboard = () => {
                                             </div>
                                         ) : agentDocuments.length === 0 ? (
                                             <p className="text-muted">Aucun document enregistré. Utilisez le formulaire ci-dessus pour en ajouter.</p>
+                                        ) : isMobile ? (
+                                            <div className="documents-mobile-list mt-3">
+                                                {agentDocuments.map((doc) => (
+                                                    <div key={doc.id} className="document-mobile-card mb-3 p-3 border rounded shadow-sm bg-white">
+                                                        <div className="d-flex justify-content-between align-items-start mb-2">
+                                                            <span className="text-muted small fw-bold me-2">Nom</span>
+                                                            <span className="fw-bold text-end text-break" style={{ fontSize: '0.9rem' }}>{doc.document_name}</span>
+                                                        </div>
+                                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                                            <span className="text-muted small fw-bold">Type</span>
+                                                            <Badge color="secondary">{doc.document_type}</Badge>
+                                                        </div>
+                                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                                            <span className="text-muted small fw-bold">Taille</span>
+                                                            <span style={{ fontSize: '0.9rem' }}>{doc.document_size ? `${(doc.document_size / 1024).toFixed(1)} Ko` : '-'}</span>
+                                                        </div>
+                                                        <div className="d-flex justify-content-between align-items-center mb-3">
+                                                            <span className="text-muted small fw-bold">Date</span>
+                                                            <span style={{ fontSize: '0.9rem' }}>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString('fr-FR') : '-'}</span>
+                                                        </div>
+                                                        <div className="d-flex justify-content-end gap-2 border-top pt-3 mt-2">
+                                                            <Button
+                                                                color="primary"
+                                                                size="sm"
+                                                                outline
+                                                                onClick={() => handleViewAgentDocument(doc)}
+                                                            >
+                                                                Voir
+                                                            </Button>
+                                                            <Button
+                                                                color="danger"
+                                                                size="sm"
+                                                                outline
+                                                                onClick={() => handleDeleteAgentDocument(doc.id)}
+                                                            >
+                                                                <MdDelete />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         ) : (
                                             <Table responsive>
                                                 <thead>
@@ -7482,12 +7547,12 @@ const AgentDashboard = () => {
                                                             <td><Badge color="secondary">{doc.document_type}</Badge></td>
                                                             <td>{doc.document_size ? `${(doc.document_size / 1024).toFixed(1)} Ko` : '-'}</td>
                                                             <td>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString('fr-FR') : '-'}</td>
-                                                            <td>
+                                                            <td className="text-end">
                                                                 <Button
                                                                     color="primary"
                                                                     size="sm"
                                                                     outline
-                                                                    className="me-1"
+                                                                    className="me-2"
                                                                     onClick={() => handleViewAgentDocument(doc)}
                                                                 >
                                                                     Voir
@@ -8937,7 +9002,51 @@ const AgentDashboard = () => {
                                                 </Alert>
                                             ) : (
                                                 <>
-                                                    <div className="table-responsive">
+                                                    {isMobile ? (
+                                                        <div className="agents-mobile-list mt-3">
+                                                            {[...getFilteredAgents]
+                                                                .sort((a, b) => {
+                                                                    const nomA = (a.nom || '').toLowerCase().trim();
+                                                                    const nomB = (b.nom || '').toLowerCase().trim();
+                                                                    if (nomA !== nomB) return nomA.localeCompare(nomB, 'fr');
+                                                                    const prenomA = (a.prenom || '').toLowerCase().trim();
+                                                                    const prenomB = (b.prenom || '').toLowerCase().trim();
+                                                                    return prenomA.localeCompare(prenomB, 'fr');
+                                                                })
+                                                                .map((agent, index) => {
+                                                                    const fonction = agent.fonction_actuelle_libele || agent.fonction_libele || agent.fonction_actuelle || '-';
+                                                                    const emploi = agent.emploi_actuel_libele || agent.emploi_libele || agent.emploi_actuel || '-';
+                                                                    return (
+                                                                        <div key={agent.id} className="agent-mobile-card mb-3 p-3 border rounded shadow-sm bg-white">
+                                                                            <div className="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
+                                                                                <span className="fw-bold text-primary">#{index + 1} - {agent.matricule || '-'}</span>
+                                                                                <Badge color="info">{agent.grade_libele || agent.grade_libelle || '-'}</Badge>
+                                                                            </div>
+                                                                            <div className="mb-3">
+                                                                                <div className="fw-bold" style={{ fontSize: '1.1rem' }}>{agent.nom} {agent.prenom}</div>
+                                                                                <div className="text-muted small mt-1"><i className="fa fa-envelope me-2"></i>{agent.email || '-'}</div>
+                                                                                <div className="text-muted small mt-1"><i className="fa fa-phone me-2"></i>{agent.telephone1 || '-'}</div>
+                                                                            </div>
+                                                                            <div className="d-flex flex-column gap-2 bg-light p-2 rounded">
+                                                                                <div className="d-flex flex-column">
+                                                                                    <span className="text-muted small fw-bold">Fonction</span>
+                                                                                    <span className="small">{fonction}</span>
+                                                                                </div>
+                                                                                <div className="d-flex flex-column">
+                                                                                    <span className="text-muted small fw-bold">Emploi</span>
+                                                                                    <span className="small">{emploi}</span>
+                                                                                </div>
+                                                                                <div className="d-flex flex-column">
+                                                                                    <span className="text-muted small fw-bold">Service</span>
+                                                                                    <span className="small text-break">{agent.service_libelle || agent.service || '-'}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="table-responsive">
                                                         <Table striped hover className="mb-0">
                                                             <thead style={{ background: '#f8f9fa' }}>
                                                                 <tr>
@@ -9005,7 +9114,8 @@ const AgentDashboard = () => {
                                                                     })}
                                                             </tbody>
                                                         </Table>
-                                                    </div>
+                                                        </div>
+                                                    )}
                                                     <div className="mt-3 d-flex justify-content-between align-items-center">
                                                         <div className="text-muted">
                                                             <small>

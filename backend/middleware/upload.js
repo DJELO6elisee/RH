@@ -154,6 +154,9 @@ const uploadSindicatAttestation = upload.single('fichier_attestation');
 // Permet autant de fichiers qu'il veut (limite 50 par requête pour éviter les abus)
 const uploadAgentDocuments = upload.array('documents', 50);
 
+// Middleware pour gérer l'upload de documents joints pour les demandes
+const uploadDemandeDocuments = upload.array('documents_joints', 10);
+
 module.exports = {
     uploadAgentFiles,
     uploadDiplomeFiles,
@@ -162,5 +165,6 @@ module.exports = {
     uploadDecisionFile,
     uploadAssociationAttestation,
     uploadSindicatAttestation,
-    uploadAgentDocuments
+    uploadAgentDocuments,
+    uploadDemandeDocuments
 };

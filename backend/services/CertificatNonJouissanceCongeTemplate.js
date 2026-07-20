@@ -211,16 +211,22 @@ class CertificatNonJouissanceCongeTemplate {
 
         // Remplacer les placeholders
         const replacePlaceholders = (text) => {
+            if (!text) return '';
             return text
-                .replace(/{validateurGenre}/g, validateurGenre || '')
-                .replace(/{validateurNomComplet}/g, validateurNomComplet || '')
-                .replace(/{validateurFonction}/g, validateurFonction || '')
-                .replace(/{civilite}/g, civilite || '')
-                .replace(/{prenoms}/g, nameParts.prenoms || '')
-                .replace(/{nom}/g, nameParts.nom || '')
-                .replace(/{matricule}/g, matricule || '')
-                .replace(/{designationPoste}/g, designationPoste || '')
-                .replace(/{anneeTexte}/g, anneeTexte || '');
+                .replace(/\{\s*validateurGenre\s*\}/gi, validateurGenre || '')
+                .replace(/\{\s*validateurNomComplet\s*\}/gi, validateurNomComplet || '')
+                .replace(/\{\s*validateurFonction\s*\}/gi, validateurFonction || '')
+                .replace(/\{\s*civilite\s*\}/gi, civilite || '')
+                .replace(/\{\s*prenoms\s*\}/gi, nameParts.prenoms || '')
+                .replace(/\{\s*nom\s*\}/gi, nameParts.nom || '')
+                .replace(/\{\s*matricule\s*\}/gi, matricule || '')
+                .replace(/\{\s*designationPoste\s*\}/gi, designationPoste || '')
+                .replace(/\{\s*designation_poste\s*\}/gi, designationPoste || '')
+                .replace(/\{\s*emploi\s*\}/gi, designationPoste || '')
+                .replace(/\{\s*fonction\s*\}/gi, designationPoste || '')
+                .replace(/\{\s*poste\s*\}/gi, designationPoste || '')
+                .replace(/\{\s*anneeTexte\s*\}/gi, anneeTexte || '')
+                .replace(/\{\s*annee_texte\s*\}/gi, anneeTexte || '');
         };
 
         const resolvedBody = replacePlaceholders(bodyTemplate);

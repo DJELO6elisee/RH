@@ -15,6 +15,40 @@ import {
     Spinner
 } from 'reactstrap';
 
+const addWorkingDays = (startDateStr, days) => {
+    if (!startDateStr || isNaN(days)) return '';
+    const date = new Date(startDateStr);
+    if (isNaN(date.getTime())) return '';
+    
+    let addedDays = 0;
+    while (addedDays < days) {
+        date.setDate(date.getDate() + 1);
+        const dayOfWeek = date.getDay();
+        // Ignore weekends (0 = Sunday, 6 = Saturday)
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            addedDays++;
+        }
+    }
+    return date.toISOString().split('T')[0];
+};
+
+const isWorkingDay = (dateStr) => {
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return false;
+    const day = date.getDay();
+    return day !== 0 && day !== 6;
+};
+
+const absenceMotifsFixes = {
+    "décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint": 5,
+    "décès du père ou de la mère du conjoint": 3,
+    "décès frère ou sœur": 2,
+    "mariage du fonctionnaire": 5,
+    "mariage d'un ascendant ou un descendant": 2,
+    "déménagement du fonctionnaire": 2
+};
+
 const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
     const [formData, setFormData] = useState({
         type_demande: '',
@@ -38,7 +72,11 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
         // Champ pour le certificat de non jouissance de congé
         annee_non_jouissance_conge: '',
         // Année au titre de laquelle le congé est demandé (pour le numéro de décision sur le document)
-        annee_au_titre_conge: ''
+        annee_au_titre_conge: '',
+        unite_duree: 'jours',
+        // Nouveaux champs pour motif absence
+        motif_absence: '',
+        autre_motif_absence: ''
     });
     const [joursRestants, setJoursRestants] = useState(null);
     const [joursRestantsAnneesPrecedentes, setJoursRestantsAnneesPrecedentes] = useState(null);
@@ -62,56 +100,85 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
             
             // Définir automatiquement le nombre de jours pour maternité et paternité
             if (name === 'motif_conge') {
-                if (value === 'congé de maternité') {
-                    // 6 mois = environ 180 jours (en jours ouvrés)
+                if (value === 'congé de maternité (6 mois)') {
                     newData.nombre_jours = '180';
-                } else if (value === 'congé de paternité') {
-                    // 1 mois = environ 30 jours (en jours ouvrés)
+                } else if (value === 'congé de paternité 30 jours') {
                     newData.nombre_jours = '30';
-                } else if (prev.motif_conge === 'congé de maternité' || prev.motif_conge === 'congé de paternité') {
-                    // Réinitialiser si on change de motif
+                } else if (value === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois') {
+                    newData.nombre_jours = '1800';
+                } else if (value === 'congé annuel cumulé 60 jours') {
+                    newData.nombre_jours = '60';
+                } else if (prev.motif_conge && (prev.motif_conge.includes('maternité') || prev.motif_conge.includes('paternité') || prev.motif_conge.includes('60 mois') || prev.motif_conge === 'congé annuel cumulé 60 jours')) {
                     newData.nombre_jours = '';
                 }
-                // Pour congé annuel/partiel, l'année en cours n'est pas proposée : réinitialiser si elle était sélectionnée
                 const anneeEnCours = new Date().getFullYear();
                 if ((value === 'congé annuel' || value === 'congé partiel') && String(prev.annee_au_titre_conge) === String(anneeEnCours)) {
                     newData.annee_au_titre_conge = '';
                 }
             }
-            
+
+            // Gestion des dates pour l'absence
+            if (name === 'date_debut' && value) {
+                if (!isWorkingDay(value)) {
+                    alert('La date de début ne peut pas être un week-end (jour non ouvrable).');
+                    newData.date_debut = '';
+                    if (prev.motif_absence && absenceMotifsFixes[prev.motif_absence]) {
+                        newData.date_fin = '';
+                    }
+                } else if (prev.motif_absence && absenceMotifsFixes[prev.motif_absence]) {
+                    const days = absenceMotifsFixes[prev.motif_absence];
+                    // On ajoute (jours - 1) jours ouvrables à la date de début
+                    newData.date_fin = addWorkingDays(value, days - 1);
+                }
+            }
+            if (name === 'date_fin' && value) {
+                if (!isWorkingDay(value)) {
+                    alert('La date de fin ne peut pas être un week-end (jour non ouvrable).');
+                    newData.date_fin = '';
+                }
+            }
+
+            if (name === 'motif_absence') {
+                if (absenceMotifsFixes[value]) {
+                    if (prev.date_debut && isWorkingDay(prev.date_debut)) {
+                        const days = absenceMotifsFixes[value];
+                        newData.date_fin = addWorkingDays(prev.date_debut, days - 1);
+                    }
+                }
+            }
+
             // Validation en temps réel pour le nombre de jours
             if (name === 'nombre_jours' && value !== '') {
                 const joursSaisis = parseInt(value) || 0;
                 const isCongeExceptionnel = prev.motif_conge === 'congé exceptionnel';
                 const isCongeMaternite = prev.motif_conge === 'congé de maternité';
+                const isCongeAnnuel = prev.motif_conge === 'congé annuel' || prev.motif_conge === 'congé annuel cumulé 60 jours';
                 
-                // Pour les congés autres qu'exceptionnel et maternité, limiter à 30 jours
-                if (!isCongeExceptionnel && !isCongeMaternite && joursSaisis > 30) {
-                    // Afficher une alerte
-                    alert(`⚠️ Limite dépassée !\n\nVous ne pouvez pas demander plus de 30 jours pour ce type de congé.\nSeuls les congés exceptionnels et la maternité peuvent dépasser 30 jours.\n\nLe nombre de jours a été automatiquement ajusté à 30.`);
-                    // Corriger automatiquement à 30 jours
-                    newData.nombre_jours = '30';
-                }
-                // Vérifier aussi les jours disponibles (année choisie ou années précédentes)
-                else if (!isCongeExceptionnel && !isCongeMaternite) {
-                    const anneeChoisie = prev.annee_au_titre_conge ? Number(prev.annee_au_titre_conge) : null;
-                    const limiteAnneeChoisie = anneeChoisie != null && congesParAnnee[anneeChoisie] !== undefined ? congesParAnnee[anneeChoisie] : null;
-                    const totalDisponible = limiteAnneeChoisie ?? (joursRestantsAnneesPrecedentes?.total ?? null);
-                    if (totalDisponible !== null && joursSaisis > totalDisponible) {
-                        alert(anneeChoisie != null
-                            ? `⚠️ Limite dépassée !\n\nVous n'avez que ${totalDisponible} jour(s) disponible(s) pour l'année ${anneeChoisie}.\n\nLe nombre de jours a été automatiquement ajusté à ${totalDisponible}.`
-                            : `⚠️ Limite dépassée !\n\nVous n'avez que ${totalDisponible} jour(s) disponible(s) dans les années précédentes.\n\nLe nombre de jours a été automatiquement ajusté à ${totalDisponible}.`);
-                        newData.nombre_jours = String(totalDisponible);
-                    }
-                }
-                // Fallback : vérifier avec l'année en cours si pas d'année choisie ni années précédentes chargées
-                else if (!isCongeExceptionnel && !isCongeMaternite && joursRestants !== null && joursRestantsAnneesPrecedentes === null && (prev.annee_au_titre_conge == null || congesParAnnee[prev.annee_au_titre_conge] === undefined)) {
-                    if (joursSaisis > joursRestants) {
-                        // Limiter aussi à 30 jours maximum même si joursRestants est supérieur
-                        const limiteFinale = Math.min(joursRestants, 30);
-                        if (joursSaisis > limiteFinale) {
-                            alert(`⚠️ Limite dépassée !\n\nVous ne pouvez pas demander plus de ${limiteFinale} jour(s) pour ce type de congé.\nSeuls les congés exceptionnels et la maternité peuvent dépasser 30 jours.\n\nLe nombre de jours a été automatiquement ajusté à ${limiteFinale}.`);
-                            newData.nombre_jours = String(limiteFinale);
+                // Pour les congés annuels, vérifier les limites de jours
+                if (isCongeAnnuel) {
+                    const maxJours = prev.motif_conge === 'congé annuel cumulé 60 jours' ? 60 : 30;
+                    if (joursSaisis > maxJours) {
+                        alert(`⚠️ Limite dépassée !\n\nVous ne pouvez pas demander plus de ${maxJours} jours pour ce type de congé.\n\nLe nombre de jours a été automatiquement ajusté à ${maxJours}.`);
+                        newData.nombre_jours = String(maxJours);
+                    } else {
+                        // Vérifier les jours disponibles (année choisie ou années précédentes)
+                        const anneeChoisie = prev.annee_au_titre_conge ? Number(prev.annee_au_titre_conge) : null;
+                        const limiteAnneeChoisie = anneeChoisie != null && congesParAnnee[anneeChoisie] !== undefined ? congesParAnnee[anneeChoisie] : null;
+                        const totalDisponible = limiteAnneeChoisie ?? (joursRestantsAnneesPrecedentes?.total ?? null);
+                        
+                        if (totalDisponible !== null && joursSaisis > totalDisponible) {
+                            alert(anneeChoisie != null
+                                ? `⚠️ Limite dépassée !\n\nVous n'avez que ${totalDisponible} jour(s) disponible(s) pour l'année ${anneeChoisie}.\n\nLe nombre de jours a été automatiquement ajusté à ${totalDisponible}.`
+                                : `⚠️ Limite dépassée !\n\nVous n'avez que ${totalDisponible} jour(s) disponible(s) dans les années précédentes.\n\nLe nombre de jours a été automatiquement ajusté à ${totalDisponible}.`);
+                            newData.nombre_jours = String(totalDisponible);
+                        } else if (joursRestants !== null && joursRestantsAnneesPrecedentes === null && (prev.annee_au_titre_conge == null || congesParAnnee[prev.annee_au_titre_conge] === undefined)) {
+                            if (joursSaisis > joursRestants) {
+                                const limiteFinale = Math.min(joursRestants, maxJours);
+                                if (joursSaisis > limiteFinale) {
+                                    alert(`⚠️ Limite dépassée !\n\nVous ne pouvez pas demander plus de ${limiteFinale} jour(s) pour ce type de congé.\n\nLe nombre de jours a été automatiquement ajusté à ${limiteFinale}.`);
+                                    newData.nombre_jours = String(limiteFinale);
+                                }
+                            }
                         }
                     }
                 }
@@ -128,6 +195,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
 
         try {
             const token = localStorage.getItem('token');
+            let joursDemandes = parseInt(formData.nombre_jours) || 0;
             
             // Validation spécifique pour les certificats de cessation de service
             if (formData.type_demande === 'certificat_non_jouissance_conge') {
@@ -147,58 +215,83 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                 
                 // Définir automatiquement le nombre de jours pour maternité et paternité
                 let nombreJoursFinal = formData.nombre_jours;
-                if (formData.motif_conge === 'congé de maternité') {
+                if (formData.motif_conge === 'congé de maternité (6 mois)') {
                     nombreJoursFinal = '180'; // 6 mois
-                } else if (formData.motif_conge === 'congé de paternité') {
+                } else if (formData.motif_conge === 'congé de paternité 30 jours') {
                     nombreJoursFinal = '30'; // 1 mois
+                } else if (formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois') {
+                    nombreJoursFinal = '1800'; // 60 mois
                 }
                 
-                // Validation du nombre de jours (sauf pour maternité et paternité qui sont automatiques)
-                if (!isCongeAvecDureeAuto && (!nombreJoursFinal || parseInt(nombreJoursFinal) < 5)) {
-                    setError('Le nombre minimum de jours pour une cessation de service est de 5 jours');
+                // Validation du nombre de jours (sauf pour durée auto)
+                // Pour arrêt de travail, on vérifie > 0.
+                if (!isCongeAvecDureeAuto && (!nombreJoursFinal || parseInt(nombreJoursFinal) < 1)) {
+                    setError('Le nombre minimum de jours pour une cessation de service est de 1 jour');
                     setLoading(false);
                     return;
                 }
 
-                // Validation des jours pour les congés normaux
-                // Seuls les congés exceptionnels et la maternité peuvent dépasser 30 jours
-                const joursDemandes = parseInt(nombreJoursFinal) || 0;
-                const isCongeExceptionnel = formData.motif_conge === 'congé exceptionnel';
-                const isCongeMaternite = formData.motif_conge === 'congé de maternité';
+                joursDemandes = parseInt(nombreJoursFinal) || 0;
+                if ((formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois' || formData.motif_conge === 'congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)') && formData.unite_duree === 'mois') {
+                    joursDemandes = joursDemandes * 30;
+                }
                 
                 // Année au titre de laquelle le congé est demandé requise pour annuel, partiel et exceptionnel (pour déduction et numéro de décision)
-                const motifsAvecAnnee = ['congé annuel', 'congé partiel', 'congé exceptionnel'];
+                const motifsAvecAnnee = ['congé annuel', 'congé partiel', 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois'];
                 if (motifsAvecAnnee.includes(formData.motif_conge) && !formData.annee_au_titre_conge) {
                     setError('Veuillez préciser l\'année au titre de laquelle le congé est demandé');
                     setLoading(false);
                     return;
                 }
 
-                // Pour les congés autres qu'exceptionnel et maternité, vérifier la limite de 30 jours et les jours disponibles
-                if (!isCongeExceptionnel && !isCongeMaternite && !isCongeAvecDureeAuto) {
+                // Pour les congés annuels, vérifier les jours disponibles
+                const isCongeAnnuel = formData.motif_conge === 'congé annuel' || formData.motif_conge === 'congé annuel cumulé 60 jours';
+                
+                if (isCongeAnnuel) {
                     const anneeChoisie = formData.annee_au_titre_conge ? Number(formData.annee_au_titre_conge) : null;
                     const disponibleAnneeChoisie = anneeChoisie != null && congesParAnnee[anneeChoisie] !== undefined ? congesParAnnee[anneeChoisie] : null;
                     const totalDisponible = disponibleAnneeChoisie ?? (joursRestantsAnneesPrecedentes?.total ?? null);
                     
                     if (totalDisponible !== null && joursDemandes > totalDisponible) {
                         const msg = anneeChoisie != null
-                            ? `Vous n'avez que ${totalDisponible} jour(s) disponible(s) pour l'année ${anneeChoisie}. Vous ne pouvez pas demander ${joursDemandes} jour(s). Seuls les congés exceptionnels peuvent dépasser cette limite.`
-                            : `Vous n'avez que ${totalDisponible} jour(s) disponible(s) dans les années précédentes (${new Date().getFullYear() - 2}: ${joursRestantsAnneesPrecedentes?.annee2 ?? 0} jours, ${new Date().getFullYear() - 1}: ${joursRestantsAnneesPrecedentes?.annee1 ?? 0} jours). Vous ne pouvez pas demander ${joursDemandes} jour(s). Seuls les congés exceptionnels peuvent dépasser cette limite.`;
+                            ? `Vous n'avez que ${totalDisponible} jour(s) disponible(s) pour l'année ${anneeChoisie}. Vous ne pouvez pas demander ${joursDemandes} jour(s).`
+                            : `Vous n'avez que ${totalDisponible} jour(s) disponible(s) dans les années précédentes. Vous ne pouvez pas demander ${joursDemandes} jour(s).`;
                         setError(msg);
                         setLoading(false);
                         return;
                     }
                     
-                    if (joursDemandes > 30) {
-                        setError(`Vous ne pouvez pas demander plus de 30 jours pour ce type de congé. Seuls les congés exceptionnels et la maternité peuvent dépasser 30 jours. Veuillez choisir un congé exceptionnel si vous souhaitez dépasser cette limite.`);
+                    const maxJours = formData.motif_conge === 'congé annuel cumulé 60 jours' ? 60 : 30;
+                    if (joursDemandes > maxJours) {
+                        setError(`Vous ne pouvez pas demander plus de ${maxJours} jours pour ce type de congé.`);
                         setLoading(false);
                         return;
                     }
                 }
 
+                if (isArretTravail && joursDemandes > 15) {
+                    setError('L\'arrêt de travail ne peut pas dépasser 15 jours.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (isMaladieCourte && joursDemandes > 180) {
+                    setError('Le congé de maladie de courte durée ne peut pas dépasser 6 mois (environ 180 jours).');
+                    setLoading(false);
+                    return;
+                }
+
                 // Validation de la raison pour les congés exceptionnels
-                if (formData.motif_conge === 'congé exceptionnel' && !formData.raison_exceptionnelle) {
+                if (formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois' && !formData.raison_exceptionnelle) {
                     setError('Veuillez expliquer la raison du congé exceptionnel');
+                    setLoading(false);
+                    return;
+                }
+
+                // Document obligatoire pour les congés de maladie / arrêt de travail
+                const isMaladie = isArretTravail || isMaladieCourte || isMaladieLongue || formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois';
+                if (isMaladie && (!formData.documents_joints || formData.documents_joints.length === 0)) {
+                    setError('Un document justificatif (certificat médical, billet d\'hôpital, etc.) est obligatoire pour ce motif.');
                     setLoading(false);
                     return;
                 }
@@ -217,6 +310,11 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     priorite: 'normale',
                     documents_joints: []
                 }
+                : formData.type_demande === 'absence'
+                ? {
+                    ...formData,
+                    description: formData.motif_absence === 'autres (à préciser)' ? formData.autre_motif_absence : formData.motif_absence
+                }
                 : formData.type_demande === 'certificat_reprise_service'
                 ? {
                     ...formData,
@@ -228,13 +326,16 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     ...formData,
                     agree_motif: formData.motif_conge, // Utiliser agree_motif pour compatibilité
                     // Définir automatiquement le nombre de jours pour maternité et paternité
-                    nombre_jours: formData.motif_conge === 'congé de maternité' ? 180 : 
-                                  formData.motif_conge === 'congé de paternité' ? 30 : 
-                                  parseInt(formData.nombre_jours),
-                    description: formData.motif_conge === 'congé de maternité' ? 
-                                `${formData.motif_conge} - 6 mois` :
-                                formData.motif_conge === 'congé de paternité' ?
-                                `${formData.motif_conge} - 1 mois` :
+                    nombre_jours: formData.motif_conge === 'congé de maternité (6 mois)' ? 180 : 
+                                  formData.motif_conge === 'congé de paternité 30 jours' ? 30 : 
+                                  formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois' ? 1800 :
+                                  formData.motif_conge === 'congé annuel cumulé 60 jours' ? 60 :
+                                  joursDemandes,
+                    description: formData.motif_conge === 'congé de maternité (6 mois)' ? `${formData.motif_conge} - 6 mois` :
+                                formData.motif_conge === 'congé de paternité 30 jours' ? `${formData.motif_conge} - 1 mois` :
+                                formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois' ? `${formData.motif_conge} - 60 mois` :
+                                formData.unite_duree === 'mois' && (formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois' || formData.motif_conge === 'congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)') ? 
+                                `${formData.motif_conge} - ${formData.nombre_jours} mois (${joursDemandes} jours)` :
                                 `${formData.motif_conge} - ${formData.nombre_jours} jour(s)`,
                     // Stocker les informations supplémentaires dans les nouveaux champs
                     motif_conge: formData.motif_conge,
@@ -259,13 +360,28 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     date_reprise_service: formData.date_reprise_service || ''
                 };
 
+            const formDataToSend = new FormData();
+            
+            // Ajouter tous les champs textes
+            Object.keys(demandeData).forEach(key => {
+                if (key !== 'documents_joints' && demandeData[key] !== null && demandeData[key] !== undefined) {
+                    formDataToSend.append(key, demandeData[key]);
+                }
+            });
+            
+            // Ajouter les fichiers
+            if (demandeData.documents_joints && demandeData.documents_joints.length > 0) {
+                Array.from(demandeData.documents_joints).forEach(file => {
+                    formDataToSend.append('documents_joints', file);
+                });
+            }
+
             const response = await fetch('https://tourisme.2ise-groupe.com/api/demandes', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(demandeData)
+                body: formDataToSend
             });
 
             const result = await response.json();
@@ -274,6 +390,8 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                 // Gérer les erreurs spécifiques, notamment pour les années de service
                 if (result.error && result.error.includes('années de service')) {
                     setError(result.error);
+                } else if (result.details && result.details.length > 0) {
+                    setError(`Erreur de validation: ${result.details.map(d => `${d.msg} (${d.path || d.param})`).join(', ')}`);
                 } else {
                     setError(result.error || 'Erreur lors de la création de la demande');
                 }
@@ -309,7 +427,8 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     raison_exceptionnelle: '',
                     id_direction_destination: '',
                     annee_non_jouissance_conge: '',
-                    annee_au_titre_conge: ''
+                    annee_au_titre_conge: '',
+                    unite_duree: 'jours'
                 });
                 setJoursRestants(null);
             } else {
@@ -343,10 +462,18 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
     const isCertificatReprise = formData.type_demande === 'certificat_reprise_service';
     const isCertificatNonJouissanceConge = formData.type_demande === 'certificat_non_jouissance_conge';
     const isMutation = formData.type_demande === 'mutation';
-    const isCongeExceptionnel = formData.motif_conge === 'congé exceptionnel';
-    const isCongeMaternite = formData.motif_conge === 'congé de maternité';
-    const isCongePaternite = formData.motif_conge === 'congé de paternité';
-    const isCongeAvecDureeAuto = isCongeMaternite || isCongePaternite;
+    const isCongeExceptionnel = formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois';
+    const isCongeMaternite = formData.motif_conge === 'congé de maternité (6 mois)';
+    const isCongePaternite = formData.motif_conge === 'congé de paternité 30 jours';
+    const isCongeAnnuelCumule = formData.motif_conge === 'congé annuel cumulé 60 jours';
+    const isCongeAvecDureeAuto = isCongeMaternite || isCongePaternite || isCongeExceptionnel || isCongeAnnuelCumule;
+    
+    // Flags for sickness
+    const isMaladieCourte = formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois';
+    const isMaladieLongue = formData.motif_conge === 'congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)';
+    const isArretTravail = formData.motif_conge === 'arrêt de travail de 3 à 15 jours';
+    const isMaladie = isArretTravail || isMaladieCourte || isMaladieLongue || isCongeExceptionnel;
+    
     const currentYear = new Date().getFullYear();
 
     // Vérifier l'éligibilité pour la cessation de service lorsque le modal s'ouvre
@@ -647,7 +774,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     ) : (
                         <>
                             {/* Formulaire pour les autres types de demandes */}
-                            {!isCertificatCessation && !isCertificatReprise && !isCertificatNonJouissanceConge && (
+                            {!isCertificatCessation && !isCertificatReprise && !isCertificatNonJouissanceConge && formData.type_demande !== 'absence' && (
                                 <FormGroup>
                                     <Label for="description">Motif *</Label>
                                     <Input
@@ -661,6 +788,53 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                         required
                                     />
                                 </FormGroup>
+                            )}
+
+                            {formData.type_demande === 'absence' && (
+                                <>
+                                    <FormGroup>
+                                        <Label for="motif_absence">Motif *</Label>
+                                        <Input
+                                            type="select"
+                                            name="motif_absence"
+                                            id="motif_absence"
+                                            value={formData.motif_absence}
+                                            onChange={handleInputChange}
+                                            required
+                                        >
+                                            <option value="">Sélectionner un motif</option>
+                                            <optgroup label="Évènements familiaux">
+                                                <option value="décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint">Décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint = 5 jours ouvrables</option>
+                                                <option value="décès du père ou de la mère du conjoint">Décès du père ou de la mère du conjoint = 3 jours ouvrables</option>
+                                                <option value="décès frère ou sœur">Décès frère ou sœur = 2 jours ouvrables</option>
+                                                <option value="mariage du fonctionnaire">Mariage du fonctionnaire = 5 jours ouvrables</option>
+                                                <option value="mariage d'un ascendant ou un descendant">Mariage d'un ascendant ou un descendant = 2 jours ouvrables</option>
+                                                <option value="déménagement du fonctionnaire">Déménagement du fonctionnaire : 2 jours ouvrables</option>
+                                            </optgroup>
+                                            <optgroup label="Autres motifs">
+                                                <option value="constitution de dossier administratif">Constitution de dossier administratif</option>
+                                                <option value="commission, comité, jury institué(e) par l'Etat">Commission, comité, jury institué(e) par l'Etat</option>
+                                                <option value="concours ou examen professionnel">Concours ou examen professionnel</option>
+                                                <option value="répondre à une convocation officielle">Répondre à une convocation officielle</option>
+                                                <option value="autres (à préciser)">Autres (à préciser)</option>
+                                            </optgroup>
+                                        </Input>
+                                    </FormGroup>
+                                    {formData.motif_absence === 'autres (à préciser)' && (
+                                        <FormGroup>
+                                            <Label for="autre_motif_absence">Veuillez préciser le motif *</Label>
+                                            <Input
+                                                type="textarea"
+                                                name="autre_motif_absence"
+                                                id="autre_motif_absence"
+                                                value={formData.autre_motif_absence}
+                                                onChange={handleInputChange}
+                                                rows="3"
+                                                required
+                                            />
+                                        </FormGroup>
+                                    )}
+                                </>
                             )}
 
                             {isDateRequired && (
@@ -687,8 +861,17 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                 id="date_fin"
                                                 value={formData.date_fin}
                                                 onChange={handleInputChange}
+                                                min={formData.date_debut || new Date().toISOString().split('T')[0]}
                                                 required
+                                                readOnly={!!absenceMotifsFixes[formData.motif_absence]}
+                                                style={absenceMotifsFixes[formData.motif_absence] ? { backgroundColor: '#e9ecef', cursor: 'not-allowed' } : {}}
                                             />
+                                            {absenceMotifsFixes[formData.motif_absence] && (
+                                                <small className="text-muted d-block mt-1">
+                                                    <i className="fa fa-info-circle me-1"></i>
+                                                    Calculé automatiquement en fonction du motif ({absenceMotifsFixes[formData.motif_absence]} jours ouvrables).
+                                                </small>
+                                            )}
                                         </FormGroup>
                                     </Col>
                                 </Row>
@@ -803,10 +986,13 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                 >
                                                     <option value="">Sélectionner un motif</option>
                                                     <option value="congé annuel">Congé annuel</option>
-                                                    <option value="congé de paternité">Congé de paternité</option>
-                                                    <option value="congé de maternité">Congé de maternité</option>
-                                                    <option value="congé partiel">Congé partiel</option>
-                                                    <option value="congé exceptionnel">Congé exceptionnel</option>
+                                                    <option value="congé annuel cumulé 60 jours">Congé annuel cumulé 60 jours</option>
+                                                    <option value="congé de maternité (6 mois)">Congé de maternité (6 mois)</option>
+                                                    <option value="congé de paternité 30 jours">Congé de paternité 30 jours</option>
+                                                    <option value="arrêt de travail de 3 à 15 jours">Arrêt de travail de 3 à 15 jours</option>
+                                                    <option value="congé de maladie de courte durée 3 à 6 mois">Congé de maladie de courte durée 3 à 6 mois</option>
+                                                    <option value="congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)">Congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)</option>
+                                                    <option value="congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois">Congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois</option>
                                                 </Input>
                                             </FormGroup>
                                         </Col>
@@ -817,53 +1003,81 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                     <Input
                                                         type="text"
                                                         id="nombre_jours"
-                                                        value={isCongeMaternite ? '6 mois (180 jours)' : '1 mois (30 jours)'}
+                                                        value={
+                                                            isCongeMaternite ? '6 mois (180 jours)' :
+                                                            isCongeExceptionnel ? '60 mois (1800 jours)' :
+                                                            isCongeAnnuelCumule ? '60 jours' :
+                                                            '1 mois (30 jours)'
+                                                        }
                                                         disabled
                                                         readOnly
                                                         style={{ backgroundColor: '#e9ecef', cursor: 'not-allowed' }}
                                                     />
                                                     <small className="text-muted d-block mt-1">
                                                         <i className="fa fa-info-circle me-1"></i>
-                                                        {isCongeMaternite 
-                                                            ? 'La durée du congé de maternité est fixée à 6 mois par défaut.'
-                                                            : 'La durée du congé de paternité est fixée à 1 mois par défaut.'}
+                                                        La durée de ce congé est fixée automatiquement.
                                                     </small>
                                                 </FormGroup>
                                             ) : (
                                                 <FormGroup>
-                                                    <Label for="nombre_jours">Nombre de jours *</Label>
-                                                    <Input
-                                                        type="number"
-                                                        name="nombre_jours"
-                                                        id="nombre_jours"
-                                                        value={formData.nombre_jours}
-                                                        onChange={handleInputChange}
-                                                        min="5"
-                                                        placeholder="Ex: 5"
-                                                        required
-                                                    />
+                                                    <Label for="nombre_jours">Durée *</Label>
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <Input
+                                                            type="number"
+                                                            name="nombre_jours"
+                                                            id="nombre_jours"
+                                                            value={formData.nombre_jours}
+                                                            onChange={handleInputChange}
+                                                            min="1"
+                                                            placeholder="Ex: 5"
+                                                            required
+                                                            style={{ flex: 1 }}
+                                                        />
+                                                        {(isMaladieCourte || isMaladieLongue) && (
+                                                            <Input
+                                                                type="select"
+                                                                name="unite_duree"
+                                                                id="unite_duree"
+                                                                value={formData.unite_duree}
+                                                                onChange={handleInputChange}
+                                                                style={{ width: '120px' }}
+                                                            >
+                                                                <option value="jours">Jours</option>
+                                                                <option value="mois">Mois</option>
+                                                            </Input>
+                                                        )}
+                                                    </div>
                                                     <small className="text-muted d-block mt-1">
-                                                        Min: 5 jours {!isCongeExceptionnel && !isCongeMaternite && '| Max: 30 jours'}
+                                                        {formData.motif_conge === 'congé annuel' && 'Min: 1 jour | Max: 30 jours'}
+                                                        {formData.motif_conge === 'arrêt de travail de 3 à 15 jours' && 'Min: 1 jour | Max: 15 jours'}
+                                                        {formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois' && 'Max: 180 jours'}
                                                     </small>
-                                                    {!isCongeExceptionnel && !isCongeMaternite && formData.annee_au_titre_conge && congesParAnnee[formData.annee_au_titre_conge] !== undefined && (
-                                                        <small className={`d-block mt-1 ${congesParAnnee[formData.annee_au_titre_conge] >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
-                                                            <strong>Disponible pour l'année {formData.annee_au_titre_conge}:</strong> {congesParAnnee[formData.annee_au_titre_conge]} jour(s)
-                                                        </small>
+                                                    
+                                                    {['congé annuel', 'congé annuel cumulé 60 jours', 'congé partiel'].includes(formData.motif_conge) && (
+                                                        <>
+                                                            {formData.annee_au_titre_conge && congesParAnnee[formData.annee_au_titre_conge] !== undefined && (
+                                                                <small className={`d-block mt-1 ${congesParAnnee[formData.annee_au_titre_conge] >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
+                                                                    <strong>Disponible pour l'année {formData.annee_au_titre_conge}:</strong> {congesParAnnee[formData.annee_au_titre_conge]} jour(s)
+                                                                </small>
+                                                            )}
+                                                            {!formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes !== null && (
+                                                                <small className={`d-block mt-1 ${joursRestantsAnneesPrecedentes.total >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
+                                                                    <strong>Disponible:</strong> {joursRestantsAnneesPrecedentes.total} jour(s) (Années {joursRestantsAnneesPrecedentes.annee2_label} + {joursRestantsAnneesPrecedentes.annee1_label})
+                                                                    {formData.motif_conge !== 'congé annuel cumulé 60 jours' && ' — sélectionnez une année pour le détail par année'}
+                                                                </small>
+                                                            )}
+                                                            {!formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes === null && joursRestants !== null && (
+                                                                <small className={`d-block mt-1 ${joursRestants >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
+                                                                    Disponible: {joursRestants} jour(s)
+                                                                </small>
+                                                            )}
+                                                        </>
                                                     )}
-                                                    {!isCongeExceptionnel && !isCongeMaternite && !formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes !== null && (
-                                                        <small className={`d-block mt-1 ${joursRestantsAnneesPrecedentes.total >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
-                                                            <strong>Disponible:</strong> {joursRestantsAnneesPrecedentes.total} jour(s) (Années {joursRestantsAnneesPrecedentes.annee2_label} + {joursRestantsAnneesPrecedentes.annee1_label}) — sélectionnez une année pour le détail par année
-                                                        </small>
-                                                    )}
-                                                    {isCongeExceptionnel && (
+                                                    
+                                                    {isMaladie && (
                                                         <small className="d-block mt-1 text-info">
                                                             <i className="fa fa-info-circle me-1"></i>
-                                                            Pas de limite de jours
-                                                        </small>
-                                                    )}
-                                                    {!formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes === null && joursRestants !== null && !isCongeExceptionnel && !isCongeMaternite && (
-                                                        <small className={`d-block mt-1 ${joursRestants >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
-                                                            Disponible: {joursRestants} jour(s)
+                                                            Ces jours ne sont pas déduits de votre solde de congé annuel.
                                                         </small>
                                                     )}
                                                 </FormGroup>
@@ -935,13 +1149,16 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                             )}
 
                             <FormGroup>
-                                <Label for="documents_joints">Documents joints (optionnel)</Label>
+                                <Label for="documents_joints">
+                                    Documents joints {isMaladie ? '(obligatoire) *' : '(optionnel)'}
+                                </Label>
                                 <Input
                                     type="file"
                                     name="documents_joints"
                                     id="documents_joints"
                                     multiple
                                     accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                    required={isMaladie}
                                     onChange={(e) => {
                                         const files = Array.from(e.target.files);
                                         setFormData(prev => ({

@@ -95,6 +95,13 @@ const EvaluationsPage = ({ isEmbedded = false, agentData = null }) => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Modal states
     const [modalOpen, setModalOpen] = useState(false);
@@ -1339,6 +1346,77 @@ const EvaluationsPage = ({ isEmbedded = false, agentData = null }) => {
                                 </Alert>
                             ) : (
                                 <>
+                                    {isMobile ? (
+                                        <div className="evaluations-mobile-list mt-3">
+                                            {evaluations.map((evalObj) => {
+                                                const isEvaluated = evalObj.id !== null && evalObj.id !== undefined;
+                                                return (
+                                                    <div key={evalObj.id_agent} className="evaluation-mobile-card mb-3 p-3 border rounded shadow-sm bg-white">
+                                                        <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2">
+                                                            <div className="fw-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                                                                {evalObj.agent_nom} {evalObj.agent_prenom}
+                                                            </div>
+                                                            <span className="badge bg-secondary p-2">{evalObj.annee}</span>
+                                                        </div>
+                                                        
+                                                        <div className="mb-3 text-muted small">
+                                                            <div><i className="fa fa-id-card me-2"></i>Matricule: {evalObj.agent_matricule || '-'}</div>
+                                                            {isEvaluated && evalObj.created_at && (
+                                                                <div className="mt-1"><i className="fa fa-calendar me-2"></i>Date d'évaluation: {new Date(evalObj.created_at).toLocaleDateString('fr-FR')}</div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="d-flex justify-content-between align-items-center bg-light p-2 rounded mb-3">
+                                                            <span className="fw-bold text-muted small">Note Finale</span>
+                                                            {isEvaluated ? (
+                                                                <div>
+                                                                    <strong className="text-success h5 mb-0">{evalObj.note_finale}</strong>
+                                                                    <span className="text-muted ms-1">/ 20</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-muted italic small">Non évalué</span>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="d-flex gap-2 w-100 mt-2">
+                                                            {isEvaluated ? (
+                                                                <>
+                                                                    <Button
+                                                                        color="info"
+                                                                        size="sm"
+                                                                        className="flex-grow-1 d-flex align-items-center justify-content-center text-white"
+                                                                        onClick={() => handleViewOpen(evalObj)}
+                                                                    >
+                                                                        <ViewIcon size={14} className="me-2" />
+                                                                        Détails
+                                                                    </Button>
+                                                                    <Button
+                                                                        color="warning"
+                                                                        size="sm"
+                                                                        className="flex-grow-1 d-flex align-items-center justify-content-center text-white"
+                                                                        onClick={() => handleEditOpen(evalObj)}
+                                                                    >
+                                                                        <EditIcon size={14} className="me-2" />
+                                                                        Modifier
+                                                                    </Button>
+                                                                </>
+                                                            ) : (
+                                                                <Button
+                                                                    color="primary"
+                                                                    size="sm"
+                                                                    className="w-100 d-flex align-items-center justify-content-center"
+                                                                    onClick={() => handleCreateOpen(evalObj)}
+                                                                >
+                                                                    <ReviewIcon size={16} className="me-2" />
+                                                                    Évaluer
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
                                     <div className="table-responsive">
                                         <Table striped bordered hover className="align-middle">
                                             <thead className="table-light">
@@ -1435,6 +1513,7 @@ const EvaluationsPage = ({ isEmbedded = false, agentData = null }) => {
                                             </tbody>
                                         </Table>
                                     </div>
+                                    )}
 
                                     {/* Pagination */}
                                     {totalCount > 0 && (

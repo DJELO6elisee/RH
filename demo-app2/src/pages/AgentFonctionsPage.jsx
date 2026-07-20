@@ -557,15 +557,7 @@ const AgentFonctionsPage = () => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
-    if (loading) {
-        return (
-            <Page title="Gestion des Fonctions">
-                <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
-                    <Spinner color="primary" />
-                </div>
-            </Page>
-        );
-    }
+    // Le spinner global a été supprimé pour conserver le focus sur le champ de recherche
 
     return (
         <Page title="Gestion des Fonctions">
@@ -674,7 +666,18 @@ const AgentFonctionsPage = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {paginatedAgents.map((agent, index) => (
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-5">
+                                                    <Spinner color="primary" />
+                                                </td>
+                                            </tr>
+                                        ) : paginatedAgents.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="8" className="text-center py-4 text-muted">Aucun agent trouvé</td>
+                                            </tr>
+                                        ) : (
+                                            paginatedAgents.map((agent, index) => (
                                             <tr key={agent.id}>
                                                 <td className="fw-bold text-center">
                                                     {((currentPage - 1) * itemsPerPage) + index + 1}
@@ -739,7 +742,8 @@ const AgentFonctionsPage = () => {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ))
+                                        )}
                                     </tbody>
                                 </Table>
                             </div>

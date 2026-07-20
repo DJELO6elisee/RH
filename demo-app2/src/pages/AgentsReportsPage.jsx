@@ -340,16 +340,17 @@ const AgentsReportsPage = ({ retirementProjection = false }) => {
             ]
         },
         {
-            name: 'statut_emploi',
-            label: 'Statut',
+            name: 'position',
+            label: 'Position',
             type: 'select',
             options: [
-                { value: '', label: 'Tous les statuts' },
-                { value: 'actif', label: 'Actif' },
-                { value: 'inactif', label: 'Inactif' },
-                { value: 'retraite', label: 'Retraité' },
-                { value: 'demission', label: 'Démission' },
-                { value: 'licencie', label: 'Licencié' }
+                { value: '', label: 'Toutes les positions' },
+                { value: 'PRESENT', label: 'PRESENT' },
+                { value: 'En activité', label: 'En activité' },
+                { value: 'CONGE ANNUEL', label: 'CONGE ANNUEL' },
+                { value: 'CONGE DE MATERNITE', label: 'CONGE DE MATERNITE' },
+                { value: 'CONGE DE PATERNITE', label: 'CONGE DE PATERNITE' },
+                { value: 'Absent', label: 'Absent' }
             ]
         },
         {

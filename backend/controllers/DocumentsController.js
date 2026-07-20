@@ -407,40 +407,135 @@ class DocumentsController {
     static async getAgentDocuments(req, res) {
         try {
             const agentId = req.user.id_agent;
+            
+            // Pagination and search parameters
+            const page = parseInt(req.query.page) || 1;
+            const limit = req.query.limit ? parseInt(req.query.limit) : null;
+            const searchAgent = req.query.search_agent || '';
+            const type_demande = req.query.type_demande || '';
+            const type_document = req.query.type_document || '';
 
-            const query = `
-                SELECT da.*, d.type_demande, d.date_debut, d.date_fin, d.description, d.annee_non_jouissance_conge,
-                       d.date_reprise_service, d.date_fin_conges,
-                       a.prenom as agent_prenom, a.nom as agent_nom, a.matricule,
-                       s.libelle as service_nom, m.nom as ministere_nom,
-                       transmetteur.prenom as transmetteur_prenom, 
-                       transmetteur.nom as transmetteur_nom
+            const dateOutputTimeZone = process.env.APP_TIMEZONE || 'Africa/Libreville';
+            const toLocalDateOnlyStr = (value) => {
+                if (!value) return null;
+                if (typeof value === 'string') {
+                    const raw = value.trim();
+                    if (!raw) return null;
+                    const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+                    if (dateOnly) return dateOnly[1];
+                    const parsed = new Date(raw);
+                    if (Number.isNaN(parsed.getTime())) return null;
+                    return new Intl.DateTimeFormat('en-CA', {
+                        timeZone: dateOutputTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+                    }).format(parsed);
+                }
+                const d = value instanceof Date ? value : new Date(value);
+                if (Number.isNaN(d.getTime())) return null;
+                return new Intl.DateTimeFormat('en-CA', {
+                    timeZone: dateOutputTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+                }).format(d);
+            };
+
+            const params = [];
+            let whereClause = ` WHERE da.id_agent_destinataire = $${params.length + 1} 
+                AND (
+                    (da.type_document = 'autorisation_absence' AND da.statut IN ('generé', 'transmis', 'finalise'))
+                    OR
+                    (da.type_document != 'autorisation_absence' AND da.statut IN ('generé', 'transmis', 'finalise'))
+                )`;
+            params.push(agentId);
+
+            if (searchAgent) {
+                whereClause += ` AND (a.prenom ILIKE $${params.length + 1} OR a.nom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
+                const searchStr = `%${searchAgent}%`;
+                params.push(searchStr);
+            }
+
+            if (type_document) {
+                whereClause += ` AND da.type_document = $${params.length + 1}`;
+                params.push(type_document);
+            } else if (type_demande) {
+                if (type_demande === 'attestation_presence') {
+                    whereClause += ` AND da.type_document = $${params.length + 1}`;
+                    params.push('attestation_presence');
+                } else {
+                    let typeDocument = '';
+                    if (type_demande === 'absence') typeDocument = 'autorisation_absence';
+                    else if (type_demande === 'sortie_territoire') typeDocument = 'autorisation_sortie_territoire';
+                    else if (type_demande === 'attestation_travail') typeDocument = 'attestation_travail';
+                    else if (type_demande === 'certificat_cessation') typeDocument = 'certificat_cessation';
+                    else if (type_demande === 'certificat_non_jouissance_conge') typeDocument = 'certificat_non_jouissance_conge';
+                    else typeDocument = type_demande;
+
+                    whereClause += ` AND (
+                        (da.id_demande IS NOT NULL AND d.type_demande = $${params.length + 1} AND da.type_document = $${params.length + 2})
+                        OR 
+                        (da.id_demande IS NULL AND da.type_document = $${params.length + 2})
+                    )`;
+                    params.push(type_demande, typeDocument);
+                }
+            }
+
+            const fromAndJoins = `
                 FROM documents_autorisation da
                 LEFT JOIN demandes d ON da.id_demande = d.id
                 LEFT JOIN agents a ON da.id_agent_destinataire = a.id
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN agents transmetteur ON da.id_agent_transmetteur = transmetteur.id
-                WHERE da.id_agent_destinataire = $1 
-                AND (
-                    -- Pour les autorisations d'absence : générées, transmises ou finalisées (inclut 'generé' pour que le DRH voie ses docs dès génération)
-                    (da.type_document = 'autorisation_absence' AND da.statut IN ('generé', 'transmis', 'finalise'))
-                    OR
-                    -- Pour les autres documents : générés, transmis ou finalisés
-                    (da.type_document != 'autorisation_absence' AND da.statut IN ('generé', 'transmis', 'finalise'))
-                )
+            `;
+
+            // Count Query
+            const countQuery = `SELECT COUNT(*) as total ${fromAndJoins} ${whereClause}`;
+            const countResult = await db.query(countQuery, params);
+            const totalItems = parseInt(countResult.rows[0].total);
+            
+            // Pagination calculations
+            let totalPages = 1;
+            let offset = 0;
+            if (limit) {
+                totalPages = Math.ceil(totalItems / limit) || 1;
+                offset = (page - 1) * limit;
+            }
+
+            // Main Query
+            let query = `
+                SELECT da.*, d.type_demande, d.date_debut, d.date_fin, d.description, d.annee_non_jouissance_conge,
+                       d.date_reprise_service, d.date_fin_conges,
+                       a.prenom as agent_prenom, a.nom as agent_nom, a.matricule,
+                       s.libelle as service_nom, m.nom as ministere_nom,
+                       transmetteur.prenom as transmetteur_prenom, 
+                       transmetteur.nom as transmetteur_nom
+                ${fromAndJoins}
+                ${whereClause}
                 ORDER BY da.date_generation DESC
             `;
 
-            const result = await db.query(query, [agentId]);
+            if (limit) {
+                query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+                params.push(limit, offset);
+            }
 
-            console.log(`📋 Documents récupérés pour l'agent ${agentId}: ${result.rows.length} documents`);
+            const result = await db.query(query, params);
+            
+            const data = (result.rows || []).map((row) => ({
+                ...row,
+                date_debut: toLocalDateOnlyStr(row.date_debut),
+                date_fin: toLocalDateOnlyStr(row.date_fin),
+                date_reprise_service: toLocalDateOnlyStr(row.date_reprise_service),
+                date_fin_conges: toLocalDateOnlyStr(row.date_fin_conges)
+            }));
 
             res.json({
                 success: true,
-                data: result.rows
+                data: data,
+                pagination: {
+                    totalItems,
+                    totalPages,
+                    currentPage: page,
+                    itemsPerPage: limit || totalItems
+                }
             });
-
         } catch (error) {
             console.error('❌ Erreur lors de la récupération des documents de l\'agent:', error);
             res.status(500).json({
@@ -564,40 +659,125 @@ class DocumentsController {
     static async getValidatorDocuments(req, res) {
         try {
             const { validateurId } = req.params;
-            const { type_demande, type_document } = req.query;
+            const { type_demande, type_document, search_agent } = req.query;
+            const page = parseInt(req.query.page) || 1;
+            const limit = req.query.limit ? parseInt(req.query.limit) : null;
+
             const dateOutputTimeZone = process.env.APP_TIMEZONE || 'Africa/Libreville';
             const toLocalDateOnlyStr = (value) => {
                 if (!value) return null;
                 if (typeof value === 'string') {
                     const raw = value.trim();
                     if (!raw) return null;
-                    // Date pure: renvoyer telle quelle.
                     const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
                     if (dateOnly) return dateOnly[1];
-                    // Date/heure: convertir en date locale pour éviter le décalage timezone.
                     const parsed = new Date(raw);
                     if (Number.isNaN(parsed.getTime())) return null;
                     return new Intl.DateTimeFormat('en-CA', {
-                        timeZone: dateOutputTimeZone,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
+                        timeZone: dateOutputTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
                     }).format(parsed);
                 }
                 const d = value instanceof Date ? value : new Date(value);
                 if (Number.isNaN(d.getTime())) return null;
                 return new Intl.DateTimeFormat('en-CA', {
-                    timeZone: dateOutputTimeZone,
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit'
+                    timeZone: dateOutputTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
                 }).format(d);
             };
 
-            // Initialiser params AVANT de l'utiliser dans la requête
-            const params = [validateurId];
+            const params = [];
+            let whereClause = ` WHERE 1=1`;
 
-            // Construire la requête selon le rôle du validateur
+            // Rôle du validateur
+            let roleNom = '';
+            if (req.user && req.user.role) {
+                roleNom = req.user.role.toLowerCase();
+            } else {
+                const roleQuery = `SELECT r.nom as role_nom FROM utilisateurs u LEFT JOIN roles r ON u.id_role = r.id WHERE u.id_agent = $1`;
+                const roleResult = await db.query(roleQuery, [validateurId]);
+                roleNom = (roleResult.rows[0] && roleResult.rows[0].role_nom && roleResult.rows[0].role_nom.toLowerCase()) || '';
+            }
+
+            if (roleNom === 'drh') {
+                const validateurQuery = `SELECT a.id_ministere FROM agents a WHERE a.id = $1`;
+                const validateurResult = await db.query(validateurQuery, [validateurId]);
+                if (validateurResult.rows.length > 0) {
+                    whereClause += ` AND a.id_ministere = $${params.length + 1}`;
+                    params.push(validateurResult.rows[0].id_ministere);
+                }
+            } else if (roleNom === 'chef_service') {
+                const validateurQuery = `SELECT a.id_direction FROM agents a WHERE a.id = $1`;
+                const validateurResult = await db.query(validateurQuery, [validateurId]);
+                if (validateurResult.rows.length > 0) {
+                    whereClause += ` AND a.id_direction = $${params.length + 1}`;
+                    params.push(validateurResult.rows[0].id_direction);
+                }
+            } else if (roleNom === 'directeur' || roleNom === 'directeur_central' || roleNom === 'directeur_general' || roleNom === 'chef_cabinet' || roleNom === 'dir_cabinet') {
+                const validateurQuery = `SELECT a.id_direction FROM agents a WHERE a.id = $1`;
+                const validateurResult = await db.query(validateurQuery, [validateurId]);
+                if (validateurResult.rows.length > 0) {
+                    whereClause += ` AND a.id_direction = $${params.length + 1}`;
+                    params.push(validateurResult.rows[0].id_direction);
+                } else {
+                    whereClause += ` AND da.id_agent_generateur = $${params.length + 1}`;
+                    params.push(validateurId);
+                }
+            } else if (roleNom !== 'super_admin') {
+                whereClause += ` AND (da.id_agent_destinataire = $${params.length + 1} OR da.id_agent_generateur = $${params.length + 1})`;
+                params.push(validateurId);
+            }
+
+            if (type_document) {
+                whereClause += ` AND da.type_document = $${params.length + 1}`;
+                params.push(type_document);
+            } else if (type_demande) {
+                if (type_demande === 'attestation_presence') {
+                    whereClause += ` AND da.type_document = $${params.length + 1}`;
+                    params.push('attestation_presence');
+                } else {
+                    let typeDocument = '';
+                    if (type_demande === 'absence') typeDocument = 'autorisation_absence';
+                    else if (type_demande === 'sortie_territoire') typeDocument = 'autorisation_sortie_territoire';
+                    else if (type_demande === 'attestation_travail') typeDocument = 'attestation_travail';
+                    else if (type_demande === 'certificat_cessation') typeDocument = 'certificat_cessation';
+                    else if (type_demande === 'certificat_non_jouissance_conge') typeDocument = 'certificat_non_jouissance_conge';
+                    else typeDocument = type_demande;
+
+                    whereClause += ` AND (
+                        (da.id_demande IS NOT NULL AND d.type_demande = $${params.length + 1} AND da.type_document = $${params.length + 2})
+                        OR 
+                        (da.id_demande IS NULL AND da.type_document = $${params.length + 2})
+                    )`;
+                    params.push(type_demande, typeDocument);
+                }
+            }
+
+            if (search_agent) {
+                whereClause += ` AND (a.prenom ILIKE $${params.length + 1} OR a.nom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
+                const searchStr = `%${search_agent}%`;
+                params.push(searchStr);
+            }
+
+            const fromAndJoins = `
+                FROM documents_autorisation da
+                LEFT JOIN demandes d ON da.id_demande = d.id
+                LEFT JOIN agents a ON da.id_agent_destinataire = a.id
+                LEFT JOIN directions s ON a.id_direction = s.id
+                LEFT JOIN ministeres m ON a.id_ministere = m.id
+                LEFT JOIN agents transmetteur ON da.id_agent_transmetteur = transmetteur.id
+            `;
+
+            // Total count
+            const countQuery = `SELECT COUNT(*) as total ${fromAndJoins} ${whereClause}`;
+            const countResult = await db.query(countQuery, params);
+            const totalItems = parseInt(countResult.rows[0].total);
+
+            let totalPages = 1;
+            let offset = 0;
+            if (limit) {
+                totalPages = Math.ceil(totalItems / limit) || 1;
+                offset = (page - 1) * limit;
+            }
+
             let query = `
                 SELECT da.*, d.type_demande, d.date_debut, d.date_fin, d.description,
                        d.agree_motif, d.agree_date_cessation, d.annee_non_jouissance_conge,
@@ -606,128 +786,19 @@ class DocumentsController {
                        s.libelle as service_nom, m.nom as ministere_nom,
                        transmetteur.prenom as transmetteur_prenom, 
                        transmetteur.nom as transmetteur_nom
-                FROM documents_autorisation da
-                LEFT JOIN demandes d ON da.id_demande = d.id
-                LEFT JOIN agents a ON da.id_agent_destinataire = a.id
-                LEFT JOIN directions s ON a.id_direction = s.id
-                LEFT JOIN ministeres m ON a.id_ministere = m.id
-                LEFT JOIN agents transmetteur ON da.id_agent_transmetteur = transmetteur.id
-                WHERE da.id_agent_generateur = $1
+                ${fromAndJoins}
+                ${whereClause}
+                ORDER BY da.date_generation DESC
             `;
 
-            // Déterminer le rôle du validateur pour filtrer les documents
-            const roleQuery = `
-                SELECT r.nom as role_nom
-                FROM utilisateurs u
-                LEFT JOIN roles r ON u.id_role = r.id
-                WHERE u.id_agent = $1
-            `;
-
-            const roleResult = await db.query(roleQuery, [validateurId]);
-            const roleNom = (roleResult.rows[0] && roleResult.rows[0].role_nom && roleResult.rows[0].role_nom.toLowerCase()) || '';
-
-
-            if (roleNom === 'drh') {
-                // DRH : voir les documents de son ministère
-                const validateurQuery = `
-                    SELECT a.id_ministere FROM agents a WHERE a.id = $1
-                `;
-                const validateurResult = await db.query(validateurQuery, [validateurId]);
-
-                if (validateurResult.rows.length > 0) {
-                    const idMinistere = validateurResult.rows[0].id_ministere;
-                    query += ` AND a.id_ministere = $${params.length + 1}`;
-                    params.push(idMinistere);
-                }
-
-            } else if (roleNom === 'chef_service') {
-                // Chef de service : voir les documents de son service
-                const validateurQuery = `
-                    SELECT a.id_direction FROM agents a WHERE a.id = $1
-                `;
-                const validateurResult = await db.query(validateurQuery, [validateurId]);
-
-                if (validateurResult.rows.length > 0) {
-                    const idService = validateurResult.rows[0].id_direction;
-                    query += ` AND a.id_direction = $${params.length + 1}`;
-                    params.push(idService);
-                }
-
-            } else if (roleNom === 'directeur' || roleNom === 'directeur_central' || roleNom === 'directeur_general' ||
-                roleNom === 'chef_cabinet' || roleNom === 'dir_cabinet') {
-                // Directeur et rôles similaires : voir les documents qu'ils ont générés pour les agents de leur direction
-                // La requête de base filtre déjà par da.id_agent_generateur = $1 (validateurId)
-                // Il faut juste ajouter le filtre par direction de l'agent destinataire
-                const validateurQuery = `
-                    SELECT a.id_direction FROM agents a WHERE a.id = $1
-                `;
-                const validateurResult = await db.query(validateurQuery, [validateurId]);
-
-                if (validateurResult.rows.length > 0) {
-                    const idDirection = validateurResult.rows[0].id_direction;
-                    // Filtrer par direction de l'agent destinataire (la requête de base filtre déjà par générateur)
-                    query += ` AND a.id_direction = $${params.length + 1}`;
-                    params.push(idDirection);
-                }
-                // Si on ne trouve pas la direction, pas de filtre supplémentaire (la requête de base suffit)
-
-            } else if (roleNom === 'super_admin') {
-                // Super admin : voir tous les documents
-                // Pas de filtre supplémentaire
-            } else {
-                // Autres rôles : voir seulement leurs propres documents
-                query += ` AND da.id_agent_destinataire = $${params.length + 1}`;
-                params.push(validateurId);
+            if (limit) {
+                query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+                params.push(limit, offset);
             }
-
-            // Filtrer par type_document si spécifié directement (priorité sur type_demande)
-            if (type_document) {
-                query += ` AND da.type_document = $${params.length + 1}`;
-                params.push(type_document);
-            }
-            // Sinon, filtrer par type de demande si spécifié
-            else if (type_demande) {
-                // Pour les attestations de présence, filtrer par type_document
-                if (type_demande === 'attestation_presence') {
-                    query += ` AND da.type_document = $${params.length + 1}`;
-                    params.push('attestation_presence');
-                } else {
-                    // Pour les autres types, filtrer par type_demande ET type_document
-                    // Inclure aussi les documents sans demande (id_demande IS NULL)
-                    let typeDocument = '';
-                    if (type_demande === 'absence') {
-                        typeDocument = 'autorisation_absence';
-                    } else if (type_demande === 'sortie_territoire') {
-                        typeDocument = 'autorisation_sortie_territoire';
-                    } else if (type_demande === 'attestation_travail') {
-                        typeDocument = 'attestation_travail';
-                    } else if (type_demande === 'certificat_cessation') {
-                        typeDocument = 'certificat_cessation';
-                    } else if (type_demande === 'certificat_non_jouissance_conge') {
-                        typeDocument = 'certificat_non_jouissance_conge';
-                    } else {
-                        typeDocument = type_demande;
-                    }
-
-                    // Inclure les documents avec demande ET les documents sans demande (générés directement)
-                    query += ` AND (
-                        (da.id_demande IS NOT NULL AND d.type_demande = $${params.length + 1} AND da.type_document = $${params.length + 2})
-                        OR 
-                        (da.id_demande IS NULL AND da.type_document = $${params.length + 2})
-                    )`;
-                    params.push(type_demande);
-                    params.push(typeDocument);
-
-                }
-            }
-
-            query += ` ORDER BY da.date_generation DESC`;
-
 
             const result = await db.query(query, params);
             const data = (result.rows || []).map((row) => ({
                 ...row,
-                // Normaliser les dates "métier" pour éviter les valeurs ISO décalées.
                 date_debut: toLocalDateOnlyStr(row.date_debut),
                 date_fin: toLocalDateOnlyStr(row.date_fin),
                 agree_date_cessation: toLocalDateOnlyStr(row.agree_date_cessation),
@@ -735,9 +806,15 @@ class DocumentsController {
                 date_fin_conges: toLocalDateOnlyStr(row.date_fin_conges)
             }));
 
-            res.json({
+            console.log('PAGINATION DATA:', { totalItems, totalPages, limit, query, params }); res.json({
                 success: true,
-                data
+                data,
+                pagination: {
+                    totalItems,
+                    totalPages,
+                    currentPage: page,
+                    itemsPerPage: limit || totalItems
+                }
             });
 
         } catch (error) {
@@ -910,18 +987,44 @@ class DocumentsController {
                     a.date_prise_service_au_ministere, a.date_prise_service_dans_la_direction, a.date_embauche,
                     a.id_direction, a.id_sous_direction, a.id_direction_generale,
                     a.id_ministere as id_ministere,
+                    a.nom_conjointe,
+                    a.id_situation_matrimoniale,
+                    c.libele as civilite,
+                    ta.libele as type_agent_libele,
                     dg.libelle as direction_generale_nom,
                     s.libelle as service_nom,
                     m.nom as ministere_nom,
                     m.sigle as ministere_sigle,
+                    ea_actuel.emploi_libele as emploi_libele,
+                    ea_actuel.designation_poste as emploi_designation_poste,
+                    fa_actuelle.fonction_libele as fonction_actuelle_libele,
                     generateur.id as generateur_id,
                     generateur.prenom as generateur_prenom, generateur.nom as generateur_nom
                 FROM documents_autorisation da
                 LEFT JOIN demandes d ON da.id_demande = d.id
                 LEFT JOIN agents a ON da.id_agent_destinataire = a.id
+                LEFT JOIN civilites c ON a.id_civilite = c.id
+                LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ea.id_agent)
+                        ea.id_agent,
+                        e.libele as emploi_libele,
+                        ea.designation_poste
+                    FROM emploi_agents ea
+                    LEFT JOIN emplois e ON ea.id_emploi = e.id
+                    ORDER BY ea.id_agent, ea.date_entree DESC NULLS LAST, ea.created_at DESC NULLS LAST
+                ) ea_actuel ON a.id = ea_actuel.id_agent
+                LEFT JOIN (
+                    SELECT DISTINCT ON (fa.id_agent)
+                        fa.id_agent,
+                        f.libele as fonction_libele
+                    FROM fonction_agents fa
+                    LEFT JOIN fonctions f ON fa.id_fonction = f.id
+                    ORDER BY fa.id_agent, fa.date_entree DESC NULLS LAST, fa.created_at DESC NULLS LAST
+                ) fa_actuelle ON a.id = fa_actuelle.id_agent
                 LEFT JOIN agents generateur ON da.id_agent_generateur = generateur.id
                 WHERE da.id = $1
             `;
@@ -988,11 +1091,17 @@ class DocumentsController {
                 nom: document.agent_nom,
                 matricule: document.matricule,
                 sexe: document.sexe,
-                fonction_actuelle: document.fonction_actuelle || 'Agent',
+                civilite: document.civilite,
+                nom_conjointe: document.nom_conjointe,
+                id_situation_matrimoniale: document.id_situation_matrimoniale,
+                fonction_actuelle: document.fonction_actuelle_libele || document.fonction_actuelle || 'Agent',
                 service_nom: document.service_nom,
                 direction_generale_nom: document.direction_generale_nom,
                 ministere_nom: document.ministere_nom,
                 ministere_sigle: document.ministere_sigle,
+                type_agent_libele: document.type_agent_libele,
+                emploi_libele: document.emploi_libele,
+                emploi_designation_poste: document.emploi_designation_poste,
                 date_prise_service_au_ministere: document.date_prise_service_au_ministere,
                 date_prise_service_dans_la_direction: document.date_prise_service_dans_la_direction,
                 date_prise_service: document.date_prise_service,
@@ -1009,8 +1118,18 @@ class DocumentsController {
             };
 
             // Attacher la signature active au validateur avant de générer le HTML
-            const { attachActiveSignature } = require('../services/utils/signatureUtils');
+            const { attachActiveSignature, fetchDRHForSignature } = require('../services/utils/signatureUtils');
             const { hydrateAgentWithLatestFunction } = require('../services/utils/agentFunction');
+
+            // Override avec le DRH pour les notes de service, mutations et attestations de travail
+            if (['note_de_service', 'note_de_service_mutation', 'mutation', 'attestation_travail'].includes(document.type_document)) {
+                const drh = await fetchDRHForSignature(agent.id_direction, agent.id_ministere);
+                if (drh) {
+                    Object.assign(validateur, drh);
+                    validateur.signatureRoleOverride = 'Le Directeur';
+                }
+            }
+
             await hydrateAgentWithLatestFunction(validateur);
             await attachActiveSignature(validateur);
 
@@ -1119,6 +1238,8 @@ class DocumentsController {
                     a.fonction_actuelle, a.date_de_naissance, a.lieu_de_naissance,
                     a.date_prise_service_au_ministere, a.date_prise_service_dans_la_direction,
                     a.id_direction, a.id_sous_direction, a.id_ministere, a.id_direction_generale,
+                    a.nom_conjointe,
+                    a.id_situation_matrimoniale,
                     c.libele as civilite,
                     s.libelle as service_nom, s.libelle as direction_nom,
                     dg.libelle as direction_generale_nom,
@@ -1287,6 +1408,8 @@ class DocumentsController {
                 matricule: document.matricule,
                 sexe: document.sexe,
                 civilite: document.civilite,
+                nom_conjointe: document.nom_conjointe,
+                id_situation_matrimoniale: document.id_situation_matrimoniale,
                 fonction_actuelle: document.fonction_actuelle_libele || document.fonction_actuelle || 'Agent',
                 date_de_naissance: document.date_de_naissance,
                 lieu_de_naissance: document.lieu_de_naissance,
@@ -1316,7 +1439,7 @@ class DocumentsController {
             // Pour note de service, mutation, attestation travail : utiliser DRH comme signataire (sauf certificat_prise_service)
             const { fetchDRHForSignature, attachActiveSignature } = require('../services/utils/signatureUtils');
             const { hydrateAgentWithLatestFunction } = require('../services/utils/agentFunction');
-            if (['note_de_service', 'note_de_service_mutation', 'attestation_travail'].includes(document.type_document)) {
+            if (['note_de_service', 'note_de_service_mutation', 'mutation', 'attestation_travail'].includes(document.type_document)) {
                 const drh = await fetchDRHForSignature(agent.id_direction, agent.id_ministere);
                 if (drh) {
                     Object.assign(validateur, drh);
@@ -1552,11 +1675,33 @@ class DocumentsController {
                        s.libelle as service_nom,
                        s.libelle as direction_nom,
                        m.nom as ministere_nom,
-                       m.sigle as ministere_sigle
+                       m.sigle as ministere_sigle,
+                       ta.libele as type_agent_libele,
+                       ea_actuel.emploi_libele as emploi_libele,
+                       ea_actuel.designation_poste as emploi_designation_poste,
+                       ga_actuel.grade_libele as grade
                 FROM agents a
                 LEFT JOIN civilites c ON a.id_civilite = c.id
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
+                LEFT JOIN types_agents ta ON a.id_type_agent = ta.id
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ea.id_agent)
+                        ea.id_agent,
+                        e.libele AS emploi_libele,
+                        ea.designation_poste
+                    FROM emplois_agents ea
+                    LEFT JOIN emplois e ON ea.id_emploi = e.id
+                    ORDER BY ea.id_agent, COALESCE(ea.date_entree, ea.created_at) DESC
+                ) ea_actuel ON a.id = ea_actuel.id_agent
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ga.id_agent)
+                        ga.id_agent,
+                        g.libele AS grade_libele
+                    FROM grades_agents ga
+                    LEFT JOIN grades g ON ga.id_grade = g.id
+                    ORDER BY ga.id_agent, COALESCE(ga.date_entree, ga.created_at) DESC
+                ) ga_actuel ON a.id = ga_actuel.id_agent
                 WHERE a.id = $1
             `;
 
@@ -1651,7 +1796,6 @@ class DocumentsController {
                 date_debut: demande.date_debut
             });
 
-            // Préparer les données de l'agent
             const agentData = {
                 id: agent.id,
                 prenom: agent.prenom,
@@ -1659,11 +1803,16 @@ class DocumentsController {
                 matricule: agent.matricule,
                 sexe: agent.sexe,
                 civilite: agent.civilite,
+                nom_conjointe: agent.nom_conjointe,
+                id_situation_matrimoniale: agent.id_situation_matrimoniale,
                 fonction_actuelle: agent.fonction_actuelle,
                 service_nom: agent.service_nom,
                 direction_nom: agent.direction_nom,
                 ministere_nom: agent.ministere_nom,
-                ministere_sigle: agent.ministere_sigle
+                ministere_sigle: agent.ministere_sigle,
+                type_agent_libele: agent.type_agent_libele,
+                emploi_libele: agent.emploi_libele,
+                emploi_designation_poste: agent.emploi_designation_poste
             };
 
             // Préparer les données du validateur

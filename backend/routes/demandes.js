@@ -3,6 +3,7 @@ const router = express.Router();
 const DemandesController = require('../controllers/DemandesController');
 const NotificationsController = require('../controllers/NotificationsController');
 const { authenticate, requireRoleOrAssignedRoute } = require('../middleware/auth');
+const { uploadDemandeDocuments } = require('../middleware/upload');
 const { body, param, query } = require('express-validator');
 
 // Middleware qui autorise les rôles privilégiés OU les agents avec la route assignée
@@ -60,7 +61,6 @@ const validateCreateDemande = [
     }),
     body('lieu').optional().isString().isLength({ max: 255 }).withMessage('Lieu trop long'),
     body('priorite').optional().isIn(['normale', 'urgente', 'critique']).withMessage('Priorité invalide'),
-    body('documents_joints').optional().isArray().withMessage('Documents joints doivent être un tableau'),
     // Validation optionnelle pour les champs de certificat de cessation
     body('agree_motif').optional().isString().isLength({ max: 500 }).withMessage('Motif de cessation trop long (max 500 caractères)'),
     body('agree_date_cessation').optional().custom((value) => {
@@ -128,8 +128,19 @@ const validateValiderDemande = [
     body('commentaire').optional().isString().isLength({ max: 500 }).withMessage('Commentaire trop long')
 ];
 
-// Routes pour les demandes (le préfixe '/api/demandes' est déjà monté dans server.js)
-router.post('/', requireRoleOrAssigned, validateCreateDemande, (req, res) => {
+router.post('/', requireRoleOrAssigned, uploadDemandeDocuments, (req, res, next) => {
+    try {
+        const fs = require('fs');
+        const logData = `[${new Date().toISOString()}] POST /api/demandes\n` +
+            `Headers content-type: ${req.headers['content-type']}\n` +
+            `req.body: ${JSON.stringify(req.body)}\n` +
+            `req.files: ${req.files ? req.files.length : 'none'}\n\n`;
+        fs.appendFileSync('debug_demandes.log', logData);
+    } catch (e) {
+        console.error('Erreur écriture log', e);
+    }
+    next();
+}, validateCreateDemande, (req, res) => {
     console.log('🔍 Route POST /api/demandes appelée');
     console.log('Headers:', JSON.stringify(req.headers, null, 2));
     console.log('Body:', JSON.stringify(req.body, null, 2));

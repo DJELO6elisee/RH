@@ -276,14 +276,7 @@ const NotesDeServicePage = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
-        <Spinner color="primary" />
-        <span className="ms-2">Chargement des notes de service...</span>
-      </div>
-    );
-  }
+
 
   return (
     <div className="container-fluid mt-4">
@@ -429,7 +422,12 @@ const NotesDeServicePage = () => {
               )}
 
               {/* Tableau des notes de service */}
-              {notesDeService.length === 0 && !showAgentResults && !loadingAgents ? (
+              {loading ? (
+                <div className="d-flex justify-content-center align-items-center" style={{ height: '200px' }}>
+                  <Spinner color="primary" />
+                  <span className="ms-2">Chargement des notes de service...</span>
+                </div>
+              ) : notesDeService.length === 0 && !showAgentResults && !loadingAgents ? (
                 <Alert color="info">
                   <MdInfo className="me-2" />
                   {searchForList && searchForList.length >= 2 

@@ -773,6 +773,7 @@ const ManagementPage = ({
                     url += `?page=${currentPage}&limit=${itemsPerPage}`;
                 }
                 
+                // Pour les agents, inclure ceux qui ont atteint l'âge de retraite et trier par ordre alphabétique
                 if (tableName === 'agents') {
                     url += `&sortBy=nom&sortOrder=ASC`;
                 }
@@ -807,7 +808,6 @@ const ManagementPage = ({
                 }
                 
                 const response = await fetch(url, {
-                    cache: 'no-store',
                     headers: getAuthHeaders()
                 });
                 const result = await response.json();
@@ -1714,13 +1714,8 @@ const ManagementPage = ({
         return <Badge color={color}>{status}</Badge>;
     };
 
-    if (loading) {
-        return (
-            <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
-                <Spinner color="primary" />
-            </div>
-        );
-    }
+    // Le spinner de chargement global a été retiré pour ne pas perdre le focus sur le champ de recherche
+    // Un spinner sera affiché dans le tableau à la place.
 
     return (
         <div style={{ 
@@ -1850,7 +1845,7 @@ const ManagementPage = ({
                             {(() => {
                                 const isDRH = user && (user.role === 'DRH' || user.role === 'drh' || user.role?.toLowerCase() === 'drh');
                                 const isSuperAdmin = user && user.role === 'super_admin';
-                                const isRestrictedEndpoint = apiEndpoint === '/api/ministeres' || apiEndpoint === '/api/entites' || apiEndpoint === '/api/entites-administratives' || apiEndpoint === '/api/institutions' || apiEndpoint === '/api/entites-institutions';
+                                const isRestrictedEndpoint = apiEndpoint === '/api/ministeres' || apiEndpoint === '/api/entites' || apiEndpoint === '/api/entites-administratives' || apiEndpoint === '/api/entites-institutions';
                                 
                                 // Les DRH ne peuvent pas créer de ministères ou d'entités
                                 if (isDRH && isRestrictedEndpoint) {
@@ -1866,7 +1861,10 @@ const ManagementPage = ({
                                 }
                                 
                                 // Pour tous les autres cas (super_admin, DRH sur autres endpoints, ou customAddButton)
-                                return (isSuperAdmin || (isDRH && !isRestrictedEndpoint) || customAddButton) ? (
+                                const isEmploisOuFonctions = apiEndpoint === '/api/emplois' || apiEndpoint === '/api/fonctions';
+                                const isAgentWithAccess = user && (user.role?.toLowerCase() === 'agent' || user.role?.toLowerCase() === 'user') && isEmploisOuFonctions;
+                                
+                                return (isSuperAdmin || (isDRH && !isRestrictedEndpoint) || isAgentWithAccess || customAddButton) ? (
                                 customAddButton ? (
                                     <Button 
                                         color="primary" 
@@ -1967,13 +1965,20 @@ const ManagementPage = ({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {console.log('🔍 DEBUG RENDER - filteredData length:', filteredData.length)}
-                                    {console.log('🔍 DEBUG RENDER - paginatedData length:', paginatedData.length)}
-                                    {console.log('🔍 DEBUG RENDER - data length:', data.length)}
-                                    {console.log('🔍 DEBUG RENDER - loading:', loading)}
-                                    {console.log('🔍 DEBUG RENDER - error:', error)}
-                                    {console.log('🔍 DEBUG RENDER - filteredData:', filteredData)}
-                                    {paginatedData.map((item, index) => {
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan={displayColumns ? displayColumns.length + 2 : fields.filter(f => f.name !== 'id').length + 2} className="text-center py-5">
+                                                <Spinner color="primary" />
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        <>
+                                            {console.log('🔍 DEBUG RENDER - filteredData length:', filteredData.length)}
+                                            {console.log('🔍 DEBUG RENDER - paginatedData length:', paginatedData.length)}
+                                            {console.log('🔍 DEBUG RENDER - data length:', data.length)}
+                                            {console.log('🔍 DEBUG RENDER - error:', error)}
+                                            {console.log('🔍 DEBUG RENDER - filteredData:', filteredData)}
+                                            {paginatedData.map((item, index) => {
                                         // Calculer le numéro de ligne en tenant compte de la pagination
                                         let lineNumber;
                                         if (apiEndpoint === '/api/emplois') {
@@ -2159,6 +2164,8 @@ const ManagementPage = ({
                                         </tr>
                                         );
                                     })}
+                                        </>
+                                    )}
                                 </tbody>
                             </Table>
                         </div>
@@ -2717,14 +2724,22 @@ const ManagementPage = ({
                     <FormGroup>
                         <Label for="motifRetrait">Veuillez saisir le motif de retrait <span style={{ color: 'red' }}>*</span></Label>
                         <Input
-                            type="textarea"
+                            type="select"
                             id="motifRetrait"
-                            rows="5"
                             value={motifRetraitText}
                             onChange={(e) => setMotifRetraitText(e.target.value)}
-                            placeholder="Saisissez le motif pour lequel cet agent est retiré..."
                             required
-                        />
+                        >
+                            <option value="">Sélectionnez un motif...</option>
+                            <option value="Décès">Décès</option>
+                            <option value="Démission">Démission</option>
+                            <option value="Licenciement">Licenciement</option>
+                            <option value="Fin de contrat">Fin de contrat</option>
+                            <option value="Abandon de poste">Abandon de poste</option>
+                            <option value="Mise en disponibilité">Mise en disponibilité</option>
+                            <option value="Retraite anticipée">Retraite anticipée</option>
+                            <option value="Mise à disposition autre ministère">Mise à disposition autre ministère</option>
+                        </Input>
                     </FormGroup>
                     {error && (
                         <Alert color="danger" className="mt-3">

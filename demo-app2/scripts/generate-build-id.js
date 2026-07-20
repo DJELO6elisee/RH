@@ -25,20 +25,29 @@ try {
     .digest('hex')
     .substring(0, 8);
 
+  // Lire la version depuis le package.json
+  const packageJsonPath = path.join(__dirname, '..', 'package.json');
+  let currentVersion = '1.0.0';
+  
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const packageData = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      if (packageData.version) {
+        currentVersion = packageData.version;
+      }
+    } catch (e) {
+      console.log('⚠️ Impossible de lire la version depuis package.json');
+    }
+  }
+
   // Lire le fichier version actuel pour conserver la description si elle existe
   let currentDescription = 'Nouvelle version';
-  let currentVersion = '1.0.0';
   
   if (fs.existsSync(versionFilePath)) {
     try {
       const currentData = JSON.parse(fs.readFileSync(versionFilePath, 'utf8'));
       if (currentData.description) {
         currentDescription = currentData.description;
-      }
-      if (currentData.version) {
-        // Incrémenter automatiquement le patch
-        const [major, minor, patch] = currentData.version.split('.').map(Number);
-        currentVersion = `${major}.${minor}.${patch + 1}`;
       }
     } catch (e) {
       console.log('⚠️ Impossible de lire la version précédente, utilisation des valeurs par défaut');

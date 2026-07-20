@@ -69,9 +69,9 @@ function writeRichText(doc, htmlText, x, y, options = {}) {
     const width = options.width || 500;
     // Forcer l'alignement à gauche pour éviter les espaces géants avec 'continued'
     const align = 'left';
-    const BODY_FONT_SIZE = options.fontSize || 16;
-    const BASE_FONT = options.baseFont || 'Times-Roman';
-    const BOLD_FONT = options.boldFont || 'Times-Bold';
+    const BODY_FONT_SIZE = options.fontSize || 13;
+    const BASE_FONT = options.baseFont || 'Courier';
+    const BOLD_FONT = options.boldFont || 'Courier-Bold';
 
     // Ensure the initial font size is set
     doc.fontSize(BODY_FONT_SIZE);

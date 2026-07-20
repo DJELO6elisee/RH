@@ -66,6 +66,8 @@ const MutationsValidationPage = React.lazy(() =>
     import('./pages/MutationsValidationPage'));
 const AgentsPage = React.lazy(() =>
     import('./pages/AgentsPage'));
+const AgentsInstanceAffectationPage = React.lazy(() =>
+    import('./pages/AgentsInstanceAffectationPage'));
 const AgentsPositionsPage = React.lazy(() =>
     import('./pages/AgentsPositionsPage'));
 const HistoriqueAgentsPage = React.lazy(() =>
@@ -414,6 +416,7 @@ class App extends React.Component {
                                 <ProtectedRoute exact path="/notes-de-service" component={NotesDeServicePage} />
                                 <ProtectedRoute exact path="/drh-parametres" component={ParametresDRHPage} />
                                 <ProtectedRoute exact path="/agents" component={AgentsPage} />
+                                <ProtectedRoute exact path="/agents-instance-affectation" component={AgentsInstanceAffectationPage} />
                                 <ProtectedRoute exact path="/positions-agents" component={AgentsPositionsPage} />
                                 <ProtectedRoute exact path="/historique-des-agents" component={HistoriqueAgentsPage} />
                                 <ProtectedRoute exact path="/jours-conges" component={JoursCongesPage} />
