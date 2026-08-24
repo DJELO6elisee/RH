@@ -6,7 +6,11 @@ const AgentsByTypeReportPage = () => {
     const fields = [
         { name: 'type_agent_libele', label: 'Type d\'agent' },
         { name: 'count', label: 'Nombre d\'agents' },
-        { name: 'percentage', label: 'Pourcentage' }
+        { name: 'percentage', label: 'Pourcentage' },
+        { name: 'count_hommes', label: 'Nombre d\'hommes' },
+        { name: 'percentage_hommes', label: '% Hommes' },
+        { name: 'count_femmes', label: 'Nombre de femmes' },
+        { name: 'percentage_femmes', label: '% Femmes' }
     ];
 
     const searchFields = ['type_agent_libele'];

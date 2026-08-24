@@ -38,7 +38,8 @@ const normalizeRoleCode = (roleNom) => {
   if (withUnderscore === 'cabinet_chef' || (r.includes('chef') && r.includes('cabinet'))) return 'chef_cabinet';
   if (withUnderscore === 'dir_cabinet' || (r.includes('cabinet') && (r.includes('directeur') || r.includes('dir')))) return 'dir_cabinet';
   if (withUnderscore === 'chef_de_service' || (r.includes('chef') && r.includes('service') && !r.includes('cabinet'))) return 'chef_service';
-  if (['directeur', 'sous_directeur', 'sous-directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'chef_service', 'ministre', 'agent', 'admin_entite'].includes(r)) return r === 'sous-directeur' ? 'sous_directeur' : r;
+  if (withUnderscore === 'responsable_cellule_de_passation' || withUnderscore === 'responsble_cellule_de_passation' || r.includes('passation')) return 'responsable_cellule_de_passation';
+  if (['directeur', 'sous_directeur', 'sous-directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'chef_service', 'ministre', 'agent', 'admin_entite', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation'].includes(r)) return r === 'sous-directeur' ? 'sous_directeur' : r;
   if (r.includes('inspecteur') && (r.includes('général') || r.includes('general'))) return 'inspecteur_general';
   if (r.includes('service') && r.includes('exterieur')) return 'directeur_service_exterieur';
   if (r.includes('directeur') && r.includes('central')) return 'directeur_central';

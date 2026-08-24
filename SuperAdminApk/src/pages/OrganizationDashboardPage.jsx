@@ -717,7 +717,7 @@ const OrganizationDashboardPage = () => {
               <CardTitle className="mb-0 d-flex align-items-center justify-content-between">
                 <div className="d-flex align-items-center">
                   <MdWork className="me-2" style={{ fontSize: '1.5rem' }} />
-                  <span style={{ fontWeight: 'bold' }}>👥 AGENTS ACTUELLEMENT EN CONGÉS</span>
+                  <span style={{ fontWeight: 'bold' }}>👥 AGENTS EN CESSATION DE SERVICE</span>
                 </div>
                 {agentsEnConges && Object.keys(agentsEnConges).length > 0 && (
                   <Button 
@@ -740,7 +740,7 @@ const OrganizationDashboardPage = () => {
               ) : !agentsEnConges || Object.keys(agentsEnConges).length === 0 ? (
                 <Alert color="info" className="mb-0">
                   <MdInfo className="me-2" />
-                  Aucun agent actuellement en congés
+                  Aucun agent en cessation de service
                 </Alert>
               ) : (
                 <Row>
@@ -768,7 +768,7 @@ const OrganizationDashboardPage = () => {
                                   {sousDirection.libelle}
                                 </div>
                                 <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
-                                  {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                  {totalAgents} agent{totalAgents > 1 ? 's' : ''} en cessation de service
                                 </div>
                               </div>
                             );
@@ -990,7 +990,7 @@ const OrganizationDashboardPage = () => {
       <Modal isOpen={showAgentsEnCongesModal} toggle={() => setShowAgentsEnCongesModal(false)} size="xl">
         <ModalHeader toggle={() => setShowAgentsEnCongesModal(false)}>
           <MdWork className="me-2" />
-          Agents actuellement en congés
+          Agents en cessation de service
         </ModalHeader>
         <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
           {agentsEnConges && Object.keys(agentsEnConges).length > 0 ? (

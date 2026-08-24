@@ -396,139 +396,101 @@ const OrganizationDashboardPage = () => {
 
       {/* Statistiques principales */}
       <Row className="mb-4">
-        <Col md="4" className="mb-3">
-          <Card className="h-100 stats-card fade-in-up clickable-card" onClick={handleNavigateToAgents} style={{ cursor: 'pointer' }}>
-            <CardBody style={{ padding: '1.5rem' }}>
-              {/* Nombre total des agents en haut */}
-              <div className="text-center mb-3" style={{ borderBottom: '2px solid #f0f0f0', paddingBottom: '1rem' }}>
-                <MdPeople className="stats-icon icon-orange" style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }} />
-                <h4 className="stats-number" style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: '0.5rem 0', color: '#ff6a00' }}>
-                  {organizationData.nombre_agents || organizationData.total_agents || 0}
-                </h4>
-                <p className="stats-label" style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Nombre Total Des Agents</p>
-              </div>
-              
-              {/* Répartition par sexe juste en dessous du nombre total */}
-              <div className="text-center mb-3" style={{ fontSize: '0.9rem', paddingBottom: '1rem', borderBottom: '1px solid #f0f0f0' }}>
-                <div style={{ color: '#666', marginBottom: '0.5rem', fontWeight: '600' }}>Répartition Par Sexe</div>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem' }}>
-                  <span style={{ color: '#333', fontWeight: '600' }}>
-                    Hommes: <span style={{ color: '#ff6a00', fontWeight: 'bold' }}>{organizationData.hommes || 0}</span>
-                  </span>
-                  <span style={{ color: '#333', fontWeight: '600' }}>
-                    Femmes: <span style={{ color: '#ff6a00', fontWeight: 'bold' }}>{organizationData.femmes || 0}</span>
-                  </span>
+        {(() => {
+          const total_agents = parseInt(organizationData.nombre_agents || organizationData.total_agents || 0);
+          const hommes = parseInt(organizationData.hommes || 0);
+          const femmes = parseInt(organizationData.femmes || 0);
+          
+          const foncHommes = parseInt(organizationData.fonctionnaires_hommes) || 0;
+          const foncFemmes = parseInt(organizationData.fonctionnaires_femmes) || 0;
+          const foncTotal = foncHommes + foncFemmes;
+          
+          const art18Hommes = parseInt(organizationData.articles_18_hommes) || 0;
+          const art18Femmes = parseInt(organizationData.articles_18_femmes) || 0;
+          const art18Total = art18Hommes + art18Femmes;
+          
+          const bnetdHommes = parseInt(organizationData.bnetd_hommes) || 0;
+          const bnetdFemmes = parseInt(organizationData.bnetd_femmes) || 0;
+          const bnetdTotal = bnetdHommes + bnetdFemmes;
+          
+          const contrHommes = parseInt(organizationData.contractuels_hommes) || 0;
+          const contrFemmes = parseInt(organizationData.contractuels_femmes) || 0;
+          const contrTotal = contrHommes + contrFemmes;
+          
+          const total_services = parseInt(organizationData.nombre_services || organizationData.total_services || 0);
+          const total_directions = parseInt(organizationData.nombre_directions || organizationData.total_directions || 0);
+
+          const cards = [
+            { label: 'Total agents', value: total_agents, icon: <MdPeople style={{ color: '#4a90d9' }}/>, color: '#4a90d9', onClick: handleNavigateToAgents },
+            { label: 'Hommes', value: hommes, sub: total_agents ? `${Math.round(hommes * 100 / total_agents)}%` : '0%', icon: <span style={{ fontSize: 24, fontWeight: 'bold' }}>H</span>, color: '#3b82f6', onClick: handleNavigateToAgents },
+            { label: 'Femmes', value: femmes, sub: total_agents ? `${Math.round(femmes * 100 / total_agents)}%` : '0%', icon: <span style={{ fontSize: 24, fontWeight: 'bold' }}>F</span>, color: '#ec4899', onClick: handleNavigateToAgents },
+            { 
+              label: 'Fonctionnaires', 
+              value: foncTotal, 
+              sub: total_agents ? `${Math.round(foncTotal * 100 / total_agents)}%` : '0%', 
+              sub2: `Hommes ${foncHommes} (${foncTotal ? Math.round(foncHommes * 100 / foncTotal) : 0}%) • Femmes ${foncFemmes} (${foncTotal ? Math.round(foncFemmes * 100 / foncTotal) : 0}%)`,
+              icon: '✅', 
+              color: '#22c55e',
+              onClick: handleNavigateToAgents
+            },
+            { 
+              label: 'Contractuels', 
+              value: contrTotal, 
+              sub: total_agents ? `${Math.round(contrTotal * 100 / total_agents)}%` : '0%', 
+              sub2: `Hommes ${contrHommes} (${contrTotal ? Math.round(contrHommes * 100 / contrTotal) : 0}%) • Femmes ${contrFemmes} (${contrTotal ? Math.round(contrFemmes * 100 / contrTotal) : 0}%)`,
+              icon: '🤝', 
+              color: '#f59e0b',
+              onClick: handleNavigateToAgents
+            },
+            { 
+              label: 'Articles 18', 
+              value: art18Total, 
+              sub: total_agents ? `${Math.round(art18Total * 100 / total_agents)}%` : '0%', 
+              sub2: `Hommes ${art18Hommes} (${art18Total ? Math.round(art18Hommes * 100 / art18Total) : 0}%) • Femmes ${art18Femmes} (${art18Total ? Math.round(art18Femmes * 100 / art18Total) : 0}%)`,
+              icon: '📄', 
+              color: '#8b5cf6',
+              onClick: handleNavigateToAgents
+            },
+            { 
+              label: 'BNETD', 
+              value: bnetdTotal, 
+              sub: total_agents ? `${Math.round(bnetdTotal * 100 / total_agents)}%` : '0%', 
+              sub2: `Hommes ${bnetdHommes} (${bnetdTotal ? Math.round(bnetdHommes * 100 / bnetdTotal) : 0}%) • Femmes ${bnetdFemmes} (${bnetdTotal ? Math.round(bnetdFemmes * 100 / bnetdTotal) : 0}%)`,
+              icon: '🏗️', 
+              color: '#0ea5e9',
+              onClick: handleNavigateToAgents
+            },
+            { label: 'Directions', value: total_directions, icon: <MdBusiness style={{ color: '#0ea5e9' }}/>, color: '#0ea5e9', onClick: handleNavigateToDirections },
+            { label: 'Services', value: total_services, icon: <MdAccountBalance style={{ color: '#22c55e' }}/>, color: '#22c55e', onClick: handleNavigateToServices }
+          ];
+
+          return cards.map((card, i) => (
+            <Col key={i} xs={12} sm={6} md={4} lg={3} style={{ marginBottom: 16 }}>
+              <div 
+                className="clickable-card"
+                onClick={card.onClick}
+                style={{
+                  background: '#fff', borderRadius: 10, padding: '16px 20px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.07)', borderLeft: `4px solid ${card.color}`,
+                  cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column',
+                  justifyContent: 'center'
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 8 }}>{card.icon}</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: '#1a2340', lineHeight: 1.2 }}>{card.value}</div>
+                <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
+                  {card.label}
+                  {card.sub && <span style={{ marginLeft: 8, color: card.color, fontWeight: 600 }}>{card.sub}</span>}
                 </div>
+                {card.sub2 && (
+                  <div style={{ fontSize: 12, color: '#888', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
+                    {card.sub2}
+                  </div>
+                )}
               </div>
-              
-              {/* Statuts à gauche et détails à droite */}
-              <Row style={{ marginTop: '1rem' }}>
-                <Col xs="4" style={{ borderRight: '1px solid #e0e0e0', paddingRight: '0.75rem' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.75rem', textAlign: 'left' }}>
-                    Statuts
-                  </div>
-                  
-                  {/* Liste des statuts sans nombres */}
-                  <div style={{ fontSize: '0.85rem' }}>
-                    <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                      <div style={{ fontWeight: '600', color: '#333' }}>Fonctionnaire</div>
-                    </div>
-                    
-                    <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                      <div style={{ fontWeight: '600', color: '#333' }}>Articles 18</div>
-                    </div>
-                    
-                    <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                      <div style={{ fontWeight: '600', color: '#333' }}>BNETD</div>
-                    </div>
-                    
-                    <div style={{ marginBottom: '0.6rem' }}>
-                      <div style={{ fontWeight: '600', color: '#333' }}>Contractuel</div>
-                    </div>
-                  </div>
-                </Col>
-                
-                {/* Détails par statut à droite */}
-                <Col xs="8" style={{ paddingLeft: '0.75rem' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.75rem', textAlign: 'left' }}>
-                    Détails Par Statut
-                  </div>
-                  
-                  {/* Détails pour chaque statut */}
-                  <div style={{ fontSize: '0.8rem' }}>
-                    {(() => {
-                      const foncHommes = parseInt(organizationData.fonctionnaires_hommes) || 0;
-                      const foncFemmes = parseInt(organizationData.fonctionnaires_femmes) || 0;
-                      const foncTotal = foncHommes + foncFemmes;
-                      
-                      const art18Hommes = parseInt(organizationData.articles_18_hommes) || 0;
-                      const art18Femmes = parseInt(organizationData.articles_18_femmes) || 0;
-                      const art18Total = art18Hommes + art18Femmes;
-                      
-                      const bnetdHommes = parseInt(organizationData.bnetd_hommes) || 0;
-                      const bnetdFemmes = parseInt(organizationData.bnetd_femmes) || 0;
-                      const bnetdTotal = bnetdHommes + bnetdFemmes;
-                      
-                      const contrHommes = parseInt(organizationData.contractuels_hommes) || 0;
-                      const contrFemmes = parseInt(organizationData.contractuels_femmes) || 0;
-                      const contrTotal = contrHommes + contrFemmes;
-                      
-                      return (
-                        <>
-                          <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                            <div style={{ color: '#666', lineHeight: '1.4' }}>
-                              {`homme=${foncHommes} femme=${foncFemmes} total=${foncTotal}`}
-                            </div>
-                          </div>
-                          
-                          <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                            <div style={{ color: '#666', lineHeight: '1.4' }}>
-                              {`homme=${art18Hommes} femme=${art18Femmes} total=${art18Total}`}
-                            </div>
-                          </div>
-                          
-                          <div style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
-                            <div style={{ color: '#666', lineHeight: '1.4' }}>
-                              {`homme=${bnetdHommes} femme=${bnetdFemmes} total=${bnetdTotal}`}
-                            </div>
-                          </div>
-                          
-                          <div style={{ marginBottom: '0.6rem' }}>
-                            <div style={{ color: '#666', lineHeight: '1.4' }}>
-                              {`homme=${contrHommes} femme=${contrFemmes} total=${contrTotal}`}
-                            </div>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </Col>
-              </Row>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="4" className="mb-3">
-          <Card className="h-100 stats-card fade-in-up clickable-card" onClick={handleNavigateToServices} style={{ cursor: 'pointer' }}>
-            <CardBody className="text-center">
-              <MdAccountBalance className="stats-icon icon-green" />
-              <h4 className="stats-number">
-                {organizationData.nombre_services || organizationData.total_services || 0}
-              </h4>
-              <p className="stats-label">Nombre Total Des Services</p>
-            </CardBody>
-          </Card>
-        </Col>
-        <Col md="4" className="mb-3">
-          <Card className="h-100 stats-card fade-in-up clickable-card" onClick={handleNavigateToDirections} style={{ cursor: 'pointer' }}>
-            <CardBody className="text-center">
-              <MdWork className="stats-icon icon-orange" />
-              <h4 className="stats-number">
-                {organizationData.nombre_directions || organizationData.total_directions || 0}
-              </h4>
-              <p className="stats-label">Nombre Total Des Directions</p>
-            </CardBody>
-          </Card>
-        </Col>
+            </Col>
+          ));
+        })()}
       </Row>
 
       {/* Informations de l'organisation */}
@@ -715,7 +677,7 @@ const OrganizationDashboardPage = () => {
               <CardTitle className="mb-0 d-flex align-items-center justify-content-between">
                 <div className="d-flex align-items-center">
                   <MdWork className="me-2" style={{ fontSize: '1.5rem' }} />
-                  <span style={{ fontWeight: 'bold' }}>👥 AGENTS ACTUELLEMENT EN CONGÉS</span>
+                  <span style={{ fontWeight: 'bold' }}>👥 AGENTS EN CESSATION DE SERVICE</span>
                 </div>
                 {agentsEnConges && Object.keys(agentsEnConges).length > 0 && (
                   <Button 
@@ -738,7 +700,7 @@ const OrganizationDashboardPage = () => {
               ) : !agentsEnConges || Object.keys(agentsEnConges).length === 0 ? (
                 <Alert color="info" className="mb-0">
                   <MdInfo className="me-2" />
-                  Aucun agent actuellement en congés
+                  Aucun agent en cessation de service
                 </Alert>
               ) : (
                 <Row>
@@ -769,7 +731,7 @@ const OrganizationDashboardPage = () => {
                                   {sousDirection.libelle}
                                 </div>
                                 <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
-                                  {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                  {totalAgents} agent{totalAgents > 1 ? 's' : ''} en cessation de service
                                   {totalRetards > 0 && (
                                     <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: '5px' }}>
                                       (dont {totalRetards} en retard de reprise)
@@ -996,7 +958,7 @@ const OrganizationDashboardPage = () => {
       <Modal isOpen={showAgentsEnCongesModal} toggle={() => setShowAgentsEnCongesModal(false)} size="xl">
         <ModalHeader toggle={() => setShowAgentsEnCongesModal(false)}>
           <MdWork className="me-2" />
-          Agents actuellement en congés
+          Agents en cessation de service
         </ModalHeader>
         <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
           {agentsEnConges && Object.keys(agentsEnConges).length > 0 ? (
@@ -1069,7 +1031,7 @@ const OrganizationDashboardPage = () => {
             </div>
           ) : (
             <Alert color="info">
-              Aucun agent actuellement en congés
+              Aucun agent en cessation de service
             </Alert>
           )}
         </ModalBody>

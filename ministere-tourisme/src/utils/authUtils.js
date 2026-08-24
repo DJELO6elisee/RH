@@ -9,7 +9,7 @@ const API_BASE_URL = 'https://tourisme.2ise-groupe.com';
  * @param {number} ministereId - ID du ministère à vérifier
  * @returns {Promise<boolean>} - true si autorisé, false sinon
  */
-export const checkAgentAuthorization = async(token, ministereId) => {
+export const checkAgentAuthorization = async (token, ministereId) => {
     if (!token || !ministereId) return false;
 
     try {
@@ -43,7 +43,7 @@ export const checkAgentAuthorization = async(token, ministereId) => {
  * @param {string} organizationType - Type d'organisation ('ministere' ou 'institution')
  * @returns {Promise<boolean>} - true si autorisé, false sinon
  */
-export const checkUserOrganizationAccess = async(username, organizationId, organizationType) => {
+export const checkUserOrganizationAccess = async (username, organizationId, organizationType) => {
     if (!username || !organizationId || !organizationType) return false;
 
     try {
@@ -82,7 +82,7 @@ export const checkUserOrganizationAccess = async(username, organizationId, organ
  * @param {string} organizationType - Type d'organisation
  * @returns {Promise<Object|null>} - Informations de l'utilisateur ou null si non autorisé
  */
-export const getUserWithAuthorization = async(token, organizationId, organizationType) => {
+export const getUserWithAuthorization = async (token, organizationId, organizationType) => {
     if (!token) return null;
 
     try {
@@ -174,41 +174,42 @@ const checkAgentAssignedRoute = async (token, routeId) => {
  * @param {string} routeId - ID de la route (optionnel, pour vérifier les routes assignées)
  * @returns {Promise<boolean>} - true si l'utilisateur peut accéder
  */
-export const canAccessRoute = async(user, token, organizationId, organizationType, requiredRoles = null, routeId = null) => {
+export const canAccessRoute = async (user, token, organizationId, organizationType, requiredRoles = null, routeId = null) => {
     // Vérifier si l'utilisateur est connecté
     if (!user || !token) return false;
 
     // Si c'est un super_admin ou DRH, autoriser l'accès (ils ont tous les droits)
     const isSuperAdmin = user.role === 'super_admin';
     const isDRH = user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh';
-    
+
     if (isSuperAdmin || isDRH) {
         // Pour les DRH et super_admin, on autorise toujours l'accès
         // SAUF si un rôle spécifique est requis et qu'ils ne l'ont pas
         if (requiredRoles) {
             return hasRequiredRole(user, requiredRoles);
         }
-        
+
         // Les DRH et super_admin ont accès à toutes les pages
         return true;
     }
 
-    // Vérifier si c'est un directeur
-    const isDirecteur = user.role === 'directeur' || user.role?.toLowerCase() === 'directeur';
-    
+    // Vérifier si c'est un directeur ou assimilé
+    const userRoleLower = user.role?.toLowerCase() || '';
+    const isDirecteur = userRoleLower === 'directeur' || userRoleLower === 'responsble_cellule_de_passation' || userRoleLower === 'responsable_cellule_de_passation';
+
     if (isDirecteur && routeId) {
         // Pour les directeurs, vérifier si la route autorise leur rôle
         try {
             // Importer backendRoutes pour vérifier les rôles de la route
             const { backendRoutes } = require('../config/routes');
             const route = backendRoutes.find(r => r.id === routeId);
-            
+
             if (route && route.roles) {
                 // Vérifier si 'directeur' est dans les rôles autorisés de la route
                 const routeRoles = Array.isArray(route.roles) ? route.roles : [route.roles];
                 const normalizedRouteRoles = routeRoles.map(r => r?.toLowerCase());
                 const userRoleLower = user.role?.toLowerCase();
-                
+
                 if (normalizedRouteRoles.includes(userRoleLower) || normalizedRouteRoles.includes('directeur')) {
                     console.log('✅ Directeur a accès à la route:', routeId, 'basé sur son rôle');
                     return true;
@@ -237,7 +238,7 @@ export const canAccessRoute = async(user, token, organizationId, organizationTyp
     // Pour les agents, refuser l'accès par défaut si routeId est null
     // (sauf pour certaines routes publiques comme agent-dashboard)
     console.warn('⚠️ canAccessRoute: routeId est null pour un agent. Refus de l\'accès par défaut.');
-    
+
     // Vérifier l'appartenance à l'organisation
     if (organizationId && organizationType === 'ministere') {
         const isAuthorized = await checkAgentAuthorization(token, organizationId);

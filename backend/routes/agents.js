@@ -54,6 +54,7 @@ router.get('/stats/by-type', requireRoleOrAssigned, agentsController.getStatsByT
 router.get('/stats/by-direction', requireRoleOrAssigned, agentsController.getStatsByDirection.bind(agentsController));
 router.get('/stats/by-service', requireRoleOrAssigned, agentsController.getStatsByService.bind(agentsController));
 router.get('/stats/by-organization', requireRoleOrAssigned, agentsController.getStatsByOrganization.bind(agentsController));
+router.get('/statistiques-point', requireRoleOrAssigned, agentsController.getStatistiquesPoint.bind(agentsController));
 
 // Rapport hiérarchique
 router.get('/hierarchical-report', requireRoleOrAssigned, agentsController.getHierarchicalReport.bind(agentsController));

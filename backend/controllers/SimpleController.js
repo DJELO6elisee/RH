@@ -109,9 +109,24 @@ class SimpleController extends BaseController {
             if (conditions.length > 0) {
                 query += ' WHERE ' + conditions.join(' AND ');
             }
-            query += ` ORDER BY libele ASC`;
+            if (this.tableName === 'positions') {
+                query += ` ORDER BY id ASC LIMIT 13`;
+            } else {
+                query += ` ORDER BY libele ASC`;
+            }
             const result = await pool.query(query, params);
-            res.json(result.rows);
+            
+            let rows = result.rows;
+            if (this.tableName === 'positions') {
+                // Trier les 13 premières positions par ordre alphabétique
+                rows.sort((a, b) => {
+                    const libA = a.libele ? String(a.libele).toLowerCase() : '';
+                    const libB = b.libele ? String(b.libele).toLowerCase() : '';
+                    return libA.localeCompare(libB);
+                });
+            }
+            
+            res.json(rows);
         } catch (error) {
             console.error(`Erreur lors de la récupération des ${this.tableName}:`, error);
             res.status(500).json({ error: 'Erreur interne du serveur' });

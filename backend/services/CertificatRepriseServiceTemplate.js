@@ -511,12 +511,12 @@ class CertificatRepriseServiceTemplate {
         // Récupérer les informations de classe et échelon de l'agent
         let classeInfo = '';
         let echelonInfo = '';
+        let gradeInfo = '';
         try {
             const gradeQuery = `
-                SELECT g.libelle as grade_libelle, e.libelle as echelon_libelle, ga.date_entree
+                SELECT g.libelle as grade_libelle, ga.date_entree
                 FROM grades_agents ga
                 LEFT JOIN grades g ON ga.id_grade = g.id
-                LEFT JOIN echelons e ON ga.id_echelon = e.id
                 WHERE ga.id_agent = $1
                 ORDER BY COALESCE(ga.date_entree, ga.created_at) DESC, ga.id DESC
                 LIMIT 1
@@ -526,12 +526,27 @@ class CertificatRepriseServiceTemplate {
                 const gradeData = gradeResult.rows[0];
                 if (gradeData.grade_libelle) {
                     classeInfo = gradeData.grade_libelle;
+                    gradeInfo = gradeData.grade_libelle;
                 }
-                if (gradeData.echelon_libelle) {
-                    echelonInfo = gradeData.echelon_libelle;
+            }
+
+            const echelonQuery = `
+                SELECT e.libele as echelon_libelle, ea.date_entree
+                FROM echelons_agents ea
+                LEFT JOIN echelons e ON ea.id_echelon = e.id
+                WHERE ea.id_agent = $1
+                ORDER BY ea.date_entree DESC, ea.id DESC
+                LIMIT 1
+            `;
+            const echelonResult = await db.query(echelonQuery, [agent.id]);
+            if (echelonResult.rows.length > 0) {
+                const echelonData = echelonResult.rows[0];
+                if (echelonData.echelon_libelle) {
+                    echelonInfo = echelonData.echelon_libelle;
                 }
-                if (gradeData.date_entree) {
-                    const dateEntree = new Date(gradeData.date_entree);
+                const bestDate = gradeResult.rows[0]?.date_entree || echelonData.date_entree;
+                if (bestDate) {
+                    const dateEntree = new Date(bestDate);
                     const dateEntreeStr = dateEntree.toLocaleDateString('fr-FR', {
                         year: 'numeric',
                         month: 'long',
@@ -570,7 +585,9 @@ class CertificatRepriseServiceTemplate {
                 .replace(/{fullWithCivilite}/g, agentNameParts.fullWithCivilite || '')
                 .replace(/{matricule}/g, agent.matricule || '')
                 .replace(/{fonctionActuelle}/g, fonctionActuelle ? fonctionActuelle.toUpperCase() : '')
-                .replace(/{classeInfo}/g, classeInfo ? `<p>${classeInfo}</p>` : '')
+                .replace(/{classeInfo}/g, classeInfo ? ` <p>${classeInfo}</p>` : '')
+                .replace(/{grade}/g, gradeInfo || '')
+                .replace(/{echelon}/g, echelonInfo || '')
                 .replace(/{serviceNom}/g, serviceNom ? serviceNom.toUpperCase() : '')
                 .replace(/{dateReprise}/g, dateReprise || '');
         };

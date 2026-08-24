@@ -224,6 +224,15 @@ class NotificationsController {
         try {
             const { id_agent } = req.params;
 
+            if (!id_agent || id_agent === 'undefined' || id_agent === 'null') {
+                return res.json({
+                    success: true,
+                    data: {
+                        nombre_non_lues: 0
+                    }
+                });
+            }
+
             // Récupérer le rôle de l'agent pour filtrer les notifications
             const roleQuery = `
                 SELECT r.nom as role_nom

@@ -142,6 +142,8 @@ const AgentDashboard = () => {
     
     // États pour les demandes et notifications
     const [showCreateDemandeModal, setShowCreateDemandeModal] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [demandeToEdit, setDemandeToEdit] = useState(null);
     const [showDemandeDetails, setShowDemandeDetails] = useState(false);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [selectedDemande, setSelectedDemande] = useState(null);
@@ -3106,6 +3108,12 @@ const AgentDashboard = () => {
     const handleDemandeClick = useCallback((action, demande = null) => {
         if (action === 'create') {
             // Tous les utilisateurs qui voient le bouton peuvent ouvrir la modal
+            setEditMode(false);
+            setDemandeToEdit(null);
+            setShowCreateDemandeModal(true);
+        } else if (action === 'edit') {
+            setEditMode(true);
+            setDemandeToEdit(demande);
             setShowCreateDemandeModal(true);
         } else if (action === 'view') {
             setSelectedDemande(demande || null);
@@ -5985,7 +5993,7 @@ const AgentDashboard = () => {
                                                             <CardTitle className={`mb-0 d-flex align-items-center ${isMobile ? 'flex-column align-items-start' : 'justify-content-between'}`}>
                                                                 <div className="d-flex align-items-center">
                                                                     <MdWork className="me-2" style={{ fontSize: isMobile ? '1.2rem' : '1.5rem' }} />
-                                                                    <span className={isMobile ? "small" : ""} style={{ fontWeight: 'bold' }}>👥 AGENTS ACTUELLEMENT EN CONGÉS</span>
+                                                                    <span className={isMobile ? "small" : ""} style={{ fontWeight: 'bold' }}>👥 AGENTS EN CESSATION DE SERVICE</span>
                                                                 </div>
                                                                 {agentsEnConges && Object.keys(agentsEnConges).length > 0 && (
                                                                     <Button color="light" size={isMobile ? "sm" : "sm"} className={isMobile ? "w-100 mt-2" : ""} onClick={() => setShowAgentsEnCongesModal(true)}>
@@ -6013,7 +6021,7 @@ const AgentDashboard = () => {
                                                                                             <div key={sdIndex} className="mb-2" style={{ fontSize: '0.9rem' }}>
                                                                                                 <div style={{ color: '#495057', fontWeight: '600' }}>{sousDirection.libelle}</div>
                                                                                                 <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
-                                                                                                    {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                                                                                    {totalAgents} agent{totalAgents > 1 ? 's' : ''} en cessation de service
                                                                                                     {totalRetards > 0 && (
                                                                                                         <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: '5px' }}>
                                                                                                             (dont {totalRetards} en retard de reprise)
@@ -9207,9 +9215,18 @@ const AgentDashboard = () => {
             {/* Modales */}
             <CreateDemandeModal
                 isOpen={showCreateDemandeModal}
-                toggle={() => setShowCreateDemandeModal(!showCreateDemandeModal)}
+                toggle={() => {
+                    setShowCreateDemandeModal(!showCreateDemandeModal);
+                    if (showCreateDemandeModal) {
+                        setEditMode(false);
+                        setDemandeToEdit(null);
+                    }
+                }}
                 onDemandeCreated={handleDemandeCreated}
                 agentId={user?.id_agent}
+                editMode={editMode}
+                initialData={demandeToEdit}
+                demandeId={demandeToEdit?.id}
             />
 
             <DemandeDetails
@@ -9410,7 +9427,7 @@ const AgentDashboard = () => {
             <Modal isOpen={showAgentsEnCongesModal} toggle={() => setShowAgentsEnCongesModal(false)} size="xl">
                 <ModalHeader toggle={() => setShowAgentsEnCongesModal(false)}>
                     <MdWork className="me-2" />
-                    Agents actuellement en congés
+                    Agents en cessation de service
                 </ModalHeader>
                 <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                     {agentsEnConges && Object.keys(agentsEnConges).length > 0 ? (
@@ -9478,7 +9495,7 @@ const AgentDashboard = () => {
                         </div>
                     ) : (
                         <Alert color="info">
-                            Aucun agent actuellement en congés
+                            Aucun agent en cessation de service
                         </Alert>
                     )}
                 </ModalBody>

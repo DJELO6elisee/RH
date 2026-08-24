@@ -101,6 +101,7 @@ const ManagementPage = ({
     const [motifAfficherModal, setMotifAfficherModal] = useState(false);
     const [agentIdPourRetrait, setAgentIdPourRetrait] = useState(null);
     const [motifRetraitText, setMotifRetraitText] = useState('');
+    const [motifRetraitAutreText, setMotifRetraitAutreText] = useState('');
     const [agentMotifAfficher, setAgentMotifAfficher] = useState(null);
     const [historiqueMotifs, setHistoriqueMotifs] = useState([]);
     const [loadingHistorique, setLoadingHistorique] = useState(false);
@@ -1602,12 +1603,20 @@ const ManagementPage = ({
             return;
         }
 
+        if (motifRetraitText === 'AUTRE(À PRÉCISER)' && !motifRetraitAutreText.trim()) {
+            setError('Veuillez préciser le motif de retrait');
+            return;
+        }
+
         try {
             setLoading(true);
             setError(null);
             // Ne pas fermer le modal immédiatement, attendre la réponse
             
-            const motifValue = motifRetraitText.trim();
+            let motifValue = motifRetraitText.trim();
+            if (motifValue === 'AUTRE(À PRÉCISER)') {
+                motifValue = motifRetraitAutreText.trim();
+            }
             const url = `https://tourisme.2ise-groupe.com/api/agents/${agentIdPourRetrait}?motif_retrait=${encodeURIComponent(motifValue)}`;
             const response = await fetch(url, {
                 method: 'DELETE',
@@ -1647,6 +1656,7 @@ const ManagementPage = ({
                 // Réinitialiser les valeurs seulement après succès
                 setAgentIdPourRetrait(null);
                 setMotifRetraitText('');
+                setMotifRetraitAutreText('');
                 setError(null);
             } else {
                 // Gérer les erreurs de validation du backend - le modal reste ouvert
@@ -2712,11 +2722,13 @@ const ManagementPage = ({
                 setMotifRetraitModal(false);
                 setAgentIdPourRetrait(null);
                 setMotifRetraitText('');
+                setMotifRetraitAutreText('');
             }} size="md">
                 <ModalHeader toggle={() => {
                     setMotifRetraitModal(false);
                     setAgentIdPourRetrait(null);
                     setMotifRetraitText('');
+                    setMotifRetraitAutreText('');
                 }}>
                     Motif de retrait
                 </ModalHeader>
@@ -2730,17 +2742,32 @@ const ManagementPage = ({
                             onChange={(e) => setMotifRetraitText(e.target.value)}
                             required
                         >
-                            <option value="">Sélectionnez un motif...</option>
-                            <option value="Décès">Décès</option>
-                            <option value="Démission">Démission</option>
-                            <option value="Licenciement">Licenciement</option>
-                            <option value="Fin de contrat">Fin de contrat</option>
-                            <option value="Abandon de poste">Abandon de poste</option>
-                            <option value="Mise en disponibilité">Mise en disponibilité</option>
-                            <option value="Retraite anticipée">Retraite anticipée</option>
-                            <option value="Mise à disposition autre ministère">Mise à disposition autre ministère</option>
+                            <option value="">SÉLECTIONNEZ UN MOTIF...</option>
+                            <option value="ABANDON DE POSTE">ABANDON DE POSTE</option>
+                            <option value="AUTRE(À PRÉCISER)">AUTRE(À PRÉCISER)</option>
+                            <option value="DÉCÈS">DÉCÈS</option>
+                            <option value="DÉMISSION">DÉMISSION</option>
+                            <option value="FIN DE CONTRAT">FIN DE CONTRAT</option>
+                            <option value="LICENCIEMENT">LICENCIEMENT</option>
+                            <option value="MISE EN DISPONIBILITÉ">MISE EN DISPONIBILITÉ</option>
+                            <option value="MISE À DISPOSITION AUTRE MINISTÈRE">MISE À DISPOSITION AUTRE MINISTÈRE</option>
+                            <option value="RETRAITE ANTICIPÉE">RETRAITE ANTICIPÉE</option>
+                            <option value="CONGÉ PARENTAL">CONGÉ PARENTAL</option>
                         </Input>
                     </FormGroup>
+                    {motifRetraitText === 'AUTRE(À PRÉCISER)' && (
+                        <FormGroup>
+                            <Label for="motifRetraitAutre">Veuillez préciser <span style={{ color: 'red' }}>*</span></Label>
+                            <Input
+                                type="text"
+                                id="motifRetraitAutre"
+                                value={motifRetraitAutreText}
+                                onChange={(e) => setMotifRetraitAutreText(e.target.value)}
+                                placeholder="Précisez le motif"
+                                required
+                            />
+                        </FormGroup>
+                    )}
                     {error && (
                         <Alert color="danger" className="mt-3">
                             {error}
@@ -2755,6 +2782,7 @@ const ManagementPage = ({
                         setMotifRetraitModal(false);
                         setAgentIdPourRetrait(null);
                         setMotifRetraitText('');
+                        setMotifRetraitAutreText('');
                         setError(null);
                     }}>
                         Annuler

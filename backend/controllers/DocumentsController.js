@@ -659,9 +659,9 @@ class DocumentsController {
     static async getValidatorDocuments(req, res) {
         try {
             const { validateurId } = req.params;
-            const { type_demande, type_document, search_agent } = req.query;
+            const { type_demande, type_document, search_agent, statut } = req.query;
             const page = parseInt(req.query.page) || 1;
-            const limit = req.query.limit ? parseInt(req.query.limit) : null;
+            const limit = req.query.limit ? parseInt(req.query.limit) : 10; // Toujours paginer (défaut 10)
 
             const dateOutputTimeZone = process.env.APP_TIMEZONE || 'Africa/Libreville';
             const toLocalDateOnlyStr = (value) => {
@@ -757,6 +757,11 @@ class DocumentsController {
                 params.push(searchStr);
             }
 
+            if (statut) {
+                whereClause += ` AND da.statut = $${params.length + 1}`;
+                params.push(statut);
+            }
+
             const fromAndJoins = `
                 FROM documents_autorisation da
                 LEFT JOIN demandes d ON da.id_demande = d.id
@@ -771,12 +776,8 @@ class DocumentsController {
             const countResult = await db.query(countQuery, params);
             const totalItems = parseInt(countResult.rows[0].total);
 
-            let totalPages = 1;
-            let offset = 0;
-            if (limit) {
-                totalPages = Math.ceil(totalItems / limit) || 1;
-                offset = (page - 1) * limit;
-            }
+            let totalPages = Math.ceil(totalItems / limit) || 1;
+            let offset = (page - 1) * limit;
 
             let query = `
                 SELECT da.*, d.type_demande, d.date_debut, d.date_fin, d.description,
@@ -789,12 +790,9 @@ class DocumentsController {
                 ${fromAndJoins}
                 ${whereClause}
                 ORDER BY da.date_generation DESC
+                LIMIT $${params.length + 1} OFFSET $${params.length + 2}
             `;
-
-            if (limit) {
-                query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-                params.push(limit, offset);
-            }
+            params.push(limit, offset);
 
             const result = await db.query(query, params);
             const data = (result.rows || []).map((row) => ({
@@ -1446,6 +1444,30 @@ class DocumentsController {
                     validateur.signatureRoleOverride = 'Le Directeur';
                     await hydrateAgentWithLatestFunction(validateur);
                     await attachActiveSignature(validateur);
+                }
+            }
+
+            // Hydrater les informations du validateur s'il n'est pas un DRH (ex: pour l'autorisation d'absence)
+            if (validateur.id && !validateur.direction_nom && !validateur.direction_generale_nom) {
+                try {
+                    const valHydrateQuery = `
+                        SELECT 
+                            s.libelle as direction_nom,
+                            dg.libelle as direction_generale_nom,
+                            m.nom as ministere_nom,
+                            m.sigle as ministere_sigle
+                        FROM agents a
+                        LEFT JOIN directions s ON a.id_direction = s.id
+                        LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                        LEFT JOIN ministeres m ON a.id_ministere = m.id
+                        WHERE a.id = $1
+                    `;
+                    const valHydrateRes = await db.query(valHydrateQuery, [validateur.id]);
+                    if (valHydrateRes.rows.length > 0) {
+                        Object.assign(validateur, valHydrateRes.rows[0]);
+                    }
+                } catch (err) {
+                    console.error('Erreur hydratation validateur:', err);
                 }
             }
 

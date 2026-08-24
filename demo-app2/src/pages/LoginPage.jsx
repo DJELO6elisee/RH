@@ -173,7 +173,10 @@ const LoginPage = () => {
       if (result.success) {
         // Redirection basée sur le rôle et l'organisation
         const rawRole = result.user.role || '';
-        const userRole = rawRole.toLowerCase();
+        let userRole = rawRole.toLowerCase();
+        if (userRole === 'responsble_cellule_de_passation' || userRole.includes('passation')) {
+            userRole = 'responsable_cellule_de_passation';
+        }
         
         // Redirection basée sur le rôle et l'organisation
         if (userRole === 'super_admin') {
@@ -192,7 +195,7 @@ const LoginPage = () => {
             : '/informaticien-dashboard';
           console.log(`🔀 Redirection ${userRole} vers:`, informaticienDashboardUrl);
           history.push(informaticienDashboardUrl);
-        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central'].includes(userRole)) {
+        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'responsable_cellule_de_passation'].includes(userRole)) {
           // Les agents, chefs de service, directeurs, sous-directeurs, directeurs de cabinet et ministres sont redirigés vers leur tableau de bord personnel
           const agentDashboardUrl = organizationId && organizationType 
             ? `/agent-dashboard?organization=${organizationType}&id=${organizationId}`
@@ -247,7 +250,10 @@ const LoginPage = () => {
 
         // Redirection basée sur le rôle
         const rawRole = result.user.role || '';
-        const userRole = rawRole.toLowerCase();
+        let userRole = rawRole.toLowerCase();
+        if (userRole === 'responsble_cellule_de_passation' || userRole.includes('passation')) {
+            userRole = 'responsable_cellule_de_passation';
+        }
         
         if (userRole === 'super_admin') {
           history.push('/dashboard');
@@ -256,7 +262,7 @@ const LoginPage = () => {
             ? `/dashboard?organization=${organizationType}&id=${organizationId}`
             : '/dashboard';
           history.push(dashboardUrl);
-        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central'].includes(userRole)) {
+        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'responsable_cellule_de_passation'].includes(userRole)) {
           const agentDashboardUrl = organizationId && organizationType 
             ? `/agent-dashboard?organization=${organizationType}&id=${organizationId}`
             : '/agent-dashboard';

@@ -53,10 +53,10 @@ const DecisionsPage = () => {
     const [directeurs, setDirecteurs] = useState([]);
     const [loadingDirecteurs, setLoadingDirecteurs] = useState(false);
 
-    // Année pour la génération du numéro de décision (année en cours ou 2 années précédentes)
+    // Année pour la génération du numéro de décision (uniquement les 2 années précédentes)
     const currentYear = new Date().getFullYear();
-    const allowedYears = [currentYear, currentYear - 1, currentYear - 2];
-    const [selectedYear, setSelectedYear] = useState(currentYear);
+    const allowedYears = [currentYear - 1, currentYear - 2];
+    const [selectedYear, setSelectedYear] = useState(currentYear - 1);
     const [numeroActe, setNumeroActe] = useState('');
     const [dateDecision, setDateDecision] = useState('');
 
@@ -371,6 +371,34 @@ const DecisionsPage = () => {
         } catch (err) {
             console.error('Erreur lors de l\'upload:', err);
             setError(err.message || 'Erreur lors de l\'upload du document');
+        } finally {
+            setUploadingFile(null);
+        }
+    };
+
+    // Fonction pour générer le document pour une décision existante
+    const handleGenerateDocument = async (decisionId) => {
+        try {
+            setUploadingFile(decisionId); // On utilise cet état pour afficher le chargement globalement (le bouton Uploader sera grisé aussi)
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/api/decisions/${decisionId}/generate-document`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                setSuccess('Document généré avec succès !');
+                await fetchDecisions();
+            } else {
+                throw new Error(result.error || 'Erreur lors de la génération du document');
+            }
+        } catch (err) {
+            console.error('Erreur lors de la génération du document:', err);
+            setError(err.message || 'Erreur lors de la génération du document');
         } finally {
             setUploadingFile(null);
         }
@@ -914,6 +942,25 @@ const DecisionsPage = () => {
                                                                                 <>
                                                                                     <i className="fa fa-upload me-1"></i>
                                                                                     Uploader
+                                                                                </>
+                                                                            )}
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            color="success"
+                                                                            className="ms-2"
+                                                                            onClick={() => handleGenerateDocument(decision.id)}
+                                                                            disabled={uploadingFile === decision.id}
+                                                                        >
+                                                                            {uploadingFile === decision.id ? (
+                                                                                <>
+                                                                                    <Spinner size="sm" className="me-1" />
+                                                                                    ...
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <i className="fa fa-cogs me-1"></i>
+                                                                                    Générer
                                                                                 </>
                                                                             )}
                                                                         </Button>

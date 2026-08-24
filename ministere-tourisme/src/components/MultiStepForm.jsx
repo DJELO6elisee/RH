@@ -2529,7 +2529,12 @@ const MultiStepForm = ({
                         
                         // Assigner aux champs
                         fields.forEach(field => {
-                            options[field.name] = processedData;
+                            let fieldData = processedData;
+                            // Pour le champ position : limiter aux 13 premières de la base de données
+                            if (field.name === 'id_position') {
+                                fieldData = processedData.slice(0, 13);
+                            }
+                            options[field.name] = fieldData;
                         });
                         
                         console.log(`✅ MultiStepForm - Options chargées pour ${tableName}:`, processedData.length, 'éléments');
@@ -2630,7 +2635,12 @@ const MultiStepForm = ({
                         
                         // Assigner aux champs
                         fields.forEach(field => {
-                            options[field.name] = processedData;
+                            let fieldData = processedData;
+                            // Pour le champ position : limiter aux 13 premières de la base de données
+                            if (field.name === 'id_position') {
+                                fieldData = processedData.slice(0, 13);
+                            }
+                            options[field.name] = fieldData;
                         });
                         
                         console.log(`✅ MultiStepForm - Options chargées pour ${tableName} (avec filtre, édition):`, processedData.length, 'éléments');

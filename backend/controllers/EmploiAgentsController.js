@@ -413,22 +413,43 @@ class EmploiAgentsController {
                 }
             }
 
-            // Mettre à jour la nomination
-            const nominationQuery = `
-                UPDATE nominations 
-                SET nature = $1, numero = $2, date_signature = $3, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $4
+            // Vérifier si le numéro existe déjà pour une autre nomination
+            const existingNominationQuery = `
+                SELECT id FROM nominations WHERE numero = $1
             `;
-            await pool.query(nominationQuery, [nature, numero, date_signature, emploiAgent.id_nomination]);
+            const existingNomination = await pool.query(existingNominationQuery, [numero]);
+
+            let target_id_nomination = emploiAgent.id_nomination;
+
+            if (existingNomination.rows.length > 0 && existingNomination.rows[0].id !== emploiAgent.id_nomination) {
+                // Utiliser la nomination existante
+                target_id_nomination = existingNomination.rows[0].id;
+                
+                // Mettre à jour la nomination existante avec les nouvelles informations si fournies
+                const updateExistingNomQuery = `
+                    UPDATE nominations 
+                    SET nature = $1, date_signature = $2, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $3
+                `;
+                await pool.query(updateExistingNomQuery, [nature, date_signature, target_id_nomination]);
+            } else {
+                // Mettre à jour la nomination actuelle
+                const nominationQuery = `
+                    UPDATE nominations 
+                    SET nature = $1, numero = $2, date_signature = $3, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $4
+                `;
+                await pool.query(nominationQuery, [nature, numero, date_signature, target_id_nomination]);
+            }
 
             // Mettre à jour l'emploi_agent
             const updateQuery = `
                 UPDATE emploi_agents 
-                SET id_emploi = $1, date_entree = $2, designation_poste = $3, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $4
+                SET id_emploi = $1, date_entree = $2, designation_poste = $3, id_nomination = $4, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $5
                 RETURNING *
             `;
-            const result = await pool.query(updateQuery, [id_emploi, date_entree, designation_poste, id]);
+            const result = await pool.query(updateQuery, [id_emploi, date_entree, designation_poste, target_id_nomination, id]);
 
             res.json({
                 success: true,

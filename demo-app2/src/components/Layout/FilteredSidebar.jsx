@@ -165,15 +165,7 @@ const navItems = [
 const getCustomNavItems = (user) => {
     const items = [];
 
-    // Ajouter l'onglet "Espace Personnel DRH" pour les DRH
-    if (user && (user.role === 'drh' || user.role === 'DRH' || user.role?.toLowerCase() === 'drh') && user.id_agent) {
-        items.push({
-            to: '/drh-dashboard',
-            name: 'Espace Personnel DRH',
-            exact: true,
-            Icon: MdAssignment
-        });
-    }
+    // L'onglet "Espace Personnel DRH" a été retiré
 
     // Ajouter l'onglet "Dashboard Informaticien" pour les informaticiens
     if (user && user.role === 'informaticien') {
@@ -257,7 +249,7 @@ const getFilteredRoutesBase = (user, assignedRouteIds = []) => {
             'agent-fonctions', 'agent-emplois', 'agent-grades', 'agent-echelons', 'agent-categories',
             'agent-user-accounts', 'attribution-taches-agents', 'besoins-en-agents', 'auth', 'drh-parametres', 'historique-des-agents', 'jours-conges', 'gestion-mariages', 'evaluations',
             // États et Rapports
-            'agents_reports', 'projections_retraites', 'agents_by_type_report', 'agents_by_service_report',
+            'agents_reports', 'projections_retraites', 'agents_by_type_report', 'agents_by_service_report', 'agents_demandes_report', 'point_agents_report',
             // Routes de gestion des documents administratifs
             'demande-absence', 'demande-sortie-territoire', 'demande-attestation-travail',
             'autorisation-conges', 'autorisation-retraite',

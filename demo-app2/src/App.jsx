@@ -84,6 +84,10 @@ const AgentsByServiceReportPage = React.lazy(() =>
     import('./pages/AgentsByServiceReportPage'));
 const AgentsByDirectionReportPage = React.lazy(() =>
     import('./pages/AgentsByDirectionReportPage'));
+const AgentsDemandesReportPage = React.lazy(() =>
+    import('./pages/AgentsDemandesReportPage'));
+const PointAgentsReportPage = React.lazy(() =>
+    import('./pages/PointAgentsReportPage'));
 const GradesPage = React.lazy(() =>
     import('./pages/GradesPage'));
 const DirectionsGeneralesPage = React.lazy(() =>
@@ -425,6 +429,8 @@ class App extends React.Component {
                                             <ProtectedRoute exact path="/agents-by-type-report" component={AgentsByTypeReportPage} />
                                             <ProtectedRoute exact path="/agents-by-direction-report" component={AgentsByDirectionReportPage} />
                                             <ProtectedRoute exact path="/agents-by-service-report" component={AgentsByServiceReportPage} />
+                                            <ProtectedRoute exact path="/agents-demandes-report" component={AgentsDemandesReportPage} />
+                                            <ProtectedRoute exact path="/point-agents" component={PointAgentsReportPage} />
                                             <ProtectedRoute exact path="/grades" component={GradesPage} />
                                             <ProtectedRoute exact path="/directions-generales" component={DirectionsGeneralesPage} />
                                             <ProtectedRoute exact path="/directions" component={DirectionsPage} />

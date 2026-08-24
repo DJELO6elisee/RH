@@ -109,13 +109,142 @@
 --     updated_at = CURRENT_TIMESTAMP
 -- WHERE username = 'DRHMINTEST01'; 
 -- Ou utilisez : WHERE email = 'l_emal@agent.com';
-UPDATE demandes 
-SET 
-    niveau_evolution_demande = 'valide_par_drh',
-    niveau_actuel = 'drh'
-WHERE 
-    type_demande NOT IN ('absence', 'certificat_cessation', 'mutation')
-    AND status = 'en_attente';
+-- UPDATE demandes 
+-- SET 
+--     id_validateur_directeur = NULL,
+--     id_validateur_dir_cabinet = NULL
+-- WHERE 
+--     type_demande ='certificat_cessation'
+--     AND id_agent = 1804;
+
+-- SELECT 
+--     id, 
+--     matricule, 
+--     nom, 
+--     prenom, 
+--     date_prise_service_au_ministere, 
+--     created_at
+-- FROM agents
+-- WHERE id_type_d_agent = 1 
+--   AND (retire IS NULL OR retire = false) 
+--   AND (statut_emploi IS NULL OR LOWER(TRIM(COALESCE(statut_emploi, ''))) <> 'retraite')
+--   AND COALESCE(date_prise_service_au_ministere, created_at)::DATE > '2026-09-30'
+-- ORDER BY COALESCE(date_prise_service_au_ministere, created_at) DESC;
+
+-- BEGIN;
+
+-- 1. Réassigner les agents vers la bonne Direction Générale
+-- et nettoyer les champs direction, sous-direction et service
+-- UPDATE agents 
+-- SET 
+--     id_direction_generale = 29,
+--     id_direction = NULL,
+--     id_sous_direction = NULL,
+--     id_service = NULL
+-- WHERE id_direction = 299;
+
+-- 2. (Optionnel) Supprimer la fausse direction pour éviter de futures erreurs
+-- DELETE FROM directions 
+-- WHERE id = 299;
+
+-- COMMIT;
+
+-- BEGIN;
+
+-- UPDATE demandes d
+-- SET 
+--     -- 1. Assigner l'ID du Directeur Général (1187) comme validateur
+--     id_validateur_directeur_general = 1187,
+    
+--     -- 2. Initialiser le statut d'attente pour le DG
+--     statut_directeur_general = CASE 
+--         WHEN d.statut_directeur_general IS NULL THEN 'en_attente' 
+--         ELSE d.statut_directeur_general 
+--     END,
+    
+--     -- 3. Retirer l'ancien directeur simple de la boucle de validation
+--     id_validateur_directeur = NULL,
+--     statut_directeur = NULL,
+    
+--     -- 4. Si la demande était bloquée à l'étape "attente du directeur", on la passe au DG
+--     niveau_evolution_demande = CASE 
+--         WHEN d.niveau_evolution_demande = 'valide_par_directeur' THEN 'valide_par_directeur_general'
+--         ELSE d.niveau_evolution_demande
+--     END,
+    
+SELECT 
+    d.id AS id_demande, 
+    d.id_agent, 
+    a.nom, 
+    a.prenom,
+    d.type_demande, 
+    d.status, 
+    d.niveau_actuel, 
+    d.niveau_evolution_demande, 
+    d.id_validateur_directeur_general, 
+    d.statut_directeur_general,
+    d.id_validateur_directeur,
+    d.statut_directeur,
+    d.phase,
+    a.id_direction_generale,
+    a.id_direction
+FROM demandes d
+JOIN agents a ON d.id_agent = a.id
+WHERE a.id_direction_generale = 29
+  AND a.id_direction IS NULL
+  AND d.status NOT IN ('approuve', 'rejete')
+ORDER BY d.id DESC
+LIMIT 10;
+
+-- BEGIN;
+
+-- UPDATE demandes d
+-- SET 
+--     -- 1. Assigner le Directeur Général (1187) comme validateur
+--     id_validateur_directeur_general = 1187,
+    
+--     -- 2. Initialiser le statut
+--     statut_directeur_general = CASE 
+--         WHEN d.statut_directeur_general IS NULL THEN 'en_attente' 
+--         ELSE d.statut_directeur_general 
+--     END,
+    
+--     -- 3. Nettoyer les anciens validateurs intermédiaires
+--     id_validateur_directeur = NULL,
+--     statut_directeur = NULL,
+--     id_validateur_sous_directeur = NULL,
+--     statut_sous_directeur = NULL,
+    
+--     -- 4. Pousser la demande directement au niveau du Directeur Général
+--     niveau_evolution_demande = 'valide_par_directeur_general',
+--     niveau_actuel = 'directeur_general'
+    
+-- FROM agents ag
+-- WHERE d.id_agent = ag.id
+--   AND ag.id_direction_generale = 29
+--   AND ag.id_direction IS NULL
+--   AND d.id_agent != 1187 -- Très important : on ne modifie pas les demandes du DG lui-même !
+--   AND d.status NOT IN ('approuve', 'rejete')
+--   -- On ne corrige que celles qui sont coincées aux niveaux inférieurs
+--   AND d.niveau_actuel IN ('sous_directeur', 'directeur'); 
+
+-- COMMIT;
+
+
+--     -- 5. TRÈS IMPORTANT : Mettre à jour le niveau actuel pour l'affichage dans l'interface
+--     niveau_actuel = CASE 
+--         WHEN d.niveau_actuel = 'directeur' THEN 'directeur_general'
+--         ELSE d.niveau_actuel
+--     END
+-- FROM agents ag
+-- WHERE d.id_agent = ag.id
+--   AND ag.id_direction_generale = 29 -- L'ID de la bonne direction générale
+--   AND ag.id_direction IS NULL
+--   AND d.status NOT IN ('approuve', 'rejete'); -- Ne modifier que les demandes non terminées
+
+-- COMMIT;
+
+
 
 -- ALTER TABLE emplois ALTER COLUMN libele_court TYPE varchar(100);
 -- ALTER TABLE fonctions ALTER COLUMN libele TYPE VARCHAR(255);

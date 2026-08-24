@@ -104,6 +104,7 @@ class AuthMiddleware {
         }
     }
 
+
     // Middleware pour vérifier les rôles
     requireRole(roles) {
         return (req, res, next) => {
@@ -132,7 +133,7 @@ class AuthMiddleware {
 
     // Middleware pour vérifier les rôles OU si l'agent a la route assignée
     requireRoleOrAssignedRoute(roles, routeId = null) {
-        return async(req, res, next) => {
+        return async (req, res, next) => {
             if (!req.user) {
                 return res.status(401).json({
                     success: false,

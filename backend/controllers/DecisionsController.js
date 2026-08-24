@@ -2,6 +2,10 @@ const db = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const DecisionPDFService = require('../services/DecisionPDFService');
+const DecisionCollectiveTemplate = require('../services/DecisionCollectiveTemplate');
+const DecisionIndividuelleTemplate = require('../services/DecisionIndividuelleTemplate');
+const { fetchDRHForSignature } = require('../services/utils/signatureUtils');
 
 class DecisionsController {
     /**
@@ -248,11 +252,19 @@ class DecisionsController {
 
                 console.log(`✅ Décision collective créée avec succès (ID: ${decision.id}) pour ${agents.length} agent(s)`);
 
+                let finalDecision = { ...decision };
+                if (!cheminDocument) {
+                    const generatedPath = await this.generateDocumentForDecisionId(decision.id);
+                    if (generatedPath) {
+                        finalDecision.chemin_document = generatedPath;
+                    }
+                }
+
                 return res.status(201).json({
                     success: true,
                     message: `Décision collective créée avec succès pour ${agents.length} agent(s)`,
                     data: {
-                        decision: decision,
+                        decision: finalDecision,
                         agents_count: agents.length,
                         agents_ids: agents.map(a => a.id),
                         numero_acte: finalNumeroActe
@@ -307,10 +319,18 @@ class DecisionsController {
 
                 console.log(`✅ Décision ${type} créée avec succès (ID: ${decision.id})`);
 
+                let finalDecision = { ...decision };
+                if (!cheminDocument) {
+                    const generatedPath = await this.generateDocumentForDecisionId(decision.id);
+                    if (generatedPath) {
+                        finalDecision.chemin_document = generatedPath;
+                    }
+                }
+
                 return res.status(201).json({
                     success: true,
                     message: `Décision individuelle enregistrée avec succès${id_agent ? ' pour le directeur sélectionné' : ''}`,
-                    data: decision
+                    data: finalDecision
                 });
             }
 
@@ -777,6 +797,163 @@ class DecisionsController {
                 error: 'Erreur lors de la suppression de la décision',
                 details: error.message
             });
+        }
+    }
+
+    /**
+     * Génère le document PDF pour une décision et l'associe
+     */
+    async generateDocumentForDecisionId(decisionId) {
+        try {
+            // Récupérer la décision
+            const decisionQuery = `
+                SELECT d.*,
+                       dir.libelle as direction_libelle,
+                       sd.libelle as sous_direction_libelle,
+                       a.nom as agent_nom, a.prenom as agent_prenom, a.matricule as agent_matricule, a.sexe as agent_sexe,
+                       c.libele as agent_civilite,
+                       ea.emploi_libele as agent_emploi,
+                       fa.fonction_libele as agent_fonction_actuelle
+                FROM decisions d
+                LEFT JOIN directions dir ON d.id_direction = dir.id
+                LEFT JOIN sous_directions sd ON d.id_sous_direction = sd.id
+                LEFT JOIN agents a ON d.id_agent = a.id
+                LEFT JOIN civilites c ON a.id_civilite = c.id
+                LEFT JOIN (
+                    SELECT ea.id_agent, e.libele as emploi_libele
+                    FROM emploi_agents ea
+                    LEFT JOIN emplois e ON ea.id_emploi = e.id
+                    ORDER BY ea.date_entree DESC
+                ) ea ON a.id = ea.id_agent
+                LEFT JOIN (
+                    SELECT fa.id_agent, f.libele as fonction_libele
+                    FROM fonction_agents fa
+                    LEFT JOIN fonctions f ON fa.id_fonction = f.id
+                    ORDER BY fa.date_entree DESC
+                ) fa ON a.id = fa.id_agent
+                WHERE d.id = $1
+            `;
+            const decisionResult = await db.query(decisionQuery, [decisionId]);
+            if (decisionResult.rows.length === 0) return null;
+            
+            const decision = decisionResult.rows[0];
+            const year = decision.annee_decision || new Date().getFullYear();
+            
+            // Format validateur (Directeur des Ressources Humaines)
+            const drh = await fetchDRHForSignature(decision.id_direction, null);
+            const validateur = drh || {};
+            
+            let htmlContent = '';
+            let agents = [];
+            let agent = null;
+            
+            if (decision.type === 'collective') {
+                // Fetch agents
+                let agentsQuery = '';
+                let agentsParams = [];
+                let responsableId = null;
+                
+                if (decision.id_direction) {
+                    const directionResult = await db.query('SELECT responsable_id FROM directions WHERE id = $1', [decision.id_direction]);
+                    responsableId = directionResult.rows[0]?.responsable_id || null;
+                    agentsQuery = `
+                        SELECT a.*, c.libele as civilite, e.libele as emploi
+                        FROM agents a
+                        LEFT JOIN civilites c ON a.id_civilite = c.id
+                        LEFT JOIN (
+                            SELECT ea.id_agent, emp.libele
+                            FROM emploi_agents ea
+                            LEFT JOIN emplois emp ON ea.id_emploi = emp.id
+                            ORDER BY ea.date_entree DESC
+                        ) e ON a.id = e.id_agent
+                        WHERE a.id_direction = $1 AND (a.retire IS NULL OR a.retire = false) AND a.id != COALESCE($2, -1)
+                        ORDER BY a.nom, a.prenom
+                    `;
+                    agentsParams = [decision.id_direction, responsableId];
+                } else if (decision.id_sous_direction) {
+                    const sdResult = await db.query('SELECT sous_directeur_id FROM sous_directions WHERE id = $1', [decision.id_sous_direction]);
+                    responsableId = sdResult.rows[0]?.sous_directeur_id || null;
+                    agentsQuery = `
+                        SELECT a.*, c.libele as civilite, e.libele as emploi
+                        FROM agents a
+                        LEFT JOIN civilites c ON a.id_civilite = c.id
+                        LEFT JOIN (
+                            SELECT ea.id_agent, emp.libele
+                            FROM emploi_agents ea
+                            LEFT JOIN emplois emp ON ea.id_emploi = emp.id
+                            ORDER BY ea.date_entree DESC
+                        ) e ON a.id = e.id_agent
+                        WHERE a.id_sous_direction = $1 AND (a.retire IS NULL OR a.retire = false) AND a.id != COALESCE($2, -1)
+                        ORDER BY a.nom, a.prenom
+                    `;
+                    agentsParams = [decision.id_sous_direction, responsableId];
+                }
+                
+                if (agentsQuery) {
+                    const agentsResult = await db.query(agentsQuery, agentsParams);
+                    const uniqueAgents = [];
+                    const seen = new Set();
+                    for (const a of agentsResult.rows) {
+                        if (!seen.has(a.id)) {
+                            seen.add(a.id);
+                            uniqueAgents.push(a);
+                        }
+                    }
+                    agents = uniqueAgents;
+                }
+                
+                htmlContent = await DecisionCollectiveTemplate.generateHTML(decision, agents, validateur, year);
+                
+            } else {
+                // Individuelle
+                agent = {
+                    id: decision.id_agent,
+                    nom: decision.agent_nom,
+                    prenom: decision.agent_prenom,
+                    matricule: decision.agent_matricule,
+                    sexe: decision.agent_sexe,
+                    civilite: decision.agent_civilite,
+                    emploi: decision.agent_emploi,
+                    fonction_actuelle: decision.agent_fonction_actuelle,
+                    direction_nom: decision.direction_libelle
+                };
+                
+                htmlContent = await DecisionIndividuelleTemplate.generateHTML(decision, agent, validateur, year);
+            }
+            
+            // Générer le PDF via PDFKit (pure Node.js, sans dépendances système)
+            let relativePath;
+            if (decision.type === 'collective') {
+                relativePath = await DecisionPDFService.generateCollective(decision, agents, validateur, year);
+            } else {
+                relativePath = await DecisionPDFService.generateIndividuelle(decision, agent, validateur, year);
+            }
+
+
+            // Mettre à jour la décision
+            await db.query('UPDATE decisions SET chemin_document = $1 WHERE id = $2', [relativePath, decision.id]);
+
+            return relativePath;
+        } catch (error) {
+            console.error('❌ Erreur generateDocumentForDecisionId:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Endpoint pour générer le document (manuel)
+     */
+    async generateDocument(req, res) {
+        try {
+            const { id } = req.params;
+            const generatedPath = await this.generateDocumentForDecisionId(id);
+            if (!generatedPath) {
+                return res.status(500).json({ success: false, error: 'Erreur lors de la génération du document' });
+            }
+            return res.json({ success: true, message: 'Document généré avec succès', path: generatedPath });
+        } catch (error) {
+            console.error('❌ Erreur generateDocument endpoint:', error);
+            return res.status(500).json({ success: false, error: 'Erreur interne du serveur' });
         }
     }
 }

@@ -277,9 +277,6 @@ function formatOfficialLabel(label = '') {
 
 function resolveOfficialHeaderContext({ agent = {}, validateur = {}, userInfo = null } = {}) {
   const ministryName = pickFirstNonEmptyString([
-    userInfo?.ministere_nom,
-    userInfo?.ministere,
-    userInfo?.organisation,
     validateur?.ministere_nom,
     validateur?.ministere,
     validateur?.ministere_label,
@@ -287,35 +284,51 @@ function resolveOfficialHeaderContext({ agent = {}, validateur = {}, userInfo = 
     agent?.ministere_nom,
     agent?.ministere,
     agent?.ministere_label,
-    agent?.ministereLabel
+    agent?.ministereLabel,
+    userInfo?.ministere_nom,
+    userInfo?.ministere,
+    userInfo?.organisation
   ]);
 
-  let directionName = pickFirstNonEmptyString([
-    userInfo?.direction_nom,
-    userInfo?.direction,
-    userInfo?.direction_generale_nom,
-    userInfo?.service_nom,
-    userInfo?.service,
-    userInfo?.structure_nom,
-    userInfo?.structure,
-    validateur?.direction_nom,
-    validateur?.direction,
-    validateur?.direction_generale_nom,
-    validateur?.direction_label,
-    validateur?.service_nom,
-    validateur?.service,
-    validateur?.structure_nom,
-    validateur?.structure,
-    validateur?.departement_nom,
-    validateur?.departement,
-    validateur?.unite_nom,
-    validateur?.unite,
-    agent?.direction_nom,
-    agent?.direction,
-    agent?.direction_generale_nom,
-    agent?.service_nom,
-    agent?.service
+  const fonctionSourceDirCab = pickFirstNonEmptyString([
+    validateur?.fonction,
+    validateur?.fonction_actuelle,
+    validateur?.fonction_designation,
+    validateur?.designation_poste
   ]);
+
+  let directionName;
+  
+  if (fonctionSourceDirCab && /(directeur|directrice)\s+(de|du)\s+cabinet/i.test(fonctionSourceDirCab)) {
+    directionName = validateur?.direction_generale_nom || validateur?.direction_nom || 'CABINET DU MINISTRE';
+  } else {
+    directionName = pickFirstNonEmptyString([
+      validateur?.direction_nom,
+      validateur?.direction,
+      validateur?.direction_generale_nom,
+      validateur?.direction_label,
+      validateur?.service_nom,
+      validateur?.service,
+      validateur?.structure_nom,
+      validateur?.structure,
+      validateur?.departement_nom,
+      validateur?.departement,
+      validateur?.unite_nom,
+      validateur?.unite,
+      agent?.direction_nom,
+      agent?.direction,
+      agent?.direction_generale_nom,
+      agent?.service_nom,
+      agent?.service,
+      userInfo?.direction_nom,
+      userInfo?.direction,
+      userInfo?.direction_generale_nom,
+      userInfo?.service_nom,
+      userInfo?.service,
+      userInfo?.structure_nom,
+      userInfo?.structure
+    ]);
+  }
 
   if (!directionName) {
     const fonctionSource = pickFirstNonEmptyString([
@@ -644,7 +657,14 @@ async function drawOfficialHeaderPDF(doc, {
   // Dessiner le numéro de document à gauche à cette Y commune
   // Note : documentNumber est calculé par le caller (getDocumentReference dans documentReference.js), ce module ne fait qu'afficher la valeur reçue.
   doc.font('Courier-Bold').fontSize(11);
-  const referenceText = documentNumber && documentNumber.trim() ? `N° ${documentNumber.trim()}` : 'N° 00000';
+  let referenceText = 'N° 00000';
+  if (documentNumber && documentNumber.trim()) {
+    let text = documentNumber.trim();
+    if (text.match(/^[Nn][°ºoO]\s*/)) {
+       text = text.replace(/^[Nn][°ºoO]\s*/, '');
+    }
+    referenceText = `N° ${text}`;
+  }
   doc.text(referenceText, leftX, commonLineY, { width: sectionWidth, align: 'left' });
   const referenceHeight = doc.heightOfString(referenceText, { width: sectionWidth });
 

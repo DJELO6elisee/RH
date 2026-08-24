@@ -133,14 +133,10 @@ class AutorisationAbsenceTemplate {
         // Résoudre les informations d'en-tête officielles (ministère / direction)
         const headerContext = resolveOfficialHeaderContext({ agent: agentWithSigle, validateur: validateurWithSigle });
         const ministryName = headerContext.ministryName
-            || agent.ministere_nom
             || (validateur && (validateur.ministere_nom || validateur.ministere))
+            || agent.ministere_nom
             || '';
-        const directionResolved = headerContext.directionName
-            || agent.direction_nom
-            || agent.service_nom
-            || (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom))
-            || '';
+        const directionResolved = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || '';
 
         const headerHTML = buildHeaderHTML({
             documentNumber: numeroDocument,

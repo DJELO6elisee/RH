@@ -14,7 +14,8 @@ function normalizeRoleCode(roleNom) {
     if (withUnderscore === 'cabinet_chef' || (r.includes('chef') && r.includes('cabinet'))) return 'chef_cabinet';
     if (withUnderscore === 'dir_cabinet' || (r.includes('cabinet') && (r.includes('directeur') || r.includes('dir')))) return 'dir_cabinet';
     if (withUnderscore === 'chef_de_service' || (r.includes('chef') && r.includes('service') && !r.includes('cabinet'))) return 'chef_service';
-    if (['directeur', 'sous_directeur', 'sous-directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'chef_service', 'ministre', 'agent', 'admin_entite'].includes(r)) return r === 'sous-directeur' ? 'sous_directeur' : r;
+    if (withUnderscore === 'responsable_cellule_de_passation' || withUnderscore === 'responsble_cellule_de_passation' || r.includes('passation')) return 'responsable_cellule_de_passation';
+    if (['directeur', 'sous_directeur', 'sous-directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'chef_service', 'ministre', 'agent', 'admin_entite', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation'].includes(r)) return r === 'sous-directeur' ? 'sous_directeur' : r;
     if (r.includes('inspecteur') && (r.includes('général') || r.includes('general'))) return 'inspecteur_general';
     if (r.includes('service') && r.includes('exterieur')) return 'directeur_service_exterieur';
     if (r.includes('directeur') && r.includes('central')) return 'directeur_central';
@@ -127,7 +128,7 @@ class AuthController {
                             AND a.id_ministere = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents a 
                                 WHERE a.id = u.id_agent 
@@ -146,7 +147,7 @@ class AuthController {
                             AND a.id_institution = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents_institutions_main a 
                                 WHERE a.id = u.id_agent 
@@ -166,7 +167,7 @@ class AuthController {
                             AND e.id = $2
                         ))
                         OR
-                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier') AND (
+                        (r.nom IN ('agent', 'informaticien', 'admin_entite', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'inspecteur_general', 'directeur_service_exterieur', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation') AND (
                             u.id_agent IS NULL OR EXISTS (
                                 SELECT 1 FROM agents a 
                                 WHERE a.id = u.id_agent 

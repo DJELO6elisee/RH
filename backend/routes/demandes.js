@@ -22,7 +22,8 @@ const requireRoleOrAssigned = requireRoleOrAssignedRoute([
     'dir_cabinet',
     'chef_cabinet',
     'inspecteur_general',
-    'ministre'
+    'ministre',
+    'responsble_cellule_de_passation'
 ]);
 
 // Toutes les routes nécessitent une authentification
@@ -163,10 +164,12 @@ router.post('/', requireRoleOrAssigned, uploadDemandeDocuments, (req, res, next)
     console.log('✅ Validation des routes réussie, appel du contrôleur...');
     DemandesController.createDemande(req, res);
 });
+
 router.get('/agent/:id_agent', requireRoleOrAssigned, (req, res) => DemandesController.getDemandesByAgent(req, res));
 router.get('/en-attente/:id_validateur', requireRoleOrAssigned, (req, res) => DemandesController.getDemandesEnAttente(req, res));
 router.get('/historique/:id_validateur', requireRoleOrAssigned, (req, res) => DemandesController.getHistoriqueDemandes(req, res));
 router.get('/historiques-global', requireRoleOrAssigned, (req, res) => DemandesController.getDemandesHistoriqueGlobal(req, res));
+router.get('/statistiques-globales-agents', requireRoleOrAssigned, (req, res) => DemandesController.getStatistiquesGlobalesAgents(req, res));
 router.get('/debug/:id_validateur', requireRoleOrAssigned, (req, res) => DemandesController.debugValidateur(req, res));
 router.put('/:id_demande/valider', requireRoleOrAssigned, validateValiderDemande, (req, res) => DemandesController.validerDemande(req, res));
 router.put('/:id_demande/satisfaire', requireRoleOrAssigned, (req, res) => DemandesController.satisfaireBesoin(req, res));
@@ -176,6 +179,16 @@ router.get('/suivi/:id_agent', requireRoleOrAssigned, (req, res) => DemandesCont
 
 // Route pour récupérer les détails d'une demande spécifique
 router.get('/:id_demande', requireRoleOrAssigned, (req, res) => DemandesController.getDemandeById(req, res));
+
+// Routes pour l'agent : annuler et modifier sa demande
+router.put('/:id_demande/annuler', requireRoleOrAssigned, (req, res) => DemandesController.annulerDemande(req, res));
+router.put('/:id_demande/modifier', requireRoleOrAssigned, uploadDemandeDocuments, validateCreateDemande, (req, res) => {
+    const errors = require('express-validator').validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, error: 'Données invalides', details: errors.array() });
+    }
+    DemandesController.modifierDemande(req, res);
+});
 
 // Routes pour les filtres DRH
 router.get('/agents/:id_validateur', requireRoleOrAssigned, (req, res) => DemandesController.getAgentsForFilter(req, res));

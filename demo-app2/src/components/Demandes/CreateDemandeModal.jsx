@@ -49,7 +49,7 @@ const absenceMotifsFixes = {
     "déménagement du fonctionnaire": 2
 };
 
-const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
+const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId, editMode = false, initialData = null, demandeId = null }) => {
     const [formData, setFormData] = useState({
         type_demande: '',
         description: '',
@@ -223,6 +223,12 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                     nombreJoursFinal = '1800'; // 60 mois
                 }
                 
+                if (formData.motif_conge === 'congé parental' && cessationEligibility?.annees_service < 1) {
+                    setError('Vous devez avoir au moins un (1) an de service pour bénéficier d\'un congé parental');
+                    setLoading(false);
+                    return;
+                }
+
                 // Validation du nombre de jours (sauf pour durée auto)
                 // Pour arrêt de travail, on vérifie > 0.
                 if (!isCongeAvecDureeAuto && (!nombreJoursFinal || parseInt(nombreJoursFinal) < 1)) {
@@ -376,13 +382,24 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                 });
             }
 
-            const response = await fetch('https://tourisme.2ise-groupe.com/api/demandes', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
-                body: formDataToSend
-            });
+            let response;
+            if (editMode && demandeId) {
+                response = await fetch(`https://tourisme.2ise-groupe.com/api/demandes/${demandeId}/modifier`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formDataToSend
+                });
+            } else {
+                response = await fetch('https://tourisme.2ise-groupe.com/api/demandes', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formDataToSend
+                });
+            }
 
             const result = await response.json();
 
@@ -462,16 +479,16 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
     const isCertificatReprise = formData.type_demande === 'certificat_reprise_service';
     const isCertificatNonJouissanceConge = formData.type_demande === 'certificat_non_jouissance_conge';
     const isMutation = formData.type_demande === 'mutation';
-    const isCongeExceptionnel = formData.motif_conge === 'congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois';
-    const isCongeMaternite = formData.motif_conge === 'congé de maternité (6 mois)';
-    const isCongePaternite = formData.motif_conge === 'congé de paternité 30 jours';
-    const isCongeAnnuelCumule = formData.motif_conge === 'congé annuel cumulé 60 jours';
+    const isCongeExceptionnel = formData.motif_conge === 'congé exceptionnel de maladie';
+    const isCongeMaternite = formData.motif_conge === 'congé de maternité';
+    const isCongePaternite = formData.motif_conge === 'congé de paternité';
+    const isCongeAnnuelCumule = formData.motif_conge === 'congé annuel cumulé';
     const isCongeAvecDureeAuto = isCongeMaternite || isCongePaternite || isCongeExceptionnel || isCongeAnnuelCumule;
     
     // Flags for sickness
-    const isMaladieCourte = formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois';
-    const isMaladieLongue = formData.motif_conge === 'congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)';
-    const isArretTravail = formData.motif_conge === 'arrêt de travail de 3 à 15 jours';
+    const isMaladieCourte = formData.motif_conge === 'congé de maladie de courte durée';
+    const isMaladieLongue = formData.motif_conge === 'congé malade longue durée';
+    const isArretTravail = formData.motif_conge === 'arrêt de travail';
     const isMaladie = isArretTravail || isMaladieCourte || isMaladieLongue || isCongeExceptionnel;
     
     const currentYear = new Date().getFullYear();
@@ -488,60 +505,58 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                             'Authorization': `Bearer ${token}`
                         }
                     });
-                    
-                    if (agentResponse.ok) {
-                        const agentResult = await agentResponse.json();
-                        if (agentResult.success && agentResult.data) {
-                            const agent = agentResult.data;
-                            // Pour le congé annuel, priorité à la date de première prise de service (date_embauche)
-                            // car l'agent peut avoir travaillé ailleurs avant de venir au ministère
-                            // Pour les autres types de cessation, utiliser date_prise_service_au_ministere
-                            const datePriseService = agent.date_embauche || agent.date_prise_service_au_ministere;
-                            
-                            if (datePriseService) {
-                                const datePriseServiceObj = new Date(datePriseService);
-                                const anneeActuelle = new Date().getFullYear();
-                                const moisActuel = new Date().getMonth();
-                                const jourActuel = new Date().getDate();
-                                const anneePriseService = datePriseServiceObj.getFullYear();
-                                const moisPriseService = datePriseServiceObj.getMonth();
-                                const jourPriseService = datePriseServiceObj.getDate();
+                    if (agentId) {
+                        const response = await fetch(`https://tourisme.2ise-groupe.com/api/agents/${agentId}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (response.ok) {
+                            const result = await response.json();
+                            if (result.success && result.data) {
+                                const agent = result.data;
+                                const datePriseService = agent.date_embauche || agent.date_prise_service_au_ministere;
                                 
-                                // Calculer les années complètes de service
-                                let anneesService = anneeActuelle - anneePriseService;
-                                if (moisActuel < moisPriseService || (moisActuel === moisPriseService && jourActuel < jourPriseService)) {
-                                    anneesService--;
+                                if (datePriseService) {
+                                    const datePriseServiceObj = new Date(datePriseService);
+                                    const anneeActuelle = new Date().getFullYear();
+                                    const moisActuel = new Date().getMonth();
+                                    const jourActuel = new Date().getDate();
+                                    const anneePriseService = datePriseServiceObj.getFullYear();
+                                    const moisPriseService = datePriseServiceObj.getMonth();
+                                    const jourPriseService = datePriseServiceObj.getDate();
+                                    
+                                    let anneesService = anneeActuelle - anneePriseService;
+                                    if (moisActuel < moisPriseService || (moisActuel === moisPriseService && jourActuel < jourPriseService)) {
+                                        anneesService--;
+                                    }
+                                    
+                                    const eligible = anneesService >= 2;
+                                    setCanCreateCessation(eligible);
+                                    setCessationEligibility({
+                                        eligible,
+                                        annees_service: anneesService,
+                                        date_prise_service: datePriseService
+                                    });
+                                } else {
+                                    setCanCreateCessation(false);
+                                    setCessationEligibility({
+                                        eligible: false,
+                                        annees_service: null,
+                                        date_prise_service: null,
+                                        message: 'La date de prise de service n\'est pas définie'
+                                    });
                                 }
-                                
-                                // L'agent doit avoir au moins 2 ans de service (être dans sa 3ème année)
-                                const eligible = anneesService >= 2;
-                                setCanCreateCessation(eligible);
-                                setCessationEligibility({
-                                    eligible,
-                                    annees_service: anneesService,
-                                    date_prise_service: datePriseService
-                                });
-                            } else {
-                                setCanCreateCessation(false);
-                                setCessationEligibility({
-                                    eligible: false,
-                                    annees_service: null,
-                                    date_prise_service: null,
-                                    message: 'La date de prise de service n\'est pas définie'
-                                });
                             }
                         }
                     }
                 } catch (err) {
                     console.error('Erreur lors de la vérification de l\'éligibilité:', err);
-                    // En cas d'erreur, on laisse l'option activée (le backend validera)
                     setCanCreateCessation(true);
                 }
             };
 
             checkCessationEligibility();
         }
-    }, [isOpen, agentId]);
+    }, [isOpen, agentId, editMode, initialData]);
 
     // Charger les jours restants quand le type est "certificat_cessation"
     useEffect(() => {
@@ -686,7 +701,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
         <Modal isOpen={isOpen} toggle={toggle} size="lg">
             <ModalHeader toggle={toggle}>
                 <i className="fa fa-plus me-2"></i>
-                Nouvelle demande
+                {editMode ? 'Modifier la demande' : 'Nouvelle demande'}
             </ModalHeader>
             <Form onSubmit={handleSubmit}>
                 <ModalBody>
@@ -708,6 +723,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                     value={formData.type_demande}
                                     onChange={handleInputChange}
                                     required
+                                    disabled={editMode}
                                 >
                                     <option value="">Sélectionner un type</option>
                                     <option value="absence">Autorisation d'absence</option>
@@ -716,7 +732,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                     <option value="attestation_presence">Attestation de présence</option>
                                     <option 
                                         value="certificat_cessation" 
-                                        disabled={!canCreateCessation}
+                                        disabled={!canCreateCessation || editMode}
                                         style={{
                                             color: !canCreateCessation ? '#999' : 'inherit',
                                             fontStyle: !canCreateCessation ? 'italic' : 'normal'
@@ -804,7 +820,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                         >
                                             <option value="">Sélectionner un motif</option>
                                             <optgroup label="Évènements familiaux">
-                                                <option value="décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint">Décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint = 5 jours ouvrables</option>
+                                                <option value="décès d'un ascendant ou d'un descendant ou conjoint">Décès d'un ascendant (père ou mère) ou d'un descendant (enfant) ou conjoint = 5 jours ouvrables</option>
                                                 <option value="décès du père ou de la mère du conjoint">Décès du père ou de la mère du conjoint = 3 jours ouvrables</option>
                                                 <option value="décès frère ou sœur">Décès frère ou sœur = 2 jours ouvrables</option>
                                                 <option value="mariage du fonctionnaire">Mariage du fonctionnaire = 5 jours ouvrables</option>
@@ -933,38 +949,13 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
 
                             {isMutation && (
                                 <>
-                                    <FormGroup>
-                                        <Label for="id_direction_destination">Direction de destination *</Label>
-                                        <Input
-                                            type="select"
-                                            name="id_direction_destination"
-                                            id="id_direction_destination"
-                                            value={formData.id_direction_destination}
-                                            onChange={handleInputChange}
-                                            required
-                                            disabled={loadingDirections}
-                                        >
-                                            <option value="">Sélectionner une direction</option>
-                                            {directions.map(direction => (
-                                                <option key={direction.id} value={direction.id}>
-                                                    {direction.libelle}
-                                                </option>
-                                            ))}
-                                        </Input>
-                                        {loadingDirections && (
-                                            <small className="text-muted d-block mt-1">
-                                                <Spinner size="sm" className="me-2" />
-                                                Chargement des directions...
-                                            </small>
-                                        )}
-                                    </FormGroup>
+
                                     <Alert color="info" className="mt-3">
                                         <i className="fa fa-info-circle me-2"></i>
                                         <strong>Demande de mutation</strong>
                                         <p className="mb-0 mt-2">
-                                            Votre demande de mutation sera transmise à votre sous-directeur puis au directeur pour validation, 
-                                            puis au DRH pour approbation finale. La date d'effet de la mutation sera déterminée par la DRH lors de la validation. 
-                                            Une note de service de mutation sera générée après validation.
+                                            Votre demande de mutation sera transmise par voie de hiérarchique pour validation et signature.
+                                            Une note de service de mutation sera généré et disponible dans votre espace
                                         </p>
                                     </Alert>
                                 </>
@@ -986,13 +977,14 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                 >
                                                     <option value="">Sélectionner un motif</option>
                                                     <option value="congé annuel">Congé annuel</option>
-                                                    <option value="congé annuel cumulé 60 jours">Congé annuel cumulé 60 jours</option>
-                                                    <option value="congé de maternité (6 mois)">Congé de maternité (6 mois)</option>
-                                                    <option value="congé de paternité 30 jours">Congé de paternité 30 jours</option>
-                                                    <option value="arrêt de travail de 3 à 15 jours">Arrêt de travail de 3 à 15 jours</option>
-                                                    <option value="congé de maladie de courte durée 3 à 6 mois">Congé de maladie de courte durée 3 à 6 mois</option>
-                                                    <option value="congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)">Congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)</option>
-                                                    <option value="congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois">Congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois</option>
+                                                    <option value="congé annuel cumulé">Congé annuel cumulé 60 jours</option>
+                                                    <option value="congé de maternité">Congé de maternité (6 mois)</option>
+                                                    <option value="congé parental">Congé parental (Maximum 1 an, renouvelable 2 fois)</option>
+                                                    <option value="congé de paternité">Congé de paternité 30 jours</option>
+                                                    <option value="arrêt de travail">Arrêt de travail de 3 à 15 jours</option>
+                                                    <option value="congé de maladie de courte durée">Congé de maladie de courte durée 3 à 6 mois</option>
+                                                    <option value="congé malade longue durée">Congé malade longue durée (6 mois 1ère tranche, 6 mois 2ème tranche, 6 mois 3ème tranche)</option>
+                                                    <option value="congé exceptionnel de maladie">Congé exceptionnel de maladie (accident ou maladie professionnelle) de 60 mois</option>
                                                 </Input>
                                             </FormGroup>
                                         </Col>
@@ -1049,11 +1041,11 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                     </div>
                                                     <small className="text-muted d-block mt-1">
                                                         {formData.motif_conge === 'congé annuel' && 'Min: 1 jour | Max: 30 jours'}
-                                                        {formData.motif_conge === 'arrêt de travail de 3 à 15 jours' && 'Min: 1 jour | Max: 15 jours'}
-                                                        {formData.motif_conge === 'congé de maladie de courte durée 3 à 6 mois' && 'Max: 180 jours'}
+                                                        {formData.motif_conge === 'arrêt de travail' && 'Min: 1 jour | Max: 15 jours'}
+                                                        {formData.motif_conge === 'congé de maladie de courte durée' && 'Max: 180 jours'}
                                                     </small>
                                                     
-                                                    {['congé annuel', 'congé annuel cumulé 60 jours', 'congé partiel'].includes(formData.motif_conge) && (
+                                                    {['congé annuel', 'congé annuel cumulé', 'congé partiel'].includes(formData.motif_conge) && (
                                                         <>
                                                             {formData.annee_au_titre_conge && congesParAnnee[formData.annee_au_titre_conge] !== undefined && (
                                                                 <small className={`d-block mt-1 ${congesParAnnee[formData.annee_au_titre_conge] >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
@@ -1063,7 +1055,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
                                                             {!formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes !== null && (
                                                                 <small className={`d-block mt-1 ${joursRestantsAnneesPrecedentes.total >= parseInt(formData.nombre_jours || 0) ? 'text-success' : 'text-danger'}`}>
                                                                     <strong>Disponible:</strong> {joursRestantsAnneesPrecedentes.total} jour(s) (Années {joursRestantsAnneesPrecedentes.annee2_label} + {joursRestantsAnneesPrecedentes.annee1_label})
-                                                                    {formData.motif_conge !== 'congé annuel cumulé 60 jours' && ' — sélectionnez une année pour le détail par année'}
+                                                                    {formData.motif_conge !== 'congé annuel cumulé' && ' — sélectionnez une année pour le détail par année'}
                                                                 </small>
                                                             )}
                                                             {!formData.annee_au_titre_conge && joursRestantsAnneesPrecedentes === null && joursRestants !== null && (

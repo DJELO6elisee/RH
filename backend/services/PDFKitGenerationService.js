@@ -20,17 +20,24 @@ const FOOTER_FONT_SIZE = 8;
 function applyUserInfoFallback(agent, validateur, userInfo) {
     if (!userInfo) return;
     if (agent) {
-        agent.service_nom = agent.service_nom || userInfo.service_nom;
-        agent.direction_nom = agent.direction_nom || userInfo.direction_nom || userInfo.service_nom;
         agent.ministere_nom = agent.ministere_nom || userInfo.ministere_nom;
         agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
+        // Ne pas forcer la direction de l'utilisateur connecté sur l'agent s'il en a déjà une
+        if (!agent.direction_nom && !agent.direction_generale_nom && !agent.service_nom) {
+            agent.direction_nom = userInfo.direction_nom || userInfo.service_nom;
+            agent.service_nom = userInfo.service_nom;
+        }
     }
     if (validateur) {
         validateur.ministere_nom = validateur.ministere_nom || userInfo.ministere_nom;
         validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-        validateur.direction_nom = validateur.direction_nom || userInfo.direction_nom || userInfo.service_nom;
-        validateur.service_nom = validateur.service_nom || userInfo.service_nom;
-        validateur.structure_nom = validateur.structure_nom || userInfo.structure_nom;
+        // Ne pas forcer la direction de l'utilisateur connecté sur le validateur
+        if (!validateur.direction_nom && !validateur.direction_generale_nom && !validateur.service_nom && !validateur.structure_nom) {
+            // Un validateur peut ne pas avoir de direction s'il est au cabinet, etc.
+            // S'il n'en a aucune, on peut optionnellement utiliser celle de userInfo, 
+            // mais ce n'est généralement pas correct pour un validateur de haut niveau.
+            // On laisse vide pour utiliser la logique de resolveOfficialHeaderContext.
+        }
     }
 }
 
@@ -144,9 +151,14 @@ function drawStandardSignatureRight(doc, startY = 0, signatureInfo = {}, options
             console.log(`✅ [drawStandardSignatureRight] Image insérée avec succès à (${imageX}, ${currentY - imageHeight - 10})`);
         } catch (error) {
             console.error('❌ [drawStandardSignatureRight] Erreur lors de l\'insertion de la signature dans le PDF:', error);
+            currentY += 60; // Espace de secours en cas d'erreur
         }
-    } else if (imagePath) {
-        console.warn(`⚠️ [drawStandardSignatureRight] Fichier de signature introuvable: ${imagePath}`);
+    } else {
+        if (imagePath) {
+            console.warn(`⚠️ [drawStandardSignatureRight] Fichier de signature introuvable: ${imagePath}`);
+        }
+        // Ajouter un espace vide pour permettre la signature manuelle
+        currentY += 60;
     }
 
     if (name) {
@@ -519,14 +531,11 @@ class PDFKitGenerationService {
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     headerContext.ministryName ||
                     agentMinistryName;
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    headerContext.directionName ||
-                    agentDirectionName;
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || '';
 
                 let displayDirectionName = agentDirectionName ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
-                    validatorDirectionName ||
-                    'DIRECTION DES RESSOURCES HUMAINES';
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    validatorDirectionName || '';
                 displayDirectionName = getAgentDirectionToDisplay(agent, displayDirectionName);
 
                 if (!agent.ministere_nom && agentMinistryName) {
@@ -546,7 +555,7 @@ class PDFKitGenerationService {
                     generatedAt,
                     city: 'Abidjan',
                     agentMinistryName,
-                    agentDirectionName: displayDirectionName,
+                    agentDirectionName: '', // Empêche l'affichage de la direction de l'agent si celle du validateur est vide
                     validatorMinistryName,
                     validatorDirectionName
                 });
@@ -846,6 +855,7 @@ class PDFKitGenerationService {
                        val.fonction_actuelle as validateur_fonction,
                        fa.designation_poste as validateur_fonction_designation,
                        val_dir.libelle as validateur_direction_nom,
+                       val_dg.libelle as validateur_direction_generale_nom,
                        m_val.nom as validateur_ministere_nom,
                        m_val.sigle as validateur_ministere_sigle,
                        val_civ.libele as validateur_civilite,
@@ -901,6 +911,7 @@ class PDFKitGenerationService {
                 ) ech_actuelle ON a.id = ech_actuelle.id_agent
                 LEFT JOIN agents val ON doc.id_agent_generateur = val.id
                 LEFT JOIN directions val_dir ON val.id_direction = val_dir.id
+                LEFT JOIN direction_generale val_dg ON val.id_direction_generale = val_dg.id
                 LEFT JOIN ministeres m_val ON val.id_ministere = m_val.id
                 LEFT JOIN civilites val_civ ON val.id_civilite = val_civ.id
                 LEFT JOIN fonction_agents fa ON val.id = fa.id_agent AND fa.date_entree = (
@@ -998,6 +1009,7 @@ class PDFKitGenerationService {
                 ministere_nom: row.validateur_ministere_nom,
                 ministere_sigle: row.validateur_ministere_sigle,
                 direction_nom: row.validateur_direction_nom,
+                direction_generale_nom: row.validateur_direction_generale_nom,
                 service_nom: row.validateur_direction_nom,
                 structure_nom: row.validateur_direction_nom,
                 civilite: row.validateur_civilite
@@ -1007,8 +1019,9 @@ class PDFKitGenerationService {
             applyUserInfoFallback(agent, validateur, userInfo);
 
             const typeDocument = row.type_document;
-            // Sur tous les documents sauf le certificat de prise de service : utiliser la signature de la DRH
-            if (typeDocument !== 'certificat_prise_service') {
+            // Uniquement certains documents nécessitent systématiquement la signature de la DRH
+            const documentsSignesParDRH = ['attestation_presence', 'attestation_travail', 'certificat_cessation'];
+            if (documentsSignesParDRH.includes(typeDocument)) {
                 const drh = await fetchDRHForSignature(agent.id_direction, agent.id_ministere);
                 if (drh) {
                     Object.assign(validateur, drh);
@@ -1166,7 +1179,7 @@ class PDFKitGenerationService {
                 const dateGeneration = generatedAt.toLocaleDateString('fr-FR');
                 const agentMinistryName = agent.ministere_nom || '';
                 const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur, userInfo });
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) || '';
                 const agentDirectionName = validatorDirectionName;
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,
@@ -1582,14 +1595,14 @@ class PDFKitGenerationService {
                 const validatorMinistryName = (validateur && validateur.ministere_nom) ||
                     headerContext.ministryName ||
                     agentMinistryName;
-                const validatorDirectionName =
                     (validateur && validateur.direction_nom) ||
+                    (validateur && validateur.direction_generale_nom) ||
                     (validateur && validateur.service_nom) ||
                     (validateur && validateur.structure_nom) ||
                     (userInfo && userInfo.direction_nom) ||
+                    (userInfo && userInfo.direction_generale_nom) ||
                     (userInfo && userInfo.service_nom) ||
-                    (userInfo && userInfo.structure_nom) ||
-                    'DIRECTION DES RESSOURCES HUMAINES';
+                    (userInfo && userInfo.structure_nom) || '';
 
                 const agentDirectionName = validatorDirectionName;
 
@@ -1993,7 +2006,7 @@ class PDFKitGenerationService {
                 const dateGeneration = generatedAt.toLocaleDateString('fr-FR');
                 const agentMinistryName = agent.ministere_nom || '';
                 const { ministryName: validatorMinistryName } = resolveOfficialHeaderContext({ agent, validateur, userInfo });
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) || '';
                 const agentDirectionName = validatorDirectionName;
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
                     documentNumber,

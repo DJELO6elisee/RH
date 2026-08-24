@@ -193,8 +193,9 @@ export const canAccessRoute = async(user, token, organizationId, organizationTyp
         return true;
     }
 
-    // Vérifier si c'est un directeur
-    const isDirecteur = user.role === 'directeur' || user.role?.toLowerCase() === 'directeur';
+    // Vérifier si c'est un directeur ou assimilé
+    const userRoleLower = user.role?.toLowerCase() || '';
+    const isDirecteur = userRoleLower === 'directeur' || userRoleLower === 'responsable_cellule_de_passation' || userRoleLower === 'responsble_cellule_de_passation';
     
     if (isDirecteur && routeId) {
         // Pour les directeurs, vérifier si la route autorise leur rôle

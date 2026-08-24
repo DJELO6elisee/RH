@@ -192,7 +192,33 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
         return new Date(dateString).toLocaleDateString('fr-FR');
     };
 
+    const handleAnnulerDemande = async (demandeId) => {
+        if (!window.confirm("Êtes-vous sûr de vouloir annuler cette demande ? Cette action est irréversible.")) {
+            return;
+        }
 
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`https://tourisme.2ise-groupe.com/api/demandes/${demandeId}/annuler`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Demande annulée avec succès');
+                loadDemandes(); // Recharger la liste
+            } else {
+                alert(data.error || "Erreur lors de l'annulation de la demande");
+            }
+        } catch (error) {
+            console.error("Erreur lors de l'annulation:", error);
+            alert("Erreur lors de l'annulation de la demande");
+        }
+    };
 
     return (
         <Card>
@@ -480,6 +506,40 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
                                                         <i className="fa fa-eye me-1"></i>
                                                         Voir
                                                     </Button>
+                                                    {demande.niveau_evolution_demande === 'soumis' && (
+                                                        <Button
+                                                            type="button"
+                                                            color="outline-danger"
+                                                            size="sm"
+                                                            className="ms-1"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleAnnulerDemande(demande.id);
+                                                            }}
+                                                            title="Annuler la demande"
+                                                            style={{ fontSize: '0.7rem', padding: '2px 4px', minWidth: '45px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                        >
+                                                            <i className="fa fa-times"></i>
+                                                        </Button>
+                                                    )}
+                                                    {demande.status !== 'approuve' && demande.status !== 'rejete' && demande.status !== 'annule' && demande.niveau_evolution_demande !== 'valide_par_ministre' && demande.niveau_evolution_demande !== 'annule' && (
+                                                        <Button
+                                                            type="button"
+                                                            color="outline-warning"
+                                                            size="sm"
+                                                            className="ms-1"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (typeof onDemandeClick === 'function') {
+                                                                    onDemandeClick('edit', demande);
+                                                                }
+                                                            }}
+                                                            title="Modifier la demande"
+                                                            style={{ fontSize: '0.7rem', padding: '2px 4px', minWidth: '45px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                        >
+                                                            <i className="fa fa-pencil"></i>
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -607,6 +667,38 @@ const DemandesList = ({ agentId, onDemandeClick, typeDemande = '' }) => {
                                             <i className="fa fa-eye me-1"></i>
                                             Voir la demande
                                         </Button>
+                                        {demande.niveau_evolution_demande === 'soumis' && (
+                                            <Button
+                                                type="button"
+                                                color="danger"
+                                                size="sm"
+                                                className="ms-2"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleAnnulerDemande(demande.id);
+                                                }}
+                                            >
+                                                <i className="fa fa-times me-1"></i>
+                                                Annuler
+                                            </Button>
+                                        )}
+                                        {demande.status !== 'approuve' && demande.status !== 'rejete' && demande.status !== 'annule' && demande.niveau_evolution_demande !== 'valide_par_ministre' && demande.niveau_evolution_demande !== 'annule' && (
+                                            <Button
+                                                type="button"
+                                                color="warning"
+                                                size="sm"
+                                                className="ms-2"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (typeof onDemandeClick === 'function') {
+                                                        onDemandeClick('edit', demande);
+                                                    }
+                                                }}
+                                            >
+                                                <i className="fa fa-pencil me-1"></i>
+                                                Modifier
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             ))

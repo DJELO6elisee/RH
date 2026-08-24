@@ -63,6 +63,22 @@ export const backendRoutes = [
         category: 'États et Rapports'
     },
     {
+        id: 'agents_demandes_report',
+        name: 'Bilan des Demandes par Agent',
+        path: '/agents-demandes-report',
+        icon: 'MdInsertChart',
+        description: 'Tableau récapitulatif du nombre de demandes par agent',
+        category: 'États et Rapports'
+    },
+    {
+        id: 'point_agents_report',
+        name: 'Point des Agents',
+        path: '/point-agents',
+        icon: 'MdPeople',
+        description: 'Tableaux statistiques sur le point des agents par catégories et types',
+        category: 'États et Rapports'
+    },
+    {
         id: 'drh-parametres',
         name: 'Paramètres du compte',
         path: '/drh-parametres',

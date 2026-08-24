@@ -25,6 +25,7 @@
         "react-notification-system": "^0.2.17",
         "react-router": "^5.3.4",
         "react-router-dom": "^5.3.4",
+        "react-select": "^5.10.2",
         "react-simple-maps": "^1.0.0",
         "react-sizeme": "^3.0.1",
         "react-virtualized": "^9.22.5",

@@ -399,8 +399,7 @@ class DocumentGenerationService {
         });
         const ministryName = (validateurWithSigle && (validateurWithSigle.ministere_nom || validateurWithSigle.ministereNom))
             || agentWithSigle.ministere_nom || '';
-        const directionName = (validateurWithSigle && (validateurWithSigle.direction_nom || validateurWithSigle.directionNom || validateurWithSigle.service_nom))
-            || agentWithSigle.direction_nom || agentWithSigle.service_nom || '';
+        const directionName = (validateurWithSigle && (validateurWithSigle.direction_nom || validateurWithSigle.direction_generale_nom || validateurWithSigle.directionNom || validateurWithSigle.service_nom)) || '';
         const headerHTML = buildHeaderHTML({
             documentNumber,
             dateString: generationDate,
@@ -684,8 +683,8 @@ class DocumentGenerationService {
         });
         const ministryName = (validateurWithSigle && (validateurWithSigle.ministere_nom || validateurWithSigle.ministereNom))
             || agentWithSigle.ministere_nom || '';
-        const directionName = (validateurWithSigle && (validateurWithSigle.direction_nom || validateurWithSigle.directionNom || validateurWithSigle.service_nom))
-            || agentWithSigle.direction_nom || agentWithSigle.service_nom || '';
+        const directionName = (validateurWithSigle && (validateurWithSigle.direction_nom || validateurWithSigle.direction_generale_nom || validateurWithSigle.directionNom || validateurWithSigle.service_nom))
+            || agentWithSigle.direction_nom || agentWithSigle.direction_generale_nom || agentWithSigle.service_nom || '';
         const headerHTML = buildHeaderHTML({
             documentNumber,
             dateString: generationDate,
@@ -1177,8 +1176,8 @@ class DocumentGenerationService {
         const documentNumber = demande.numero_document || demande.reference || demande.numero || '';
         const ministryName = (validateur && (validateur.ministere_nom || validateur.ministereNom))
             || agent.ministere_nom || '';
-        const directionName = (validateur && (validateur.direction_nom || validateur.directionNom || validateur.service_nom))
-            || agent.direction_nom || agent.service_nom || '';
+        const directionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.directionNom || validateur.service_nom))
+            || agent.direction_nom || agent.direction_generale_nom || agent.service_nom || '';
         const headerHTML = buildHeaderHTML({
             documentNumber,
             dateString: generationDate,
@@ -1445,8 +1444,8 @@ class DocumentGenerationService {
         const documentNumber = demande.numero_document || demande.reference || demande.numero || '';
         const ministryName = (validateur && (validateur.ministere_nom || validateur.ministereNom))
             || agent.ministere_nom || '';
-        const directionName = (validateur && (validateur.direction_nom || validateur.directionNom || validateur.service_nom))
-            || agent.direction_nom || agent.service_nom || '';
+        const directionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.directionNom || validateur.service_nom))
+            || agent.direction_nom || agent.direction_generale_nom || agent.service_nom || '';
         const headerHTML = buildHeaderHTML({
             documentNumber,
             dateString: generationDate,
@@ -3209,9 +3208,9 @@ class DocumentGenerationService {
             || agent.ministere_nom || '';
 
         // Utiliser la direction du validateur pour le header (pas celle de l'agent)
-        const directionName = (validateur && (validateur.direction_nom || validateur.directionNom || validateur.service_nom))
-            || (userInfo && (userInfo.direction_nom || userInfo.service_nom))
-            || agent.direction_nom || agent.service_nom || direction || '';
+        const directionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.directionNom || validateur.service_nom))
+            || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom))
+            || agent.direction_nom || agent.direction_generale_nom || agent.service_nom || direction || '';
 
         // Numéro de document - Calculer dynamiquement en comptant les certificats de prise de service
         let numeroDocument = options.numero_document;

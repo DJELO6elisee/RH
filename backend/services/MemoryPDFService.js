@@ -18,17 +18,24 @@ const FOOTER_FONT_SIZE = 8;
 function applyUserInfoFallback(agent, validateur, userInfo) {
     if (!userInfo) return;
     if (agent) {
-        agent.service_nom = agent.service_nom || userInfo.service_nom;
-        agent.direction_nom = agent.direction_nom || userInfo.direction_nom || userInfo.service_nom;
         agent.ministere_nom = agent.ministere_nom || userInfo.ministere_nom;
         agent.ministere_sigle = agent.ministere_sigle || userInfo.ministere_sigle;
+        // Ne pas forcer la direction de l'utilisateur connecté sur l'agent s'il en a déjà une
+        if (!agent.direction_nom && !agent.direction_generale_nom && !agent.service_nom) {
+            agent.direction_nom = userInfo.direction_nom || userInfo.service_nom;
+            agent.service_nom = userInfo.service_nom;
+        }
     }
     if (validateur) {
         validateur.ministere_nom = validateur.ministere_nom || userInfo.ministere_nom;
         validateur.ministere_sigle = validateur.ministere_sigle || userInfo.ministere_sigle;
-        validateur.direction_nom = validateur.direction_nom || userInfo.direction_nom || userInfo.service_nom;
-        validateur.service_nom = validateur.service_nom || userInfo.service_nom;
-        validateur.structure_nom = validateur.structure_nom || userInfo.structure_nom;
+        // Ne pas forcer la direction de l'utilisateur connecté sur le validateur
+        if (!validateur.direction_nom && !validateur.direction_generale_nom && !validateur.service_nom && !validateur.structure_nom) {
+            // Un validateur peut ne pas avoir de direction s'il est au cabinet, etc.
+            // S'il n'en a aucune, on peut optionnellement utiliser celle de userInfo, 
+            // mais ce n'est généralement pas correct pour un validateur de haut niveau.
+            // On laisse vide pour utiliser la logique de resolveOfficialHeaderContext.
+        }
     }
 }
 
@@ -142,9 +149,14 @@ function drawStandardSignatureRight(doc, startY = 0, signatureInfo = {}, options
             console.log(`✅ [drawStandardSignatureRight] Image insérée avec succès à (${imageX}, ${currentY - imageHeight - 10})`);
         } catch (error) {
             console.error('❌ [drawStandardSignatureRight] Erreur lors de l\'insertion de la signature dans le PDF:', error);
+            currentY += 60; // Espace de secours en cas d'erreur
         }
-    } else if (imagePath) {
-        console.warn(`⚠️ [drawStandardSignatureRight] Fichier de signature introuvable: ${imagePath}`);
+    } else {
+        if (imagePath) {
+            console.warn(`⚠️ [drawStandardSignatureRight] Fichier de signature introuvable: ${imagePath}`);
+        }
+        // Ajouter un espace vide pour permettre la signature manuelle
+        currentY += 60;
     }
 
     if (name) {
@@ -559,8 +571,8 @@ class MemoryPDFService {
                     agent.service_nom ||
                     agent.direction_generale_nom ||
                     headerContext.directionName ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
                     '';
 
                 if (!agent.direction_nom && resolvedDirectionName) {
@@ -575,9 +587,7 @@ class MemoryPDFService {
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) ||
                     headerContext.ministryName ||
                     agentMinistryName;
-                const validatorDirectionName = headerContext.directionName ||
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    resolvedDirectionName;
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || '';
 
                 if (!agent.ministere_nom && agentMinistryName) {
                     agent.ministere_nom = agentMinistryName;
@@ -594,7 +604,7 @@ class MemoryPDFService {
                     generatedAt,
                     city: 'Abidjan',
                     agentMinistryName,
-                    agentDirectionName,
+                    agentDirectionName: '', // Empêche l'affichage de la direction de l'agent si celle du validateur est vide
                     validatorMinistryName,
                     validatorDirectionName
                 });
@@ -661,7 +671,7 @@ class MemoryPDFService {
                 yPosition += 25;
                 const serviceDisplay = headerContext.directionName ||
                     agent.direction_nom ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     validatorDirectionName ||
                     agent.service_nom ||
                     'DIRECTION';
@@ -820,6 +830,7 @@ class MemoryPDFService {
                     drh.fonction_actuelle as validateur_fonction,
                     fa.designation_poste as validateur_fonction_designation,
                     drh_dir.libelle as validateur_direction_nom,
+                    drh_dg.libelle as validateur_direction_generale_nom,
                     m_drh.nom as validateur_ministere_nom,
                     m_drh.sigle as validateur_ministere_sigle,
                     drh_civ.libele as validateur_civilite
@@ -843,6 +854,7 @@ class MemoryPDFService {
                 ) fa_actuel ON a.id = fa_actuel.id_agent
                 LEFT JOIN agents drh ON d.id_drh = drh.id
                 LEFT JOIN directions drh_dir ON drh.id_direction = drh_dir.id
+                LEFT JOIN direction_generale drh_dg ON drh.id_direction_generale = drh_dg.id
                 LEFT JOIN ministeres m_drh ON drh.id_ministere = m_drh.id
                 LEFT JOIN civilites drh_civ ON drh.id_civilite = drh_civ.id
                 LEFT JOIN fonction_agents fa ON drh.id = fa.id_agent AND fa.date_entree = (
@@ -901,6 +913,7 @@ class MemoryPDFService {
                 ministere_sigle: row.validateur_ministere_sigle,
                 ministere_nom: row.validateur_ministere_nom,
                 direction_nom: row.validateur_direction_nom,
+                direction_generale_nom: row.validateur_direction_generale_nom,
                 service_nom: row.validateur_direction_nom,
                 structure_nom: row.validateur_direction_nom,
                 civilite: row.validateur_civilite
@@ -958,6 +971,7 @@ class MemoryPDFService {
                     val.fonction_actuelle as validateur_fonction,
                     fa.designation_poste as validateur_fonction_designation,
                     val_dir.libelle as validateur_direction_nom,
+                    val_dg.libelle as validateur_direction_generale_nom,
                     val.sexe as validateur_sexe, val.nom_epoux as validateur_nom_epoux,
                     m_val.nom as validateur_ministere_nom,
                     m_val.sigle as validateur_ministere_sigle,
@@ -993,6 +1007,7 @@ class MemoryPDFService {
                 ) ech_actuelle ON a.id = ech_actuelle.id_agent
                 LEFT JOIN agents val ON doc.id_agent_generateur = val.id
                 LEFT JOIN directions val_dir ON val.id_direction = val_dir.id
+                LEFT JOIN direction_generale val_dg ON val.id_direction_generale = val_dg.id
                 LEFT JOIN ministeres m_val ON val.id_ministere = m_val.id
                 LEFT JOIN civilites val_civ ON val.id_civilite = val_civ.id
                 LEFT JOIN fonction_agents fa ON val.id = fa.id_agent AND fa.date_entree = (
@@ -1085,6 +1100,7 @@ class MemoryPDFService {
                 ministere_sigle: row.validateur_ministere_sigle,
                 ministere_nom: row.validateur_ministere_nom,
                 direction_nom: row.validateur_direction_nom,
+                direction_generale_nom: row.validateur_direction_generale_nom,
                 service_nom: row.validateur_direction_nom,
                 structure_nom: row.validateur_direction_nom,
                 civilite: row.validateur_civilite
@@ -1094,8 +1110,9 @@ class MemoryPDFService {
             applyUserInfoFallback(agent, validateur, userInfo);
 
             const typeDocument = row.type_document;
-            // Sur tous les documents sauf le certificat de prise de service : utiliser la signature de la DRH
-            if (typeDocument !== 'certificat_prise_service') {
+            // Uniquement certains documents nécessitent systématiquement la signature de la DRH
+            const documentsSignesParDRH = ['attestation_presence', 'attestation_travail', 'certificat_cessation'];
+            if (documentsSignesParDRH.includes(typeDocument)) {
                 const drh = await fetchDRHForSignature(agent.id_direction, agent.id_ministere);
                 if (drh) {
                     Object.assign(validateur, drh);
@@ -1183,7 +1200,7 @@ class MemoryPDFService {
                 const headerContext = resolveOfficialHeaderContext({ agent, validateur, userInfo });
                 const agentMinistryName = agent.ministere_nom || (userInfo && userInfo.ministere_nom) || headerContext.ministryName || '';
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) || headerContext.ministryName || agentMinistryName;
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) || '';
                 const agentDirectionName = validatorDirectionName;
 
                 const headerBottom = await drawOfficialHeaderPDF(doc, {
@@ -1801,7 +1818,7 @@ class MemoryPDFService {
                 const headerContext = resolveOfficialHeaderContext({ agent, validateur, userInfo });
                 const agentMinistryName = agent.ministere_nom || (userInfo && userInfo.ministere_nom) || headerContext.ministryName || '';
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) || headerContext.ministryName || agentMinistryName;
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) || '';
                 const agentDirectionName = validatorDirectionName;
 
                 // Récupérer la décision active (collective ou individuelle selon le rôle de l'agent)
@@ -2464,16 +2481,16 @@ class MemoryPDFService {
                     agent.service_nom ||
                     agent.direction_generale_nom ||
                     headerContext.directionName ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
                     '';
 
                 const headerDirectionName = resolvedDirectionName ||
                     agent.direction_nom ||
                     agent.service_nom ||
                     agent.direction_generale_nom ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
                     'DIRECTION DES RESSOURCES HUMAINES';
 
                 if (!agent.direction_nom && headerDirectionName) {
@@ -2487,8 +2504,8 @@ class MemoryPDFService {
                     headerContext.ministryName ||
                     agentMinistryName;
                 const validatorDirectionName =
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     'DIRECTION DES RESSOURCES HUMAINES';
 
                 const agentDirectionName = validatorDirectionName;
@@ -2632,7 +2649,8 @@ class MemoryPDFService {
                 try {
                     const configResult = await db.query("SELECT value FROM configurations WHERE key = 'template_attestation_travail'");
                     if (configResult.rows.length > 0) {
-                        let templateBody = configResult.rows[0].value.body;
+                        const template = configResult.rows[0].value;
+                        let templateBody = template.body;
                         const finalGrade = gradeLibelle || agent.grade_libele || agent.grade || '';
                         
                         if (templateBody && !finalGrade) {
@@ -2864,6 +2882,8 @@ class MemoryPDFService {
 
                 // Récupérer les informations de classe et échelon de l'agent
                 let classeInfo = '';
+                let gradeLibelle = '';
+                let echelonLibelle = '';
                 try {
                     const db = require('../config/database');
                     // Récupérer le grade le plus récent
@@ -2888,8 +2908,6 @@ class MemoryPDFService {
                     `;
                     const echelonResult = await db.query(echelonQuery, [agent.id]);
 
-                    let gradeLibelle = '';
-                    let echelonLibelle = '';
                     let dateEntree = null;
 
                     if (gradeResult.rows.length > 0) {
@@ -2912,12 +2930,12 @@ class MemoryPDFService {
                             day: 'numeric'
                         });
                         if (gradeLibelle && echelonLibelle) {
-                            classeInfo = `de ${gradeLibelle} ${echelonLibelle} au ${dateEntreeStr}`;
+                            classeInfo = `${gradeLibelle} ${echelonLibelle} au ${dateEntreeStr}`;
                         } else if (gradeLibelle) {
-                            classeInfo = `de ${gradeLibelle} au ${dateEntreeStr}`;
+                            classeInfo = `${gradeLibelle} au ${dateEntreeStr}`;
                         }
                     } else if (gradeLibelle && echelonLibelle) {
-                        classeInfo = `de ${gradeLibelle} ${echelonLibelle}`;
+                        classeInfo = `${gradeLibelle} ${echelonLibelle}`;
                     }
                 } catch (error) {
                     console.error('⚠️ Erreur lors de la récupération du grade et de l\'échelon:', error);
@@ -2938,7 +2956,7 @@ class MemoryPDFService {
                 const headerContext = resolveOfficialHeaderContext({ agent, validateur, userInfo });
                 const agentMinistryName = agent.ministere_nom || (userInfo && userInfo.ministere_nom) || headerContext.ministryName || '';
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) || headerContext.ministryName || agentMinistryName;
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) || 'DIRECTION DES RESSOURCES HUMAINES';
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) || (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) || '';
                 const agentDirectionName = validatorDirectionName;
 
                 // Récupérer la décision pour l'en-tête reprise (année au titre du congé + périmètre)
@@ -3036,8 +3054,11 @@ class MemoryPDFService {
                                 nom: agentNameParts.nom,
                                 matricule: agent.matricule,
                                 poste: fonctionActuelle.toUpperCase(),
-                                classeInfo: classeInfo || '',
+                                classeInfo: classeInfo ? ` ${classeInfo}` : '',
+                                grade: gradeLibelle,
+                                echelon: echelonLibelle,
                                 direction: serviceNom.toUpperCase(),
+                                serviceNom: serviceNom.toUpperCase(),
                                 dateReprise: dateReprise,
                                 fullWithCivilite: agentNameParts.fullWithCivilite,
                                 fonctionActuelle: fonctionActuelle.toUpperCase()
@@ -3291,8 +3312,8 @@ class MemoryPDFService {
                     '';
 
                 const validatorDirectionName =
-                    (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
-                    (userInfo && (userInfo.direction_nom || userInfo.service_nom || userInfo.structure_nom)) ||
+                    (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
+                    (userInfo && (userInfo.direction_nom || userInfo.direction_generale_nom || userInfo.service_nom || userInfo.structure_nom)) ||
                     'DIRECTION DES RESSOURCES HUMAINES';
                 const agentDirectionName = validatorDirectionName;
                 const validatorMinistryName = (validateur && (validateur.ministere_nom || validateur.ministere)) ||
@@ -5176,7 +5197,7 @@ class MemoryPDFService {
                     agent.ministere_nom || '';
                 const agentMinistryName = validatorMinistryName; // Utiliser le ministère du validateur
                 // Utiliser la direction du validateur pour le header (pas celle de l'agent)
-                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.service_nom || validateur.structure_nom)) ||
+                const validatorDirectionName = (validateur && (validateur.direction_nom || validateur.direction_generale_nom || validateur.service_nom || validateur.structure_nom)) ||
                     (userInfo && (userInfo.direction_nom || userInfo.service_nom)) ||
                     'DIRECTION DES RESSOURCES HUMAINES';
                 // Pour le header, utiliser la direction du validateur comme agentDirectionName

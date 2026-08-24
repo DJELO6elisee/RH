@@ -84,6 +84,10 @@ const AgentsByServiceReportPage = React.lazy(() =>
     import('./pages/AgentsByServiceReportPage'));
 const AgentsByDirectionReportPage = React.lazy(() =>
     import('./pages/AgentsByDirectionReportPage'));
+const AgentsDemandesReportPage = React.lazy(() =>
+    import('./pages/AgentsDemandesReportPage'));
+const PointAgentsReportPage = React.lazy(() =>
+    import('./pages/PointAgentsReportPage'));
 const GradesPage = React.lazy(() =>
     import('./pages/GradesPage'));
 const DirectionsGeneralesPage = React.lazy(() =>
@@ -172,12 +176,12 @@ const AttributionTachesPage = React.lazy(() =>
     import('./pages/AttributionTachesPage'));
 const GestionMariagesPage = React.lazy(() =>
     import('./pages/GestionMariagesPage'));
-const EvaluationsPage = React.lazy(() =>
-    import('./pages/EvaluationsPage'));
 const ParametresPage = React.lazy(() =>
     import('./pages/ParametresPage.jsx'));
 const ParametresDRHPage = React.lazy(() =>
     import('./pages/ParametresDRHPage.jsx'));
+const EvaluationsPage = React.lazy(() =>
+    import('./pages/EvaluationsPage'));
 const InformaticienDashboard = React.lazy(() =>
     import('./pages/InformaticienDashboard.jsx'));
 const VerifyDocumentPage = React.lazy(() =>
@@ -229,7 +233,7 @@ class App extends React.Component {
     applyThemeColors = async () => {
         try {
             const apiBase = getApiUrl();
-                
+
             const response = await fetch(`${apiBase}/api/settings/colors`);
             if (response.ok) {
                 const result = await response.json();
@@ -278,7 +282,7 @@ class App extends React.Component {
                             background: linear-gradient(135deg, ${colors.warning} 0%, ${colors.warning} 100%) !important;
                         }
                     `;
-                    
+
                     const existingStyle = document.getElementById('dynamic-theme-colors');
                     if (existingStyle) {
                         existingStyle.remove();
@@ -295,240 +299,242 @@ class App extends React.Component {
         return (
             <AuthProvider>
                 <DRHLanguageProvider>
-                <BrowserRouter basename={getBasename()}>
-                    <InactivityHandler>
-                    <GAListener>
-                    <Switch>
-                        <LayoutRoute exact path="/login"
-                            layout={EmptyLayout}
-                            component={props => (
-                                <AuthPage {...props}
-                                    authState={STATE_LOGIN}
-                                />
-                            )}
-                        />
-                        <LayoutRoute exact path="/signup"
-                            layout={EmptyLayout}
-                            component={props => (
-                                <AuthPage {...props}
-                                    authState={STATE_SIGNUP}
-                                />
-                            )}
-                        />
+                    <BrowserRouter basename={getBasename()}>
+                        <InactivityHandler>
+                            <GAListener>
+                                <Switch>
+                                    <LayoutRoute exact path="/login"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <AuthPage {...props}
+                                                authState={STATE_LOGIN}
+                                            />
+                                        )}
+                                    />
+                                    <LayoutRoute exact path="/signup"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <AuthPage {...props}
+                                                authState={STATE_SIGNUP}
+                                            />
+                                        )}
+                                    />
 
-                        {/* Route par défaut - Redirection vers la page d'accueil du ministère */}
-                        <LayoutRoute exact path="/" 
-                            layout={EmptyLayout}
-                            component={() => <Redirect to="/ministere" />} />
-                        
-                        {/* Route par défaut - Détection automatique du domaine (seulement pour les utilisateurs non connectés) */}
-                        <LayoutRoute exact path="/public" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <DomainRouter {...props} />
-                                </React.Suspense>
-                            )} />
-                        
-                        {/* Route publique de vérification de QR code */}
-                        <LayoutRoute exact path="/verify" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <VerifyDocumentPage {...props} />
-                                </React.Suspense>
-                            )} />
-                        
-                        {/* Pages d'accueil publiques - Utilisation du EmptyLayout */}
-                        <LayoutRoute exact path="/ministere" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <MinistereHomePage {...props} />
-                                </React.Suspense>
-                            )} />
-                        <LayoutRoute exact path="/institution" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <InstitutionHomePage {...props} />
-                                </React.Suspense>
-                            )} />
-                        <LayoutRoute exact path="/login-page" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <LoginPage {...props} />
-                                </React.Suspense>
-                            )} />
-                        
-                        {/* Dashboard agent - Interface dédiée sans sidebar principale */}
-                        <LayoutRoute exact path="/agent-dashboard" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <AgentDashboard {...props} />
-                                </React.Suspense>
-                            )} />
-                        
-                        {/* Routes dynamiques pour les organisations */}
-                        <LayoutRoute exact path="/ministere/:organizationId" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <OrganizationHomePage {...props} />
-                                </React.Suspense>
-                            )} />
-                        <LayoutRoute exact path="/institution/:organizationId" 
-                            layout={EmptyLayout}
-                            component={props => (
-                                <React.Suspense fallback={<PageSpinner />}>
-                                    <OrganizationHomePage {...props} />
-                                </React.Suspense>
-                            )} />
+                                    {/* Route par défaut - Redirection vers la page d'accueil du ministère */}
+                                    <LayoutRoute exact path="/"
+                                        layout={EmptyLayout}
+                                        component={() => <Redirect to="/ministere" />} />
 
-                        <MainLayout breakpoint={this.props.breakpoint}>
-                            <React.Suspense fallback={<PageSpinner />}>
-                                <ProtectedRoute exact path="/" render={() => <Redirect to="/dashboard" />} />
-                                <ProtectedRoute exact path="/dashboard" component={DashboardWrapper} />
-                                <ProtectedRoute exact path="/parametres" component={ParametresPage} />
-                                <ProtectedRoute exact path="/informaticien-dashboard" component={InformaticienDashboard} />
-                                <ProtectedRoute exact path="/login-modal" component={AuthModalPage} />
-                                <ProtectedRoute exact path="/buttons" component={ButtonPage} />
-                                <ProtectedRoute exact path="/cards" component={CardPage} />
-                                <ProtectedRoute exact path="/widgets" component={WidgetPage} />
-                                <ProtectedRoute exact path="/typography" component={TypographyPage} />
-                                <ProtectedRoute exact path="/alerts" component={AlertPage} />
-                                <ProtectedRoute exact path="/tables" component={TablePage} />
-                                <ProtectedRoute exact path="/badges" component={BadgePage} />
-                                <ProtectedRoute exact path="/button-groups" component={ButtonGroupPage} />
-                                <ProtectedRoute exact path="/dropdowns" component={DropdownPage} />
-                                <ProtectedRoute exact path="/progress" component={ProgressPage} />
-                                <ProtectedRoute exact path="/modals" component={ModalPage} />
-                                <ProtectedRoute exact path="/forms" component={FormPage} />
-                                <ProtectedRoute exact path="/input-groups" component={InputGroupPage} />
-                                <ProtectedRoute exact path="/charts" component={ChartPage} />
+                                    {/* Route par défaut - Détection automatique du domaine (seulement pour les utilisateurs non connectés) */}
+                                    <LayoutRoute exact path="/public"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <DomainRouter {...props} />
+                                            </React.Suspense>
+                                        )} />
 
-                                {/* Routes de gestion RH */}
-                                <ProtectedRoute exact path="/drh-dashboard" component={DRHDashboardPage} />
-                                <ProtectedRoute exact path="/besoins-en-agents" component={DRHBesoinAgentsPage} />
-                                <ProtectedRoute exact path="/evaluations" component={EvaluationsPage} />
-                                <ProtectedRoute exact path="/notes-de-service" component={NotesDeServicePage} />
-                                <ProtectedRoute exact path="/drh-parametres" component={ParametresDRHPage} />
-                                <ProtectedRoute exact path="/agents" component={AgentsPage} />
+                                    {/* Route publique de vérification de QR code */}
+                                    <LayoutRoute exact path="/verify" 
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <VerifyDocumentPage {...props} />
+                                            </React.Suspense>
+                                        )} />
+
+                                    {/* Pages d'accueil publiques - Utilisation du EmptyLayout */}
+                                    <LayoutRoute exact path="/ministere"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <MinistereHomePage {...props} />
+                                            </React.Suspense>
+                                        )} />
+                                    <LayoutRoute exact path="/institution"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <InstitutionHomePage {...props} />
+                                            </React.Suspense>
+                                        )} />
+                                    <LayoutRoute exact path="/login-page"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <LoginPage {...props} />
+                                            </React.Suspense>
+                                        )} />
+
+                                    {/* Dashboard agent - Interface dédiée sans sidebar principale */}
+                                    <LayoutRoute exact path="/agent-dashboard"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <AgentDashboard {...props} />
+                                            </React.Suspense>
+                                        )} />
+
+                                    {/* Routes dynamiques pour les organisations */}
+                                    <LayoutRoute exact path="/ministere/:organizationId"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <OrganizationHomePage {...props} />
+                                            </React.Suspense>
+                                        )} />
+                                    <LayoutRoute exact path="/institution/:organizationId"
+                                        layout={EmptyLayout}
+                                        component={props => (
+                                            <React.Suspense fallback={<PageSpinner />}>
+                                                <OrganizationHomePage {...props} />
+                                            </React.Suspense>
+                                        )} />
+
+                                    <MainLayout breakpoint={this.props.breakpoint}>
+                                        <React.Suspense fallback={<PageSpinner />}>
+                                            <ProtectedRoute exact path="/" render={() => <Redirect to="/dashboard" />} />
+                                            <ProtectedRoute exact path="/dashboard" component={DashboardWrapper} />
+                                            <ProtectedRoute exact path="/parametres" component={ParametresPage} />
+                                            <ProtectedRoute exact path="/informaticien-dashboard" component={InformaticienDashboard} />
+                                            <ProtectedRoute exact path="/login-modal" component={AuthModalPage} />
+                                            <ProtectedRoute exact path="/buttons" component={ButtonPage} />
+                                            <ProtectedRoute exact path="/cards" component={CardPage} />
+                                            <ProtectedRoute exact path="/widgets" component={WidgetPage} />
+                                            <ProtectedRoute exact path="/typography" component={TypographyPage} />
+                                            <ProtectedRoute exact path="/alerts" component={AlertPage} />
+                                            <ProtectedRoute exact path="/tables" component={TablePage} />
+                                            <ProtectedRoute exact path="/badges" component={BadgePage} />
+                                            <ProtectedRoute exact path="/button-groups" component={ButtonGroupPage} />
+                                            <ProtectedRoute exact path="/dropdowns" component={DropdownPage} />
+                                            <ProtectedRoute exact path="/progress" component={ProgressPage} />
+                                            <ProtectedRoute exact path="/modals" component={ModalPage} />
+                                            <ProtectedRoute exact path="/forms" component={FormPage} />
+                                            <ProtectedRoute exact path="/input-groups" component={InputGroupPage} />
+                                            <ProtectedRoute exact path="/charts" component={ChartPage} />
+
+                                            {/* Routes de gestion RH */}
+                                            <ProtectedRoute exact path="/drh-dashboard" component={DRHDashboardPage} />
+                                            <ProtectedRoute exact path="/besoins-en-agents" component={DRHBesoinAgentsPage} />
+                                            <ProtectedRoute exact path="/evaluations" component={EvaluationsPage} />
+                                            <ProtectedRoute exact path="/notes-de-service" component={NotesDeServicePage} />
+                                            <ProtectedRoute exact path="/drh-parametres" component={ParametresDRHPage} />
+                                            <ProtectedRoute exact path="/agents" component={AgentsPage} />
                                 <ProtectedRoute exact path="/agents-instance-affectation" component={AgentsInstanceAffectationPage} />
-                                <ProtectedRoute exact path="/positions-agents" component={AgentsPositionsPage} />
-                                <ProtectedRoute exact path="/historique-des-agents" component={HistoriqueAgentsPage} />
-                                <ProtectedRoute exact path="/jours-conges" component={JoursCongesPage} />
-                                <ProtectedRoute exact path="/agents-reports" component={AgentsReportsPage} />
-                                <ProtectedRoute exact path="/projections-retraites" component={RetirementProjectionReportsPage} />
-                                <ProtectedRoute exact path="/agents-by-type-report" component={AgentsByTypeReportPage} />
-                                <ProtectedRoute exact path="/agents-by-direction-report" component={AgentsByDirectionReportPage} />
-                                <ProtectedRoute exact path="/agents-by-service-report" component={AgentsByServiceReportPage} />
-                                <ProtectedRoute exact path="/grades" component={GradesPage} />
-                                <ProtectedRoute exact path="/directions-generales" component={DirectionsGeneralesPage} />
-                                <ProtectedRoute exact path="/directions" component={DirectionsPage} />
-                                <ProtectedRoute exact path="/services" component={ServicesPage} />
-                                <ProtectedRoute exact path="/services-simple" component={ServicesPageSimple} />
-                                <ProtectedRoute exact path="/sous-directions" component={SousDirectionsPage} />
-                                <ProtectedRoute exact path="/services-entites-ministres" component={RouteManagementPage} />
-                                <ProtectedRoute exact path="/entites" component={RouteManagementPage} />
-                                <ProtectedRoute exact path="/ministeres" component={MinisteresPage} />
-                                <ProtectedRoute exact path="/institutions" component={InstitutionsPage} />
-                                <ProtectedRoute exact path="/emplois" component={EmploisPage} />
-                                <ProtectedRoute exact path="/fonctions" component={FonctionsPage} />
-                                <ProtectedRoute exact path="/diplomes" component={DiplomesPage} />
-                                <ProtectedRoute exact path="/echelons" component={EchelonsPage} />
-                                <ProtectedRoute exact path="/categories" component={CategoriesPage} />
-                                <ProtectedRoute exact path="/civilites" component={CivilitesPage} />
-                                <ProtectedRoute exact path="/nationalites" component={NationalitesPage} />
-                                <ProtectedRoute exact path="/situation-matrimoniale" component={SituationMatrimonialsPage} />
-                                <ProtectedRoute exact path="/type-d-agents" component={TypeDAgentsPage} />
-                                <ProtectedRoute exact path="/retraites" component={RetraitesPage} />
-                                <ProtectedRoute exact path="/verification-retraite" component={VerificationRetraitesPage} />
-                                <ProtectedRoute exact path="/prolongement-retraite" component={ProlongementRetraitePage} />
-                                <ProtectedRoute exact path="/planning-previsionnel-conges" component={PlanningPrevisionnelCongesPage} />
-                                <ProtectedRoute exact path="/agent-user-accounts" component={AgentUserAccountsPage} />
-                                <ProtectedRoute exact path="/attribution-taches-agents" component={AttributionTachesPage} />
-                                <ProtectedRoute exact path="/gestion-mariages" component={GestionMariagesPage} />
-                                <ProtectedRoute exact path="/services-entites" component={DirectionsEntitesPage} />
-                                <ProtectedRoute exact path="/positions" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/distinctions" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/specialites" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/langues" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/niveau-langues" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/logiciels" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/niveau-informatiques" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-conges" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/autre-absences" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/mode-entrees" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/motif-departs" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-retraites" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/pays" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/regions" component={RouteManagementPage} />
-                                <ProtectedRoute exact path="/departements" component={RouteManagementPage} />
-                                <ProtectedRoute exact path="/localites" component={RouteManagementPage} />
-                                <ProtectedRoute exact path="/enfants" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/handicaps" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/pathologies" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/nature-accidents" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/sanctions" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/nature-actes" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-documents" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-courriers" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-destinations" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-materiels" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/type-seminaires" component={TypeFormationsPage} />
-                                <ProtectedRoute exact path="/seminaire-formation" component={SeminaireFormationPage} />
-                                <ProtectedRoute exact path="/gestion-evenements" component={GestionEvenementsPage} />
-                                <ProtectedRoute exact path="/type-etablissements" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/unite-administratives" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/sindicats" component={VieAssociativePage} />
-                                <ProtectedRoute exact path="/dossiers" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/classeurs" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/tiers" component={GenericManagementPage} />
-                                <ProtectedRoute exact path="/auth" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/positions-agents" component={AgentsPositionsPage} />
+                                            <ProtectedRoute exact path="/historique-des-agents" component={HistoriqueAgentsPage} />
+                                            <ProtectedRoute exact path="/jours-conges" component={JoursCongesPage} />
+                                            <ProtectedRoute exact path="/agents-reports" component={AgentsReportsPage} />
+                                            <ProtectedRoute exact path="/projections-retraites" component={RetirementProjectionReportsPage} />
+                                            <ProtectedRoute exact path="/agents-by-type-report" component={AgentsByTypeReportPage} />
+                                            <ProtectedRoute exact path="/agents-by-direction-report" component={AgentsByDirectionReportPage} />
+                                            <ProtectedRoute exact path="/agents-by-service-report" component={AgentsByServiceReportPage} />
+                                            <ProtectedRoute exact path="/agents-demandes-report" component={AgentsDemandesReportPage} />
+                                            <ProtectedRoute exact path="/point-agents" component={PointAgentsReportPage} />
+                                            <ProtectedRoute exact path="/grades" component={GradesPage} />
+                                            <ProtectedRoute exact path="/directions-generales" component={DirectionsGeneralesPage} />
+                                            <ProtectedRoute exact path="/directions" component={DirectionsPage} />
+                                            <ProtectedRoute exact path="/services" component={ServicesPage} />
+                                            <ProtectedRoute exact path="/services-simple" component={ServicesPageSimple} />
+                                            <ProtectedRoute exact path="/sous-directions" component={SousDirectionsPage} />
+                                            <ProtectedRoute exact path="/services-entites-ministres" component={RouteManagementPage} />
+                                            <ProtectedRoute exact path="/entites" component={RouteManagementPage} />
+                                            <ProtectedRoute exact path="/ministeres" component={MinisteresPage} />
+                                            <ProtectedRoute exact path="/institutions" component={InstitutionsPage} />
+                                            <ProtectedRoute exact path="/emplois" component={EmploisPage} />
+                                            <ProtectedRoute exact path="/fonctions" component={FonctionsPage} />
+                                            <ProtectedRoute exact path="/diplomes" component={DiplomesPage} />
+                                            <ProtectedRoute exact path="/echelons" component={EchelonsPage} />
+                                            <ProtectedRoute exact path="/categories" component={CategoriesPage} />
+                                            <ProtectedRoute exact path="/civilites" component={CivilitesPage} />
+                                            <ProtectedRoute exact path="/nationalites" component={NationalitesPage} />
+                                            <ProtectedRoute exact path="/situation-matrimoniale" component={SituationMatrimonialsPage} />
+                                            <ProtectedRoute exact path="/type-d-agents" component={TypeDAgentsPage} />
+                                            <ProtectedRoute exact path="/retraites" component={RetraitesPage} />
+                                            <ProtectedRoute exact path="/verification-retraite" component={VerificationRetraitesPage} />
+                                            <ProtectedRoute exact path="/prolongement-retraite" component={ProlongementRetraitePage} />
+                                            <ProtectedRoute exact path="/planning-previsionnel-conges" component={PlanningPrevisionnelCongesPage} />
+                                            <ProtectedRoute exact path="/agent-user-accounts" component={AgentUserAccountsPage} />
+                                            <ProtectedRoute exact path="/attribution-taches-agents" component={AttributionTachesPage} />
+                                            <ProtectedRoute exact path="/gestion-mariages" component={GestionMariagesPage} />
+                                            <ProtectedRoute exact path="/services-entites" component={DirectionsEntitesPage} />
+                                            <ProtectedRoute exact path="/positions" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/distinctions" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/specialites" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/langues" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/niveau-langues" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/logiciels" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/niveau-informatiques" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-conges" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/autre-absences" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/mode-entrees" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/motif-departs" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-retraites" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/pays" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/regions" component={RouteManagementPage} />
+                                            <ProtectedRoute exact path="/departements" component={RouteManagementPage} />
+                                            <ProtectedRoute exact path="/localites" component={RouteManagementPage} />
+                                            <ProtectedRoute exact path="/enfants" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/handicaps" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/pathologies" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/nature-accidents" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/sanctions" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/nature-actes" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-documents" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-courriers" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-destinations" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-materiels" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/type-seminaires" component={TypeFormationsPage} />
+                                            <ProtectedRoute exact path="/seminaire-formation" component={SeminaireFormationPage} />
+                                            <ProtectedRoute exact path="/gestion-evenements" component={GestionEvenementsPage} />
+                                            <ProtectedRoute exact path="/type-etablissements" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/unite-administratives" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/sindicats" component={VieAssociativePage} />
+                                            <ProtectedRoute exact path="/dossiers" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/classeurs" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/tiers" component={GenericManagementPage} />
+                                            <ProtectedRoute exact path="/auth" component={GenericManagementPage} />
 
-                                {/* Routes nomination */}
-                                <ProtectedRoute exact path="/agent-fonctions" component={AgentFonctionsPage} />
-                                <ProtectedRoute exact path="/agent-emplois" component={AgentEmploisPage} />
-                                <ProtectedRoute exact path="/agent-grades" component={AgentGradesPage} />
-                                <ProtectedRoute exact path="/agent-echelons" component={AgentEchelonsPage} />
-                                <ProtectedRoute exact path="/agent-categories" component={AgentCategoriesPage} />
+                                            {/* Routes nomination */}
+                                            <ProtectedRoute exact path="/agent-fonctions" component={AgentFonctionsPage} />
+                                            <ProtectedRoute exact path="/agent-emplois" component={AgentEmploisPage} />
+                                            <ProtectedRoute exact path="/agent-grades" component={AgentGradesPage} />
+                                            <ProtectedRoute exact path="/agent-echelons" component={AgentEchelonsPage} />
+                                            <ProtectedRoute exact path="/agent-categories" component={AgentCategoriesPage} />
 
-                                {/* Routes fiche signalétique */}
-                                <ProtectedRoute exact path="/fiche-signaletique" component={FicheSignaletiquePage} />
-                                <ProtectedRoute exact path="/fiche-signaletique/:agentId" component={FicheSignaletiqueDetailPage} />
+                                            {/* Routes fiche signalétique */}
+                                            <ProtectedRoute exact path="/fiche-signaletique" component={FicheSignaletiquePage} />
+                                            <ProtectedRoute exact path="/fiche-signaletique/:agentId" component={FicheSignaletiqueDetailPage} />
 
-                                {/* Routes de gestion des demandes */}
-                                <ProtectedRoute exact path="/demande-absence" component={DemandeAbsencePage} />
-                                <ProtectedRoute exact path="/demande-sortie-territoire" component={DemandeSortieTerritoirePage} />
-                                <ProtectedRoute exact path="/demande-attestation-travail" component={DemandeAttestationTravailPage} />
-                                <ProtectedRoute exact path="/autorisation-conges" component={AutorisationCongesPage} />
-                                <ProtectedRoute exact path="/autorisation-retraite" component={AutorisationRetraitePage} />
-                                <ProtectedRoute exact path="/attestation-presence" component={AttestationPresencePage} />
-                                <ProtectedRoute exact path="/note-service" component={NoteServicePage} />
-                                <ProtectedRoute exact path="/certificat-cessation-service" component={CertificatCessationServicePage} />
-                                <ProtectedRoute exact path="/autorisation-reprise-service" component={AutorisationRepriseServicePage} />
-                                <ProtectedRoute exact path="/certificat-non-jouissance-conge" component={CertificatNonJouissanceCongePage} />
-                                <ProtectedRoute exact path="/mutations" component={MutationsPage} />
-                                <ProtectedRoute exact path="/mutations-validation" component={MutationsValidationPage} />
-                                
-                                {/* Routes des documents générés */}
-                                <ProtectedRoute exact path="/documents-generes" component={DocumentsGeneresPage} />
-                                <ProtectedRoute exact path="/generer-documents" component={GenererDocumentsPage} />
-                                <ProtectedRoute exact path="/certificat-prise-service" component={CertificatsPriseServicePage} />
-                                <ProtectedRoute exact path="/emargement" component={EmargementPage} />
-                                <ProtectedRoute exact path="/historiques-demandes" component={DemandeHistoriquePage} />
-                                <ProtectedRoute exact path="/decision" component={DecisionsPage} />
+                                            {/* Routes de gestion des demandes */}
+                                            <ProtectedRoute exact path="/demande-absence" component={DemandeAbsencePage} />
+                                            <ProtectedRoute exact path="/demande-sortie-territoire" component={DemandeSortieTerritoirePage} />
+                                            <ProtectedRoute exact path="/demande-attestation-travail" component={DemandeAttestationTravailPage} />
+                                            <ProtectedRoute exact path="/autorisation-conges" component={AutorisationCongesPage} />
+                                            <ProtectedRoute exact path="/autorisation-retraite" component={AutorisationRetraitePage} />
+                                            <ProtectedRoute exact path="/attestation-presence" component={AttestationPresencePage} />
+                                            <ProtectedRoute exact path="/note-service" component={NoteServicePage} />
+                                            <ProtectedRoute exact path="/certificat-cessation-service" component={CertificatCessationServicePage} />
+                                            <ProtectedRoute exact path="/autorisation-reprise-service" component={AutorisationRepriseServicePage} />
+                                            <ProtectedRoute exact path="/certificat-non-jouissance-conge" component={CertificatNonJouissanceCongePage} />
+                                            <ProtectedRoute exact path="/mutations" component={MutationsPage} />
+                                            <ProtectedRoute exact path="/mutations-validation" component={MutationsValidationPage} />
 
-                            </React.Suspense>
-                        </MainLayout>
-                        <Redirect to="/" />
-                    </Switch>
-                    </GAListener>
-                    </InactivityHandler>
-                </BrowserRouter>
+                                            {/* Routes des documents générés */}
+                                            <ProtectedRoute exact path="/documents-generes" component={DocumentsGeneresPage} />
+                                            <ProtectedRoute exact path="/generer-documents" component={GenererDocumentsPage} />
+                                            <ProtectedRoute exact path="/certificat-prise-service" component={CertificatsPriseServicePage} />
+                                            <ProtectedRoute exact path="/emargement" component={EmargementPage} />
+                                            <ProtectedRoute exact path="/historiques-demandes" component={DemandeHistoriquePage} />
+                                            <ProtectedRoute exact path="/decision" component={DecisionsPage} />
+
+                                        </React.Suspense>
+                                    </MainLayout>
+                                    <Redirect to="/" />
+                                </Switch>
+                            </GAListener>
+                        </InactivityHandler>
+                    </BrowserRouter>
                 </DRHLanguageProvider>
             </AuthProvider>
         );

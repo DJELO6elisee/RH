@@ -29,7 +29,7 @@ export const canUserValidateDemande = (demande, user) => {
     }
 
     // Directeur : valide les demandes validées par le sous-directeur
-    if (role === 'directeur') {
+    if (role === 'directeur' || role === 'responsble_cellule_de_passation' || role === 'responsable_cellule_de_passation') {
         return niveauEvolution === 'valide_par_sous_directeur';
     }
 
@@ -91,7 +91,7 @@ export const canUserViewDemande = (demande, user) => {
     if (role === 'super_admin') return true;
 
     // Tous les rôles de validation peuvent voir les demandes
-    const validationRoles = ['chef_service', 'sous_directeur', 'directeur', 'drh', 'dir_cabinet', 'ministre'];
+    const validationRoles = ['chef_service', 'sous_directeur', 'directeur', 'drh', 'dir_cabinet', 'ministre', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation'];
     return validationRoles.includes(role);
 };
 
@@ -123,7 +123,7 @@ export const getUserAccessMode = (demande, user) => {
  */
 export const getAccessModeMessage = (demande, user) => {
     const mode = getUserAccessMode(demande, user);
-    const role = user ? .role ? .toLowerCase();
+    const role = user?.role?.toLowerCase();
 
     if (mode === 'validate') {
         return 'Vous pouvez valider ou rejeter cette demande';
@@ -181,5 +181,5 @@ export const getAccessModeBadge = (mode) => {
 export const roleCanSeeDemandes = (role) => {
     if (!role) return false;
     const roleLower = role.toLowerCase();
-    return ['chef_service', 'sous_directeur', 'directeur', 'drh', 'dir_cabinet', 'ministre', 'super_admin'].includes(roleLower);
+    return ['chef_service', 'sous_directeur', 'directeur', 'drh', 'dir_cabinet', 'ministre', 'super_admin', 'responsable_cellule_de_passation', 'responsble_cellule_de_passation'].includes(roleLower);
 };

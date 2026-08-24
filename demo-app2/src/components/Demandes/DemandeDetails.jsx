@@ -872,6 +872,7 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                         )}
                         
                         {/* Boutons d'action */}
+                        {demande && demande.status === 'en_attente' && (
                         <div style={{ 
                             marginTop: '20px', 
                             textAlign: 'center',
@@ -965,6 +966,7 @@ const DemandeDetails = ({ isOpen, toggle, demande, agentId, onValidationSuccess 
                                 )}
                             </div>
                         </div>
+                        )}
                     </div>
                 </ModalBody>
                 <ModalFooter>

@@ -35,6 +35,10 @@ const MutationsValidationPage = () => {
     const [validationMessage, setValidationMessage] = useState('');
     const [validationAction, setValidationAction] = useState('');
     const [validationCommentaire, setValidationCommentaire] = useState('');
+    const [directions, setDirections] = useState([]);
+    const [directionsGenerales, setDirectionsGenerales] = useState([]);
+    const [destinationType, setDestinationType] = useState('direction');
+    const [selectedDestination, setSelectedDestination] = useState('');
     const [filters, setFilters] = useState({
         statut: 'en_attente',
         agent_search: ''
@@ -42,14 +46,53 @@ const MutationsValidationPage = () => {
     
     const isMountedRef = useRef(true);
 
+    const parseMutationData = (description) => {
+        if (description && description.startsWith('MUTATION_DATA:')) {
+            try {
+                const data = JSON.parse(description.replace('MUTATION_DATA:', '').trim());
+                return {
+                    id_direction_destination: data.id_direction_destination,
+                    direction_destination: data.direction_destination,
+                    id_direction_generale_destination: data.id_direction_generale_destination,
+                    direction_generale_destination: data.direction_generale_destination,
+                    motif: data.motif || 'Aucun motif renseigné'
+                };
+            } catch (e) {
+                return { motif: description };
+            }
+        }
+        return { motif: description || 'Aucun motif renseigné' };
+    };
+
     useEffect(() => {
         if (user?.id_agent) {
             loadMutations();
+            loadDirections();
         }
         return () => {
             isMountedRef.current = false;
         };
     }, [user?.id_agent, filters]);
+
+    const loadDirections = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const [resDir, resDirGen] = await Promise.all([
+                fetch('https://tourisme.2ise-groupe.com/api/directions?limit=1000', { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch('https://tourisme.2ise-groupe.com/api/directions-generales?limit=1000', { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+            if (resDir.ok) {
+                const data = await resDir.json();
+                if (isMountedRef.current) setDirections(data.data || []);
+            }
+            if (resDirGen.ok) {
+                const data = await resDirGen.json();
+                if (isMountedRef.current) setDirectionsGenerales(data.data || []);
+            }
+        } catch (err) {
+            console.error('Erreur lors du chargement des directions:', err);
+        }
+    };
 
     const loadMutations = async () => {
         if (!isMountedRef.current) return;
@@ -61,7 +104,6 @@ const MutationsValidationPage = () => {
             const token = localStorage.getItem('token');
             const queryParams = new URLSearchParams();
             queryParams.append('type_demande', 'mutation');
-            queryParams.append('niveau_actuel', 'drh');
             if (filters.statut) {
                 queryParams.append('statut', filters.statut);
             }
@@ -110,6 +152,18 @@ const MutationsValidationPage = () => {
                 generate_document: (action === 'approuve' || action === 'valider' || !action)
             };
 
+            if (action === 'approuve') {
+                if (destinationType === 'direction') {
+                    requestBody.id_direction_destination = selectedDestination;
+                    const dir = directions.find(d => d.id.toString() === selectedDestination);
+                    if (dir) requestBody.direction_destination = dir.libelle;
+                } else if (destinationType === 'direction_generale') {
+                    requestBody.id_direction_generale_destination = selectedDestination;
+                    const dg = directionsGenerales.find(d => d.id.toString() === selectedDestination);
+                    if (dg) requestBody.direction_generale_destination = dg.libelle;
+                }
+            }
+
             // Pour les mutations, le backend utilisera automatiquement la date actuelle comme date d'effet
             // Pas besoin d'envoyer date_effet_mutation, le backend le fera automatiquement
 
@@ -156,6 +210,19 @@ const MutationsValidationPage = () => {
         setSelectedDemande(demande);
         setValidationAction('');
         setValidationCommentaire('');
+        
+        const parsed = parseMutationData(demande.description);
+        if (parsed.id_direction_generale_destination) {
+            setDestinationType('direction_generale');
+            setSelectedDestination(parsed.id_direction_generale_destination.toString());
+        } else if (parsed.id_direction_destination) {
+            setDestinationType('direction');
+            setSelectedDestination(parsed.id_direction_destination.toString());
+        } else {
+            setDestinationType('direction');
+            setSelectedDestination('');
+        }
+        
         setShowValidationModal(true);
     };
 
@@ -263,33 +330,29 @@ const MutationsValidationPage = () => {
                                     <th>Agent</th>
                                     <th>Direction actuelle</th>
                                     <th>Direction de destination</th>
-                                    <th>Motif</th>
                                     <th>Date de demande</th>
                                     <th>Statut</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {demandes.map((demande) => (
+                                {demandes.map((demande) => {
+                                    const parsed = parseMutationData(demande.description);
+                                    return (
                                     <tr key={demande.id}>
                                         <td>
-                                            <strong>{demande.agent_prenom} {demande.agent_nom}</strong>
+                                            <strong>{demande.prenom || demande.agent_prenom} {demande.nom || demande.agent_nom}</strong>
                                             <br />
-                                            <small className="text-muted">Matricule: {demande.agent_matricule}</small>
+                                            <small className="text-muted">Matricule: {demande.matricule || demande.agent_matricule}</small>
                                         </td>
-                                        <td>{demande.direction_libelle || 'N/A'}</td>
+                                        <td>{demande.service_nom || demande.direction_libelle || 'N/A'}</td>
                                         <td>
                                             <strong className="text-primary">
-                                                {demande.direction_destination_libelle || demande.id_direction_destination || 'N/A'}
+                                                {parsed.direction_destination || parsed.direction_generale_destination || 'N/A'}
                                             </strong>
                                         </td>
-                                        <td>
-                                            <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {demande.description || 'Aucun motif renseigné'}
-                                            </div>
-                                        </td>
                                         <td>{formatDate(demande.date_creation)}</td>
-                                        <td>{getStatusBadge(demande.statut)}</td>
+                                        <td>{getStatusBadge(demande.status)}</td>
                                         <td>
                                             <div className="d-flex gap-2">
                                                 <Button
@@ -300,7 +363,7 @@ const MutationsValidationPage = () => {
                                                     <i className="fa fa-eye me-1"></i>
                                                     Détails
                                                 </Button>
-                                                {demande.statut === 'en_attente' && (
+                                                {demande.status === 'en_attente' && (
                                                     <Button
                                                         color="success"
                                                         size="sm"
@@ -313,7 +376,7 @@ const MutationsValidationPage = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                         </Table>
                     )}
@@ -331,18 +394,20 @@ const MutationsValidationPage = () => {
                     Valider la demande de mutation
                 </ModalHeader>
                 <ModalBody>
-                    {selectedDemande && (
+                    {selectedDemande && (() => {
+                        const parsed = parseMutationData(selectedDemande.description);
+                        return (
                         <>
                             <Alert color="info">
                                 <MdInfo className="me-2" />
-                                <strong>Agent:</strong> {selectedDemande.agent_prenom} {selectedDemande.agent_nom} 
-                                ({selectedDemande.agent_matricule})
+                                <strong>Agent:</strong> {selectedDemande.prenom || selectedDemande.agent_prenom} {selectedDemande.nom || selectedDemande.agent_nom} 
+                                ({selectedDemande.matricule || selectedDemande.agent_matricule})
                                 <br />
-                                <strong>Direction actuelle:</strong> {selectedDemande.direction_libelle || 'N/A'}
+                                <strong>Direction actuelle:</strong> {selectedDemande.service_nom || selectedDemande.direction_libelle || 'N/A'}
                                 <br />
-                                <strong>Direction de destination:</strong> {selectedDemande.direction_destination_libelle || selectedDemande.id_direction_destination}
+                                <strong>Direction de destination demandée:</strong> {parsed.direction_destination || parsed.direction_generale_destination || 'N/A'}
                                 <br />
-                                <strong>Motif:</strong> {selectedDemande.description || 'Aucun motif renseigné'}
+                                <strong>Motif:</strong> {parsed.motif}
                             </Alert>
 
                             {validationAction === 'approuve' && (
@@ -366,6 +431,44 @@ const MutationsValidationPage = () => {
                                     </Input>
                                 </FormGroup>
 
+                                {validationAction === 'approuve' && (
+                                    <>
+                                        <FormGroup>
+                                            <Label for="destination_type">Type de destination *</Label>
+                                            <Input
+                                                type="select"
+                                                id="destination_type"
+                                                value={destinationType}
+                                                onChange={(e) => {
+                                                    setDestinationType(e.target.value);
+                                                    setSelectedDestination('');
+                                                }}
+                                            >
+                                                <option value="direction">Direction</option>
+                                                <option value="direction_generale">Direction Générale</option>
+                                            </Input>
+                                        </FormGroup>
+
+                                        <FormGroup>
+                                            <Label for="selected_destination">Direction de destination *</Label>
+                                            <Input
+                                                type="select"
+                                                id="selected_destination"
+                                                value={selectedDestination}
+                                                onChange={(e) => setSelectedDestination(e.target.value)}
+                                            >
+                                                <option value="">Sélectionnez la destination</option>
+                                                {destinationType === 'direction' && directions.map(d => (
+                                                    <option key={d.id} value={d.id}>{d.libelle}</option>
+                                                ))}
+                                                {destinationType === 'direction_generale' && directionsGenerales.map(d => (
+                                                    <option key={d.id} value={d.id}>{d.libelle}</option>
+                                                ))}
+                                            </Input>
+                                        </FormGroup>
+                                    </>
+                                )}
+
                                 <FormGroup>
                                     <Label for="commentaire_validation">
                                         {validationAction === 'rejete' ? 'Motif du rejet *' : 'Commentaire'}
@@ -382,7 +485,8 @@ const MutationsValidationPage = () => {
                                 </FormGroup>
                             </Form>
                         </>
-                    )}
+                        );
+                    })()}
                 </ModalBody>
                 <ModalFooter>
                     <Button color="secondary" onClick={() => {
@@ -397,6 +501,10 @@ const MutationsValidationPage = () => {
                         onClick={async () => {
                             if (!validationAction) {
                                 alert('Veuillez sélectionner une action');
+                                return;
+                            }
+                            if (validationAction === 'approuve' && !selectedDestination) {
+                                alert('Veuillez sélectionner une destination pour l\'agent');
                                 return;
                             }
                             if (validationAction === 'rejete' && !validationCommentaire.trim()) {
@@ -425,34 +533,36 @@ const MutationsValidationPage = () => {
                     Détails de la demande de mutation
                 </ModalHeader>
                 <ModalBody>
-                    {selectedDemande && (
+                    {selectedDemande && (() => {
+                        const parsed = parseMutationData(selectedDemande.description);
+                        return (
                         <div>
                             <Row className="mb-3">
                                 <Col md="6">
                                     <strong>Agent:</strong>
-                                    <p>{selectedDemande.agent_prenom} {selectedDemande.agent_nom}</p>
+                                    <p>{selectedDemande.prenom || selectedDemande.agent_prenom} {selectedDemande.nom || selectedDemande.agent_nom}</p>
                                 </Col>
                                 <Col md="6">
                                     <strong>Matricule:</strong>
-                                    <p>{selectedDemande.agent_matricule}</p>
+                                    <p>{selectedDemande.matricule || selectedDemande.agent_matricule}</p>
                                 </Col>
                             </Row>
                             <Row className="mb-3">
                                 <Col md="6">
                                     <strong>Direction actuelle:</strong>
-                                    <p>{selectedDemande.direction_libelle || 'N/A'}</p>
+                                    <p>{selectedDemande.service_nom || selectedDemande.direction_libelle || 'N/A'}</p>
                                 </Col>
                                 <Col md="6">
                                     <strong>Direction de destination:</strong>
                                     <p className="text-primary">
-                                        <strong>{selectedDemande.direction_destination_libelle || selectedDemande.id_direction_destination || 'N/A'}</strong>
+                                        <strong>{parsed.direction_destination || parsed.direction_generale_destination || 'N/A'}</strong>
                                     </p>
                                 </Col>
                             </Row>
                             <Row className="mb-3">
                                 <Col>
                                     <strong>Motif:</strong>
-                                    <p>{selectedDemande.description || 'Aucun motif renseigné'}</p>
+                                    <p>{parsed.motif}</p>
                                 </Col>
                             </Row>
                             <Row className="mb-3">
@@ -474,7 +584,8 @@ const MutationsValidationPage = () => {
                                 </Row>
                             )}
                         </div>
-                    )}
+                        );
+                    })()}
                 </ModalBody>
                 <ModalFooter>
                     <Button color="secondary" onClick={() => setShowDetailsModal(false)}>

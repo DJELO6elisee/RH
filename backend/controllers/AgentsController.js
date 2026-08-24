@@ -13,7 +13,7 @@ class AgentsController extends BaseController {
         super('agents');
     }
 
-    getRetirementExclusionCondition(agentAlias = 'a', gradeAlias = 'g') {
+    getRetirementExclusionCondition(agentAlias = 'a', gradeAlias = 'g', targetDate = 'CURRENT_DATE') {
         return `
             (
                 COALESCE(${agentAlias}.id_type_d_agent, 0) != 1
@@ -23,14 +23,19 @@ class AgentsController extends BaseController {
                         ${agentAlias}.date_retraite IS NULL
                         AND (
                             ${agentAlias}.date_de_naissance IS NULL
-                            OR DATE_PART('year', AGE(CURRENT_DATE, ${agentAlias}.date_de_naissance)) <
+                            OR DATE_PART('year', AGE(${targetDate}, ${agentAlias}.date_de_naissance)) <
                                 CASE
-                                    WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                    WHEN ${gradeAlias}.libele IS NOT NULL AND (UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') 
+                                         OR ${gradeAlias}.libele ILIKE '%PREFEC%' 
+                                         OR ${gradeAlias}.libele ILIKE '%PRÉFEC%' 
+                                         OR ${gradeAlias}.libele ILIKE '%PREFET%' 
+                                         OR ${gradeAlias}.libele ILIKE '%PRÉFET%' 
+                                         OR ${gradeAlias}.libele ILIKE '%HORS GRADE%') THEN 65
                                     ELSE 60
                                 END
                         )
                     )
-                    OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > CURRENT_DATE)
+                    OR (${agentAlias}.date_retraite IS NOT NULL AND ${agentAlias}.date_retraite > ${targetDate})
                 )
             )
         `;
@@ -49,7 +54,12 @@ class AgentsController extends BaseController {
                     MAKE_DATE(
                         EXTRACT(YEAR FROM ${agentAlias}.date_de_naissance)::integer +
                         CASE
-                            WHEN UPPER(REPLACE(TRIM(${gradeLibeleExpr}), ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                            WHEN UPPER(REPLACE(TRIM(${gradeLibeleExpr}), ' ', '')) IN ('A4', 'A5', 'A6', 'A7') 
+                                 OR ${gradeLibeleExpr} ILIKE '%PREFEC%' 
+                                 OR ${gradeLibeleExpr} ILIKE '%PRÉFEC%' 
+                                 OR ${gradeLibeleExpr} ILIKE '%PREFET%' 
+                                 OR ${gradeLibeleExpr} ILIKE '%PRÉFET%' 
+                                 OR ${gradeLibeleExpr} ILIKE '%HORS GRADE%' THEN 65
                             ELSE 60
                         END,
                         12,
@@ -62,7 +72,7 @@ class AgentsController extends BaseController {
 
     // Condition SQL pour exclure les agents retirés ET les agents à la retraite
     // Utilisé pour les statistiques et les listes d'agents actifs
-    getActiveAgentsExclusionCondition(agentAlias = 'a', gradeAlias = 'g') {
+    getActiveAgentsExclusionCondition(agentAlias = 'a', gradeAlias = 'g', targetDate = 'CURRENT_DATE') {
         return `
             (
                 -- Exclure les agents retirés manuellement
@@ -76,12 +86,17 @@ class AgentsController extends BaseController {
                     AND MAKE_DATE(
                         EXTRACT(YEAR FROM ${agentAlias}.date_de_naissance)::INTEGER + 
                         CASE 
-                            WHEN UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                            WHEN UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') 
+                                 OR ${gradeAlias}.libele ILIKE '%PREFEC%' 
+                                 OR ${gradeAlias}.libele ILIKE '%PRÉFEC%' 
+                                 OR ${gradeAlias}.libele ILIKE '%PREFET%' 
+                                 OR ${gradeAlias}.libele ILIKE '%PRÉFET%' 
+                                 OR ${gradeAlias}.libele ILIKE '%HORS GRADE%' THEN 65
                             ELSE 60
                         END,
                         12,
                         31
-                    )::DATE < CURRENT_DATE::DATE
+                    )::DATE < ${targetDate}::DATE
                 )
             )
         `;
@@ -409,7 +424,7 @@ class AgentsController extends BaseController {
                     if (position === 'CONGE DE MATERNITE') motifFilter = '%matern%';
                     else if (position === 'CONGE DE PATERNITE') motifFilter = '%patern%';
                     else if (position === 'CONGE ANNUEL') motifFilter = '%annuel%';
-                    
+
                     if (motifFilter) {
                         whereConditions.push(`(
                             p.libele ILIKE $${params.length + 1} 
@@ -634,7 +649,7 @@ class AgentsController extends BaseController {
                         AND MAKE_DATE(
                             EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
                             CASE 
-                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                                 ELSE 60
                             END,
                             12,
@@ -1125,7 +1140,7 @@ class AgentsController extends BaseController {
                         AND MAKE_DATE(
                             EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
                             CASE 
-                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                                 ELSE 60
                             END,
                             12,
@@ -1158,7 +1173,7 @@ class AgentsController extends BaseController {
                         AND MAKE_DATE(
                             EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
                             CASE 
-                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                                WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                                 ELSE 60
                             END,
                             12,
@@ -1464,7 +1479,7 @@ class AgentsController extends BaseController {
 
             // Remplir les tables de liaison grade / échelon / catégorie (historique carrière)
             const dateEntreeCarriere = filteredAgentData.date_prise_service_au_ministere || filteredAgentData.date_embauche || new Date().toISOString().slice(0, 10);
-            
+
             if (filteredAgentData.id_grade || filteredAgentData.id_echelon || filteredAgentData.id_categorie) {
                 try {
                     // Créer une nomination pour la carrière (grade/échelon/catégorie) avec un numéro unique
@@ -1485,7 +1500,7 @@ class AgentsController extends BaseController {
                         await pool.query(
                             `INSERT INTO grades_agents (id_agent, id_grade, id_nomination, date_entree, date_sortie)
                              VALUES ($1, $2, $3, $4::DATE, NULL)
-                             ON CONFLICT (id_agent, id_grade, date_entree) DO NOTHING`, 
+                             ON CONFLICT (id_agent, id_grade, date_entree) DO NOTHING`,
                             [agent.id, filteredAgentData.id_grade, idNominationCarriere, dateEntreeCarriere]
                         );
                         console.log(`✅ Grade enregistré dans grades_agents pour l'agent ${agent.id}`);
@@ -1496,7 +1511,7 @@ class AgentsController extends BaseController {
                         await pool.query(
                             `INSERT INTO echelons_agents (id_agent, id_echelon, id_nomination, date_entree, date_sortie)
                              VALUES ($1, $2, $3, $4::DATE, NULL)
-                             ON CONFLICT (id_agent, id_echelon, date_entree) DO NOTHING`, 
+                             ON CONFLICT (id_agent, id_echelon, date_entree) DO NOTHING`,
                             [agent.id, filteredAgentData.id_echelon, idNominationCarriere, dateEntreeCarriere]
                         );
                         console.log(`✅ Échelon enregistré dans echelons_agents pour l'agent ${agent.id}`);
@@ -1507,7 +1522,7 @@ class AgentsController extends BaseController {
                         await pool.query(
                             `INSERT INTO categories_agents (id_agent, id_categorie, id_nomination, date_entree, date_sortie)
                              VALUES ($1, $2, $3, $4::DATE, NULL)
-                             ON CONFLICT (id_agent, id_categorie, date_entree) DO NOTHING`, 
+                             ON CONFLICT (id_agent, id_categorie, date_entree) DO NOTHING`,
                             [agent.id, filteredAgentData.id_categorie, idNominationCarriere, dateEntreeCarriere]
                         );
                         console.log(`✅ Catégorie enregistrée dans categories_agents pour l'agent ${agent.id}`);
@@ -5226,7 +5241,7 @@ class AgentsController extends BaseController {
             // Grades A4, A5, A6, A7 : 65 ans, autres : 60 ans
             const calculateRetirementAgeSQL = `
                 CASE 
-                    WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                    WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                     ELSE 60
                 END
             `;
@@ -5533,7 +5548,7 @@ class AgentsController extends BaseController {
             const calculateRetirementAgeSQL = `
                 CASE 
                     WHEN g.libele IS NULL THEN 60
-                    WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                    WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                     ELSE 60
                 END
             `;
@@ -5866,7 +5881,7 @@ class AgentsController extends BaseController {
                     AND MAKE_DATE(
                         EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
                         CASE 
-                            WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65
+                            WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
                             ELSE 60
                         END,
                         12,
@@ -5990,18 +6005,45 @@ class AgentsController extends BaseController {
             let subQueryWhereClause = '';
             let params = [];
 
+            const exclusionCondition = `
+                (a.retire IS NULL OR a.retire = false)
+                AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+                AND ${this.getRetirementExclusionCondition('a', 'g')}
+                AND NOT (
+                    a.id_type_d_agent = 1
+                    AND a.date_de_naissance IS NOT NULL
+                    AND g.libele IS NOT NULL
+                    AND MAKE_DATE(
+                        EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
+                        CASE 
+                            WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
+                            ELSE 60
+                        END,
+                        12,
+                        31
+                    )::DATE < CURRENT_DATE::DATE
+                )
+            `;
+
             if (userMinistereId) {
-                whereClause = ' WHERE a.id_ministere = $1';
-                subQueryWhereClause = ' WHERE id_ministere = $2';
+                whereClause = ' WHERE a.id_ministere = $1 AND ' + exclusionCondition;
+                subQueryWhereClause = ' WHERE a.id_ministere = $2 AND ' + exclusionCondition;
                 params = [userMinistereId, userMinistereId];
+            } else {
+                whereClause = ' WHERE ' + exclusionCondition;
+                subQueryWhereClause = ' WHERE ' + exclusionCondition;
             }
 
             const query = `
                 SELECT 
                     ta.libele as type_agent_libele,
                     COUNT(a.id) as count,
-                    ROUND(COUNT(a.id) * 100.0 / (SELECT COUNT(*) FROM agents${subQueryWhereClause}), 2) as percentage
-                FROM agents a
+                    ROUND(COUNT(a.id) * 100.0 / (SELECT COUNT(*) FROM agents a LEFT JOIN grades g ON a.id_grade = g.id${subQueryWhereClause}), 2) as percentage,
+                    COUNT(CASE WHEN a.sexe = 'M' THEN 1 END) as count_hommes,
+                    COUNT(CASE WHEN a.sexe = 'F' THEN 1 END) as count_femmes,
+                    ROUND(COUNT(CASE WHEN a.sexe = 'M' THEN 1 END) * 100.0 / NULLIF(COUNT(a.id), 0), 2) as percentage_hommes,
+                    ROUND(COUNT(CASE WHEN a.sexe = 'F' THEN 1 END) * 100.0 / NULLIF(COUNT(a.id), 0), 2) as percentage_femmes
+                FROM agents a\n                LEFT JOIN grades g ON a.id_grade = g.id
                 LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 ${whereClause}
                 GROUP BY ta.id, ta.libele
@@ -6054,10 +6096,33 @@ class AgentsController extends BaseController {
             let subQueryWhereClause = '';
             let params = [];
 
+            const exclusionCondition = `
+                (a.retire IS NULL OR a.retire = false)
+                AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+                AND ${this.getRetirementExclusionCondition('a', 'g')}
+                AND NOT (
+                    a.id_type_d_agent = 1
+                    AND a.date_de_naissance IS NOT NULL
+                    AND g.libele IS NOT NULL
+                    AND MAKE_DATE(
+                        EXTRACT(YEAR FROM a.date_de_naissance)::INTEGER + 
+                        CASE 
+                            WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65
+                            ELSE 60
+                        END,
+                        12,
+                        31
+                    )::DATE < CURRENT_DATE::DATE
+                )
+            `;
+
             if (userMinistereId) {
-                whereClause = ' WHERE a.id_ministere = $1';
-                subQueryWhereClause = ' WHERE id_ministere = $2';
+                whereClause = ' WHERE a.id_ministere = $1 AND ' + exclusionCondition;
+                subQueryWhereClause = ' WHERE a.id_ministere = $2 AND ' + exclusionCondition;
                 params = [userMinistereId, userMinistereId];
+            } else {
+                whereClause = ' WHERE ' + exclusionCondition;
+                subQueryWhereClause = ' WHERE ' + exclusionCondition;
             }
 
             const query = `
@@ -6065,8 +6130,8 @@ class AgentsController extends BaseController {
                     s.libelle as service_nom,
                     m.nom as ministere_nom,
                     COUNT(a.id) as count,
-                    ROUND(COUNT(a.id) * 100.0 / (SELECT COUNT(*) FROM agents${subQueryWhereClause}), 2) as percentage
-                FROM agents a
+                    ROUND(COUNT(a.id) * 100.0 / (SELECT COUNT(*) FROM agents a LEFT JOIN grades g ON a.id_grade = g.id${subQueryWhereClause}), 2) as percentage
+                FROM agents a\n                LEFT JOIN grades g ON a.id_grade = g.id
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN ministeres m ON s.id_ministere = m.id
                 ${whereClause}
@@ -7244,7 +7309,7 @@ class AgentsController extends BaseController {
 
                 // Bloc gauche - Ministère dynamiquement via l'agent
                 const ministryName = agent.ministere_nom || 'MINISTERE NON RENSEIGNE';
-                
+
                 // La direction doit être celle du DRH (utilisateur connecté) s'il y en a une, sinon celle de l'agent
                 let directionName = 'DIRECTION NON RENSEIGNEE';
                 if (userInfo && userInfo.id_direction) {
@@ -9732,7 +9797,7 @@ class AgentsController extends BaseController {
                     if (position === 'CONGE DE MATERNITE') motifFilter = '%matern%';
                     else if (position === 'CONGE DE PATERNITE') motifFilter = '%patern%';
                     else if (position === 'CONGE ANNUEL') motifFilter = '%annuel%';
-                    
+
                     if (motifFilter) {
                         conditions.push(`(
                             p.libele ILIKE $${paramIndex} 
@@ -11748,7 +11813,7 @@ class AgentsController extends BaseController {
             `;
 
             const params = [];
-            
+
             if (search) {
                 query += ` AND (a.nom ILIKE $${params.length + 1} OR a.prenom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
                 countQuery += ` AND (a.nom ILIKE $${params.length + 1} OR a.prenom ILIKE $${params.length + 1} OR a.matricule ILIKE $${params.length + 1})`;
@@ -11791,7 +11856,7 @@ class AgentsController extends BaseController {
         try {
             const { id } = req.params;
             const { motif } = req.body;
-            
+
             await client.query('BEGIN');
 
             // 1. Vérifier si l'agent existe
@@ -11800,14 +11865,14 @@ class AgentsController extends BaseController {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, message: 'Agent introuvable' });
             }
-            
+
             const agent = agentQuery.rows[0];
 
             // 2. Trouver l'ID de la direction "INSTANCE D'AFFECTATION"
             // (on se base sur l'id_ministere de l'agent si possible)
             let dirQueryStr = `SELECT id FROM directions WHERE libelle ILIKE '%INSTANCE D%AFFECTATION%' AND id_ministere = $1 LIMIT 1`;
             let dirRes = await client.query(dirQueryStr, [agent.id_ministere]);
-            
+
             if (dirRes.rows.length === 0) {
                 // Si la direction n'est pas trouvée pour ce ministère, on cherche globalement
                 dirRes = await client.query(`SELECT id FROM directions WHERE libelle ILIKE '%INSTANCE D%AFFECTATION%' LIMIT 1`);
@@ -11816,7 +11881,7 @@ class AgentsController extends BaseController {
                     return res.status(404).json({ success: false, message: "Direction INSTANCE D'AFFECTATION introuvable dans la base de données" });
                 }
             }
-            
+
             const idDirectionInstance = dirRes.rows[0].id;
 
             if (agent.id_direction === idDirectionInstance) {
@@ -11830,7 +11895,7 @@ class AgentsController extends BaseController {
 
             // 3. Mettre à jour l'agent
             const previousDirection = agent.id_direction;
-            
+
             if (idPositionInstance) {
                 await client.query(`
                     UPDATE agents 
@@ -11851,10 +11916,10 @@ class AgentsController extends BaseController {
                 (id_agent, champ_modifie, ancienne_valeur, nouvelle_valeur, user_id, date_modification, motif)
                 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6)
             `, [
-                id, 
-                'id_direction', 
-                previousDirection ? previousDirection.toString() : null, 
-                idDirectionInstance.toString(), 
+                id,
+                'id_direction',
+                previousDirection ? previousDirection.toString() : null,
+                idDirectionInstance.toString(),
                 req.user ? req.user.id_user : null,
                 motif || "Mise en instance d'affectation"
             ]);
@@ -11878,7 +11943,7 @@ class AgentsController extends BaseController {
             }
 
             await client.query('COMMIT');
-            
+
             res.json({
                 success: true,
                 message: "Agent mis en instance d'affectation avec succès"
@@ -11896,6 +11961,250 @@ class AgentsController extends BaseController {
             client.release();
         }
     }
+
+    async getStatistiquesPoint(req, res) {
+        try {
+            console.log("📥 Requête pour statistiques Point des Agents reçue.");
+
+            // Filtre par ministère
+            let id_ministere = null;
+            if (req.user && req.user.role !== 'super_admin' && req.user.id_ministere) {
+                id_ministere = req.user.id_ministere;
+            }
+
+            let whereCondition = '1=1';
+            let params = [];
+
+            if (id_ministere) {
+                params.push(id_ministere);
+                whereCondition += ' AND a.id_ministere = $' + params.length;
+            }
+
+            const { annee, trimestre } = req.query;
+            let targetDate = 'CURRENT_DATE';
+            let targetDateValue = null;
+
+            if (annee && trimestre) {
+                const year = parseInt(annee);
+                const trim = parseInt(trimestre);
+                if (!isNaN(year) && !isNaN(trim) && trim >= 1 && trim <= 4) {
+                    const endMonths = [3, 6, 9, 12];
+                    const endDays = [31, 30, 30, 31];
+                    const month = endMonths[trim - 1];
+                    const day = endDays[trim - 1];
+                    targetDateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    // Ne pas projeter les exclusions dans le futur si la date du trimestre n'est pas encore passée
+                    targetDate = `LEAST('${targetDateValue}'::DATE, CURRENT_DATE)`;
+                }
+            }
+
+            // Exclure les agents inactifs ou retirés (identique aux autres rapports)
+            const exclusionCondition = `
+                (a.retire IS NULL OR a.retire = false)
+                AND (a.statut_emploi IS NULL OR LOWER(TRIM(COALESCE(a.statut_emploi, ''))) <> 'retraite')
+                AND ${this.getRetirementExclusionCondition('a', 'g', targetDate)}
+            `;
+            whereCondition += " AND " + exclusionCondition;
+
+            if (targetDateValue) {
+                params.push(targetDateValue);
+                // On remet le filtre pour que le trimestre fonctionne, mais en gérant les dates nulles pour éviter les erreurs
+                whereCondition += ` AND (COALESCE(a.date_prise_service_au_ministere, a.created_at) IS NULL OR COALESCE(a.date_prise_service_au_ministere, a.created_at)::DATE <= $${params.length})`;
+            }
+
+            const query = `
+                WITH agents_data AS (
+                    SELECT 
+                        a.id,
+                        a.sexe,
+                        a.id_type_d_agent,
+                        ta.libele as type_agent_libelle,
+                        a.id_grade,
+                        g.libele as grade_libelle,
+                        a.id_direction_generale,
+                        dg.libelle as direction_generale_libelle,
+                        a.id_direction,
+                        d.libelle as direction_libelle
+                    FROM agents a
+                    LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
+                    LEFT JOIN grades g ON a.id_grade = g.id
+                    LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                    LEFT JOIN directions d ON a.id_direction = d.id
+                    WHERE ${whereCondition}
+                )
+                SELECT * FROM agents_data;
+            `;
+
+            console.log("SQL STATS POINT:", query, params);
+            const result = await pool.query(query, params);
+            const agents = result.rows;
+
+            // Organiser les données
+            // Les services qu'on affiche seront extraits des directions générales (et potentiellement directions)
+            // L'utilisateur veut récupérer directions et directions generales de la DB.
+            const stats = {
+                fonctionnaires: {},
+                nonFonctionnaires: {}
+            };
+
+            const initServiceData = () => ({
+                fonctionnaires: {
+                    A: { A5_7: { F: 0, H: 0 }, A4: { F: 0, H: 0 }, A3: { F: 0, H: 0 }, TOT: { F: 0, H: 0 } },
+                    B: { B3: { F: 0, H: 0 }, B1: { F: 0, H: 0 }, TOT: { F: 0, H: 0 } },
+                    C: { C2: { F: 0, H: 0 }, C1: { F: 0, H: 0 }, TOT: { F: 0, H: 0 } },
+                    D: { D1: { F: 0, H: 0 }, TOT: { F: 0, H: 0 } },
+                    TOTAL: { F: 0, H: 0 }
+                },
+                nonFonctionnaires: {
+                    ART18: { F: 0, H: 0 },
+                    EXP: { F: 0, H: 0 },
+                    CONTR: { F: 0, H: 0 },
+                    TOTAL: { F: 0, H: 0 }
+                }
+            });
+
+            // On va regrouper par nom de service (ex: le nom de la DG ou Dir)
+            const servicesMap = new Map();
+
+            agents.forEach(agent => {
+                // Détermination du service (Priorité à Direction Générale, sinon Direction, sinon "AUTRES")
+                let serviceName = 'AUTRES';
+                if (agent.direction_generale_libelle) {
+                    serviceName = agent.direction_generale_libelle;
+                } else if (agent.direction_libelle) {
+                    serviceName = agent.direction_libelle;
+                }
+
+                // Normaliser (enlever les retours à la ligne)
+                serviceName = serviceName.trim().toUpperCase();
+
+                if (!servicesMap.has(serviceName)) {
+                    servicesMap.set(serviceName, initServiceData());
+                }
+
+                const sData = servicesMap.get(serviceName);
+
+                // Sexe
+                let sexe = 'H';
+                if (agent.sexe) {
+                    const sexeNorm = agent.sexe.toUpperCase();
+                    if (sexeNorm.startsWith('F')) sexe = 'F';
+                }
+
+                const typeAgentId = agent.id_type_d_agent;
+
+                // 1 = FONCTIONNAIRE
+                // 2 = CONTRACTUEL
+                // 16 = BNETD
+                // 17 = CONTRACTUEL(ARTICLE 18)
+
+                if (typeAgentId === 1) { // Fonctionnaires
+                    const grade = agent.grade_libelle ? agent.grade_libelle.trim().toUpperCase() : '';
+                    let matched = false;
+
+                    // Categorie A
+                    if (['A5', 'A6', 'A7'].includes(grade)) {
+                        sData.fonctionnaires.A.A5_7[sexe]++;
+                        sData.fonctionnaires.A.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade === 'A4') {
+                        sData.fonctionnaires.A.A4[sexe]++;
+                        sData.fonctionnaires.A.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade === 'A3') {
+                        sData.fonctionnaires.A.A3[sexe]++;
+                        sData.fonctionnaires.A.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade.startsWith('A')) {
+                        // Autres A dans TOT A directement pour ne pas les perdre
+                        sData.fonctionnaires.A.TOT[sexe]++;
+                        matched = true;
+                    }
+
+                    // Categorie B
+                    if (grade === 'B3') {
+                        sData.fonctionnaires.B.B3[sexe]++;
+                        sData.fonctionnaires.B.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade === 'B1') {
+                        sData.fonctionnaires.B.B1[sexe]++;
+                        sData.fonctionnaires.B.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade.startsWith('B')) {
+                        sData.fonctionnaires.B.TOT[sexe]++;
+                        matched = true;
+                    }
+
+                    // Categorie C
+                    if (grade === 'C2') {
+                        sData.fonctionnaires.C.C2[sexe]++;
+                        sData.fonctionnaires.C.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade === 'C1') {
+                        sData.fonctionnaires.C.C1[sexe]++;
+                        sData.fonctionnaires.C.TOT[sexe]++;
+                        matched = true;
+                    } else if (grade.startsWith('C')) {
+                        sData.fonctionnaires.C.TOT[sexe]++;
+                        matched = true;
+                    }
+
+                    // Categorie D
+                    if (grade === 'D1' || grade.startsWith('D')) {
+                        sData.fonctionnaires.D.D1[sexe]++;
+                        sData.fonctionnaires.D.TOT[sexe]++;
+                        matched = true;
+                    }
+
+                    // Si c'est un fonctionnaire mais grade inconnu ou non parsé, on l'ajoute au total global quand même
+                    sData.fonctionnaires.TOTAL[sexe]++;
+
+                } else {
+                    // Non fonctionnaires
+                    if (typeAgentId === 17) {
+                        sData.nonFonctionnaires.ART18[sexe]++;
+                        sData.nonFonctionnaires.TOTAL[sexe]++;
+                    } else if (typeAgentId === 2) {
+                        sData.nonFonctionnaires.CONTR[sexe]++;
+                        sData.nonFonctionnaires.TOTAL[sexe]++;
+                    } else if (typeAgentId === 16) {
+                        // BNETD correspond à EXP dans l'image (Expert)
+                        sData.nonFonctionnaires.EXP[sexe]++;
+                        sData.nonFonctionnaires.TOTAL[sexe]++;
+                    } else {
+                        // Les autres non-fonctionnaires iront par défaut dans CONTR s'ils sont contractuels divers, 
+                        // ou juste dans le total. On va les ajouter au total général pour ne rien perdre
+                        sData.nonFonctionnaires.TOTAL[sexe]++;
+                    }
+                }
+            });
+
+            // Préparer la réponse
+            const responseData = {
+                services: []
+            };
+
+            for (const [serviceName, data] of servicesMap.entries()) {
+                responseData.services.push({
+                    nom: serviceName,
+                    ...data
+                });
+            }
+
+            // Trier par ordre alphabétique pour un affichage propre
+            responseData.services.sort((a, b) => a.nom.localeCompare(b.nom));
+
+            res.json({
+                success: true,
+                data: responseData
+            });
+
+        } catch (error) {
+            console.error('Erreur lors de la récupération des statistiques point:', error);
+            res.status(500).json({ success: false, message: 'Erreur lors de la récupération des statistiques point.' });
+        }
+    }
+
 }
 
 module.exports = AgentsController;

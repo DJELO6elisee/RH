@@ -31,139 +31,110 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
     const [selectedDocument, setSelectedDocument] = useState(null);
     const [modalOpen, setModalOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage] = useState(5);
-    const [filters, setFilters] = useState({
-        statut: '',
-        date_from: '',
-        date_to: ''
-    });
-    // Nouveaux filtres frontend
+    const [itemsPerPage] = useState(10);
+
+    // Tous les filtres sont maintenant passés au serveur
     const [agentFilter, setAgentFilter] = useState('');
+    const [agentFilterDebounced, setAgentFilterDebounced] = useState('');
     const [typeFilter, setTypeFilter] = useState('');
+    const [statut, setStatut] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
 
     const [isMobile, setIsMobile] = useState(() => {
-        if (typeof window === 'undefined') {
-            return false;
-        }
+        if (typeof window === 'undefined') return false;
         return window.innerWidth < 768;
     });
-    
+
     // Référence pour vérifier si le composant est monté
     const isMountedRef = useRef(true);
+    // Référence pour le timer du debounce
+    const debounceTimerRef = useRef(null);
+
+    // Debounce sur la recherche agent : attend 400ms après la dernière frappe
+    useEffect(() => {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+            setAgentFilterDebounced(agentFilter);
+            setCurrentPage(1);
+        }, 400);
+        return () => clearTimeout(debounceTimerRef.current);
+    }, [agentFilter]);
 
     useEffect(() => {
         loadDocuments();
-    }, [user?.id, filters, typeDemande, includeCertificatPriseService, currentPage]);
+    }, [user?.id, typeDemande, includeCertificatPriseService, currentPage, agentFilterDebounced, typeFilter, statut, dateFrom, dateTo]);
 
     // Nettoyage lors du démontage du composant
     useEffect(() => {
         return () => {
             isMountedRef.current = false;
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
         };
     }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-
-        const handleResize = () => {
-            setIsMobile(window.innerWidth < 768);
-        };
-
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
         handleResize();
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     const loadDocuments = async () => {
-        // Vérifier si le composant est encore monté avant de commencer
-        if (!isMountedRef.current) {
-            console.log('🔍 Composant démonté, annulation de loadDocuments');
-            return;
-        }
+        if (!isMountedRef.current) return;
 
         try {
             setLoading(true);
             setError(null);
 
-            console.log('🔍 Chargement des documents...');
-            console.log('👤 Utilisateur connecté:', user);
-            console.log('🔑 Rôle:', user?.role);
-            console.log('🆔 ID Agent:', user?.id_agent);
-
             const token = localStorage.getItem('token');
             const queryParams = new URLSearchParams();
-            
-            Object.keys(filters).forEach(key => {
-                if (filters[key]) {
-                    queryParams.append(key, filters[key]);
+
+            // Pagination serveur
+            queryParams.append('page', currentPage);
+            queryParams.append('limit', itemsPerPage);
+
+            // Filtres passés au serveur
+            if (agentFilterDebounced) queryParams.append('search_agent', agentFilterDebounced);
+            if (statut) queryParams.append('statut', statut);
+            if (dateFrom) queryParams.append('date_from', dateFrom);
+            if (dateTo) queryParams.append('date_to', dateTo);
+
+            // Filtre par type : priorité au typeFilter sélectionné, sinon typeDemande par défaut
+            const effectiveType = typeFilter || (!includeCertificatPriseService && typeDemande !== 'tous' ? typeDemande : '');
+            if (effectiveType) queryParams.append('type_demande', effectiveType);
+
+            // Déterminer l'URL selon le rôle de l'utilisateur
+            const canValidateDemandes = () => {
+                if (!user?.role) return false;
+                const validatingRoles = ['drh', 'chef_service', 'directeur', 'sous_directeur', 'directeur_general', 'directeur_centrale', 'directeur_central', 'ministre', 'super_admin', 'dir_cabinet', 'chef_cabinet', 'inspecteur_general', 'directeur_service_exterieur'];
+                return validatingRoles.includes(user.role.toLowerCase());
+            };
+
+            let apiUrl;
+            if (forceAgentView) {
+                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/agent/${user.id_agent}`;
+            } else if (canValidateDemandes()) {
+                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/validateur/${user.id_agent}`;
+            } else {
+                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/agent/${user.id_agent}`;
+            }
+
+            const response = await fetch(`${apiUrl}?${queryParams}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
-            // Si includeCertificatPriseService est true, ou si typeDemande est 'tous', ne pas filtrer par type_demande pour inclure tous les documents
-            // Sinon, utiliser le filtre type_demande normal
-            if (!includeCertificatPriseService && typeDemande !== 'tous') {
-                queryParams.append('type_demande', typeDemande);
-            }
-            // Note: Si includeCertificatPriseService est true, on ne filtre pas pour récupérer tous les documents générés
-
-            // Déterminer l'URL selon le rôle de l'utilisateur
-            let apiUrl;
-            
-            // Vérifier si l'utilisateur peut valider des demandes (DRH, chef de service, super admin)
-            const canValidateDemandes = () => {
-                if (!user?.role) return false;
-                const validatingRoles = ['drh', 'chef_service', 'directeur', 'ministre', 'super_admin'];
-                const userRole = user.role.toLowerCase();
-                console.log('🔍 Rôle utilisateur:', user.role, '-> normalisé:', userRole);
-                return validatingRoles.includes(userRole);
-            };
-
-            // Si forceAgentView est true, toujours utiliser l'endpoint agent (pour l'espace personnel)
-            if (forceAgentView) {
-                // Forcer l'utilisation de l'endpoint agent pour voir uniquement ses propres documents
-                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/agent/${user.id_agent}`;
-                console.log('🔍 Utilisation forcée de l\'endpoint agent pour l\'espace personnel:', user.id_agent);
-            } else if (canValidateDemandes()) {
-                // Pour les validateurs : utiliser la route validateur
-                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/validateur/${user.id_agent}`;
-                console.log('🔍 Utilisation de l\'endpoint validateur pour l\'utilisateur:', user.id_agent);
-            } else {
-                // Pour les agents : utiliser la route agent
-                apiUrl = `https://tourisme.2ise-groupe.com/api/documents/agent/${user.id_agent}`;
-                console.log('🔍 Utilisation de l\'endpoint agent pour l\'utilisateur:', user.id_agent);
-            }
-
-            console.log('🌐 URL API:', `${apiUrl}?${queryParams}`);
-            console.log('🔑 Token présent:', !!token);
-
-            const response = await fetch(
-                `${apiUrl}?${queryParams}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            console.log('📡 Status de la réponse:', response.status, response.statusText);
-
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('❌ Erreur de réponse:', errorText);
                 throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
             }
 
             const data = await response.json();
-            console.log('📊 Réponse API documents:', data);
-            console.log('📋 Nombre de documents reçus:', data.data ? data.data.length : 0);
-            
-            if (data.data && data.data.length > 0) {
-                console.log('📄 Premier document:', data.data[0]);
-                console.log('📄 Propriétés disponibles:', Object.keys(data.data[0]));
-            }
-            
-            // Vérifier si le composant est encore monté avant de mettre à jour l'état
+
             if (isMountedRef.current) {
                 setDocuments(data.data || []);
                 if (data.pagination) {
@@ -177,23 +148,15 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
 
         } catch (err) {
             console.error('Erreur lors du chargement des documents:', err);
-            // Vérifier si le composant est encore monté avant de mettre à jour l'état
-            if (isMountedRef.current) {
-                setError(err.message);
-            }
+            if (isMountedRef.current) setError(err.message);
         } finally {
-            // Vérifier si le composant est encore monté avant de mettre à jour l'état
-            if (isMountedRef.current) {
-                setLoading(false);
-            }
+            if (isMountedRef.current) setLoading(false);
         }
     };
 
-    const handleFilterChange = (key, value) => {
-        setFilters(prev => ({
-            ...prev,
-            [key]: value
-        }));
+    const handleFilterApply = () => {
+        setCurrentPage(1);
+        loadDocuments();
     };
 
     const handleViewDocument = async (document) => {
@@ -419,50 +382,13 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
         return 'N/A';
     };
 
-    // Application des filtres frontend (Agent et Type)
-    const filteredDocuments = documents.filter(doc => {
-        let match = true;
-        if (agentFilter) {
-            const searchStr = agentFilter.toLowerCase();
-            const fullName = `${doc.agent_prenom || ''} ${doc.agent_nom || ''}`.toLowerCase();
-            const matricule = (doc.agent_matricule || '').toLowerCase();
-            if (!fullName.includes(searchStr) && !matricule.includes(searchStr)) {
-                match = false;
-            }
-        }
-        if (typeFilter && typeFilter !== '') {
-            const docType = (doc.type_document || doc.type_demande || '').toLowerCase();
-            if (docType !== typeFilter) {
-                match = false;
-            }
-        }
-        return match;
-    });
-
-    // Pagination (Support hybride)
-    let currentDocuments = documents;
-    let displayTotalPages = totalPages;
-
-    // Si on a plus de documents que la limite (API non paginée), on passe en pagination client
-    if (documents.length > itemsPerPage) {
-        displayTotalPages = Math.ceil(documents.length / itemsPerPage);
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-        currentDocuments = documents.slice(startIndex, endIndex);
-    }
+    // Pagination purement serveur maintenant
+    const currentDocuments = documents;
+    const displayTotalPages = totalPages;
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
     };
-
-    if (loading) {
-        return (
-            <div className="d-flex justify-content-center align-items-center" style={{ height: '200px' }}>
-                <Spinner color="primary" />
-                <span className="ml-2">Chargement des documents...</span>
-            </div>
-        );
-    }
 
     if (error) {
         return (
@@ -540,8 +466,8 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                         <Col xs="12" md="4" lg={(!typeDemande || typeDemande === 'tous' || includeCertificatPriseService) ? 2 : 3}>
                             <Input
                                 type="select"
-                                value={filters.statut}
-                                onChange={(e) => handleFilterChange('statut', e.target.value)}
+                                value={statut}
+                                onChange={(e) => { setStatut(e.target.value); setCurrentPage(1); }}
                             >
                                 <option value="">Tous les statuts</option>
                                 <option value="generé">Généré</option>
@@ -554,28 +480,33 @@ const DocumentsGenerated = ({ typeDemande = 'absence', forceAgentView = false, i
                         <Col xs="12" md="6" lg="2">
                             <Input
                                 type="date"
-                                value={filters.date_from}
-                                onChange={(e) => handleFilterChange('date_from', e.target.value)}
+                                value={dateFrom}
+                                onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
                                 placeholder="Date de début"
                             />
                         </Col>
                         <Col xs="12" md="6" lg="2">
                             <Input
                                 type="date"
-                                value={filters.date_to}
-                                onChange={(e) => handleFilterChange('date_to', e.target.value)}
+                                value={dateTo}
+                                onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
                                 placeholder="Date de fin"
                             />
                         </Col>
                         <Col xs="12" lg="1" className="d-flex align-items-end">
-                            <Button color="primary" onClick={loadDocuments} className="w-100 mt-2 mt-lg-0">
+                            <Button color="primary" onClick={handleFilterApply} className="w-100 mt-2 mt-lg-0">
                                 Filtrer
                             </Button>
                         </Col>
                     </Row>
 
                     {/* Table des documents */}
-                    {documents.length === 0 ? (
+                    {loading ? (
+                        <div className="d-flex justify-content-center align-items-center" style={{ height: '150px' }}>
+                            <Spinner color="primary" />
+                            <span className="ml-2 ms-2">Chargement...</span>
+                        </div>
+                    ) : documents.length === 0 ? (
                         <div className="text-center py-4">
                             <p className="text-muted">Aucun document généré</p>
                         </div>

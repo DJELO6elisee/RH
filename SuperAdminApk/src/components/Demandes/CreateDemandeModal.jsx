@@ -750,31 +750,7 @@ const CreateDemandeModal = ({ isOpen, toggle, onDemandeCreated, agentId }) => {
 
                             {isMutation && (
                                 <>
-                                    <FormGroup>
-                                        <Label for="id_direction_destination">Direction de destination *</Label>
-                                        <Input
-                                            type="select"
-                                            name="id_direction_destination"
-                                            id="id_direction_destination"
-                                            value={formData.id_direction_destination}
-                                            onChange={handleInputChange}
-                                            required
-                                            disabled={loadingDirections}
-                                        >
-                                            <option value="">Sélectionner une direction</option>
-                                            {directions.map(direction => (
-                                                <option key={direction.id} value={direction.id}>
-                                                    {direction.libelle}
-                                                </option>
-                                            ))}
-                                        </Input>
-                                        {loadingDirections && (
-                                            <small className="text-muted d-block mt-1">
-                                                <Spinner size="sm" className="me-2" />
-                                                Chargement des directions...
-                                            </small>
-                                        )}
-                                    </FormGroup>
+
                                     <Alert color="info" className="mt-3">
                                         <i className="fa fa-info-circle me-2"></i>
                                         <strong>Demande de mutation</strong>

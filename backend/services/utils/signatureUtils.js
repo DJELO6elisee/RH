@@ -18,7 +18,7 @@ async function fetchDRHForSignature(idDirection, idMinistere) {
         const minParam = hasMinistere ? idMinistere : null;
         const { rows } = await pool.query(
             `
-            SELECT a.id, a.prenom, a.nom, a.sexe, a.nom_epoux, a.fonction_actuelle,
+            SELECT a.id, a.prenom, a.nom, a.sexe, a.nom_conjointe, a.fonction_actuelle,
                    d.libelle as direction_nom, m.nom as ministere_nom, m.sigle as ministere_sigle,
                    c.libele as civilite,
                    fa.designation_poste as fonction_designation

@@ -276,7 +276,8 @@ async function updateAgentPositionFromDemandeApproval(client, demande) {
         // - si le motif saisi n'existe pas dans `positions`, on le crée automatiquement
         // - sinon on utilise l'identifiant existant
         // Certains formulaires alimentent le "motif" dans `description`.
-        absenceMotifLabel = (demande.motif_conge || demande.agree_motif || demande.description || '').trim() || null;
+        let rawMotif = (demande.motif_conge || demande.agree_motif || demande.description || '').trim() || null;
+        absenceMotifLabel = rawMotif ? rawMotif.substring(0, 100) : null;
 
         // Pour déclencher l'insertion si le motif n'existe pas, on ne met que le motif dans `labels`.
         // Le fallback générique "En congé" est géré plus bas si besoin.
@@ -541,11 +542,13 @@ class DemandesController {
                      WHERE ig_agent.id_direction_generale = COALESCE(s.id_direction_generale, a.id_direction_generale)
                      AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(ig_role.nom), ' ', '_'), 'é', 'e'), 'è', 'e')) = 'inspecteur_general'
                      AND COALESCE(s.id_direction_generale, a.id_direction_generale) IS NOT NULL
-                     LIMIT 1) as inspecteur_general_id
+                     LIMIT 1) as inspecteur_general_id,
+                    ta.libele as type_agent_libele
                 FROM agents a
                 LEFT JOIN directions s ON a.id_direction = s.id
                 LEFT JOIN ministeres m ON a.id_ministere = m.id
                 LEFT JOIN sous_directions sd ON a.id_sous_direction = sd.id
+                LEFT JOIN type_d_agents ta ON a.id_type_d_agent = ta.id
                 WHERE a.id = $1
             `;
             const agentResult = await db.query(agentQuery, [id_agent]);
@@ -561,51 +564,41 @@ class DemandesController {
 
             // Validation spécifique pour les demandes de mutation
             if (type_demande === 'mutation') {
-                if (!id_direction_destination) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'La direction de destination est requise pour une demande de mutation'
-                    });
+                if (id_direction_destination) {
+                    // Vérifier que la direction de destination existe
+                    const directionDestQuery = `SELECT id, libelle FROM directions WHERE id = $1`;
+                    const directionDestResult = await db.query(directionDestQuery, [id_direction_destination]);
+
+                    if (directionDestResult.rows.length === 0) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'La direction de destination spécifiée n\'existe pas'
+                        });
+                    }
+
+                    // Vérifier que l'agent ne demande pas une mutation vers sa propre direction
+                    if (agent.id_direction === parseInt(id_direction_destination)) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'Vous ne pouvez pas demander une mutation vers votre direction actuelle'
+                        });
+                    }
                 }
 
-                // Vérifier que la direction de destination existe
-                const directionDestQuery = `SELECT id, libelle FROM directions WHERE id = $1`;
-                const directionDestResult = await db.query(directionDestQuery, [id_direction_destination]);
-
-                if (directionDestResult.rows.length === 0) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'La direction de destination spécifiée n\'existe pas'
-                    });
+                if (date_effet_mutation) {
+                    // Vérifier que la date d'effet n'est pas dans le passé
+                    const dateEffet = new Date(date_effet_mutation);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    if (dateEffet < today) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'La date d\'effet de la mutation ne peut pas être dans le passé'
+                        });
+                    }
                 }
 
-                // Vérifier que l'agent ne demande pas une mutation vers sa propre direction
-                if (agent.id_direction === parseInt(id_direction_destination)) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Vous ne pouvez pas demander une mutation vers votre direction actuelle'
-                    });
-                }
-
-                if (!date_effet_mutation) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'La date d\'effet de la mutation est requise'
-                    });
-                }
-
-                // Vérifier que la date d'effet n'est pas dans le passé
-                const dateEffet = new Date(date_effet_mutation);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                if (dateEffet < today) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'La date d\'effet de la mutation ne peut pas être dans le passé'
-                    });
-                }
-
-                console.log(`✅ Validation mutation réussie - Direction destination: ${directionDestResult.rows[0].libelle}, Date effet: ${date_effet_mutation}`);
+                console.log(`✅ Validation mutation réussie - Date effet: ${date_effet_mutation}`);
             }
 
             // Validation spécifique pour les certificats de cessation
@@ -651,13 +644,16 @@ class DemandesController {
                 const motifNormalise = (agree_motif || motif_conge || '').toLowerCase().trim();
 
                 const motifsExemptes = [
-                    'congé maternité',
-                    'conge maternite',
-                    'congé paternité',
-                    'conge paternite'
+                    'maternité',
+                    'maternite',
+                    'paternité',
+                    'paternite'
                 ];
 
-                const estExempte = motifsExemptes.some(motif =>
+                const typeAgent = (agent.type_agent_libele || '').toLowerCase();
+                const estContractuel = typeAgent.includes('contractuel') || typeAgent.includes('bnetd');
+
+                const estExempte = estContractuel || motifsExemptes.some(motif =>
                     motifNormalise.includes(motif)
                 );
 
@@ -820,7 +816,7 @@ class DemandesController {
 
             const isAgentDuCabinet = cabinetDgId && (Number(agent.id_direction_generale) === Number(cabinetDgId) || Number(agent.id_direction_generale_direction) === Number(cabinetDgId));
             const directionSansDG = !agent.id_direction_generale_direction;
-            const directionAvecDG = !!agent.id_direction_generale_direction && !!agent.directeur_general_id;
+            const directionAvecDG = !!agent.id_direction_generale_direction && (!!agent.directeur_general_id || !!agent.inspecteur_general_id);
 
             // Déterminer si c'est une demande d'absence > 5 jours
             let estAbsenceLongue = false;
@@ -839,7 +835,9 @@ class DemandesController {
 
             // NOUVELLE HIÉRARCHIE selon les spécifications utilisateur
             const typesWorkflowNormal = ['absence', 'certificat_cessation', 'mutation'];
-            if (!typesWorkflowNormal.includes(type_demande) || estAbsenceLongue) {
+            const estHautNiveau = isAgentDirCabinet || isAgentChefCabinet || isAgentConseillerTechnique || isAgentChargeDEtude || isAgentChargeDeMission || isAgentChefDuSecretariatParticulier || isAgentDirecteurCentral || isAgentDirecteurGeneral || isAgentDRH || isAgentInspecteurGeneral || isAgentGestionnairePatrimoine || isAgentPresidentFond || isAgentResponsableCellulePassation || (isAgent && isAgentDuCabinet && !agent.id_direction);
+
+            if (!typesWorkflowNormal.includes(type_demande) || (estAbsenceLongue && !estHautNiveau)) {
                 niveauInitial = 'valide_par_drh';
                 console.log(`Demande de type ${type_demande} ${estAbsenceLongue ? '(> 5 jours)' : ''} - Envoi direct au DRH (exception workflow normal)`);
             }
@@ -865,7 +863,7 @@ class DemandesController {
             else if (isAgentDirecteur && !isAgentDirecteurServiceExterieur) {
                 if (directionAvecDG) {
                     niveauInitial = 'valide_par_directeur_general';
-                    idValidateurDirecteurGeneral = agent.directeur_general_id;
+                    idValidateurDirecteurGeneral = agent.directeur_general_id || agent.inspecteur_general_id;
                     console.log('Demande du Directeur (direction rattachée à une DG) - Workflow: → Directeur général (ID: ' + idValidateurDirecteurGeneral + ') → DRH');
                 } else {
                     niveauInitial = 'valide_par_directeur_service_exterieur';
@@ -887,14 +885,14 @@ class DemandesController {
             // 5. Directeur service extérieur (direction avec DG) → Directeur général puis DRH
             else if (isAgentDirecteurServiceExterieur && directionAvecDG) {
                 niveauInitial = 'valide_par_directeur_general';
-                idValidateurDirecteurGeneral = agent.directeur_general_id;
+                idValidateurDirecteurGeneral = agent.directeur_general_id || agent.inspecteur_general_id;
                 console.log('Demande du Directeur service extérieur (direction avec DG) - Workflow: → Directeur général (ID: ' + idValidateurDirecteurGeneral + ') → DRH');
             }
             // 6. Directeur service extérieur sans DG (cas rare / incohérence de données) → même logique que directeur avec DG si directeur_general_id dispo, sinon DRH
             else if (isAgentDirecteurServiceExterieur && directionSansDG) {
-                niveauInitial = agent.directeur_general_id ? 'valide_par_directeur_general' : 'valide_par_drh';
-                if (agent.directeur_general_id) {
-                    idValidateurDirecteurGeneral = agent.directeur_general_id;
+                niveauInitial = (agent.directeur_general_id || agent.inspecteur_general_id) ? 'valide_par_directeur_general' : 'valide_par_drh';
+                if (agent.directeur_general_id || agent.inspecteur_general_id) {
+                    idValidateurDirecteurGeneral = agent.directeur_general_id || agent.inspecteur_general_id;
                     console.log('Demande du Directeur service extérieur (considéré comme avec DG) - Workflow: → Directeur général → DRH');
                 } else {
                     console.log('Demande du Directeur service extérieur - Workflow: → DRH (finalisation, pas de DG trouvée)');
@@ -934,8 +932,13 @@ class DemandesController {
                     const directeurEstDRH = agent.directeur_role_nom && agent.directeur_role_nom.toLowerCase() === 'drh';
                     if (directeurEstDRH) {
                         // Agent dans la direction de la DRH (sans sous-direction)
-                        niveauInitial = 'valide_par_directeur';
-                        console.log(`Demande d'agent - Agent direction DRH (sans sous-direction) → Directeur (DRH) → DRH (finalisation)`);
+                        if (type_demande === 'autorisation_absence') {
+                            niveauInitial = 'en_attente_directeur_central_drh';
+                            console.log(`Demande d'agent - Agent direction DRH (autorisation_absence) → Directeur central`);
+                        } else {
+                            niveauInitial = 'valide_par_directeur';
+                            console.log(`Demande d'agent - Agent direction DRH (sans sous-direction) → Directeur (DRH) → DRH (finalisation)`);
+                        }
                     } else {
                         // Agent dans une autre direction : on commence toujours par le directeur,
                         // la distinction "direction simple / rattachée à une DG" sera gérée au moment
@@ -964,11 +967,16 @@ class DemandesController {
                 const directeurEstDRH = directeurRoleNomNorm === 'drh';
 
                 if (directeurEstDRH) {
-                    // Envoi direct au DRH (directeur de la direction = DRH)
-                    niveauInitial = 'valide_par_drh';
-                    // Important: la visibilité DRH se fait sur niveau_actuel='drh' dans getDemandesEnAttente
-                    // donc on force le niveau actuel initial à DRH.
-                    console.log('Demande de sous-directeur - Workflow: Sous-directeur → DRH (directeur de la direction = DRH)');
+                    if (type_demande === 'autorisation_absence') {
+                        niveauInitial = 'en_attente_directeur_central_drh';
+                        console.log('Demande de sous-directeur - Workflow: Sous-directeur → Directeur central (directeur de la direction = DRH)');
+                    } else {
+                        // Envoi direct au DRH (directeur de la direction = DRH)
+                        niveauInitial = 'valide_par_drh';
+                        // Important: la visibilité DRH se fait sur niveau_actuel='drh' dans getDemandesEnAttente
+                        // donc on force le niveau actuel initial à DRH.
+                        console.log('Demande de sous-directeur - Workflow: Sous-directeur → DRH (directeur de la direction = DRH)');
+                    }
                 } else if (directeurRoleNomNorm === 'directeur_service_exterieur') {
                     // Directeur de la direction = DSE → DSE puis DRH
                     niveauInitial = 'valide_par_directeur_service_exterieur';
@@ -1015,17 +1023,20 @@ class DemandesController {
                 if (!agree_motif) {
                     agree_motif = motif_conge;
                 }
-            } else if (type_demande === 'mutation' && id_direction_destination) {
-                const directionDestQuery = `SELECT libelle FROM directions WHERE id = $1`;
-                const directionDestResult = await db.query(directionDestQuery, [id_direction_destination]);
-                const directionDestName = directionDestResult.rows[0] ? directionDestResult.rows[0].libelle || 'Direction inconnue' : 'Direction inconnue';
+            } else if (type_demande === 'mutation') {
+                let directionDestName = 'Direction inconnue';
+                if (id_direction_destination) {
+                    const directionDestQuery = `SELECT libelle FROM directions WHERE id = $1`;
+                    const directionDestResult = await db.query(directionDestQuery, [id_direction_destination]);
+                    directionDestName = directionDestResult.rows[0] ? directionDestResult.rows[0].libelle || 'Direction inconnue' : 'Direction inconnue';
+                }
 
                 // Stocker les infos de mutation dans un format JSON dans description
                 const mutationData = {
-                    id_direction_destination: parseInt(id_direction_destination),
-                    direction_destination: directionDestName,
+                    id_direction_destination: id_direction_destination ? parseInt(id_direction_destination) : null,
+                    direction_destination: id_direction_destination ? directionDestName : null,
                     date_effet: date_effet_mutation || new Date().toISOString().split('T')[0],
-                    motif: motif_mutation || null
+                    motif: motif_mutation || description || null
                 };
                 descriptionFinale = `MUTATION_DATA:${JSON.stringify(mutationData)}`;
             }
@@ -1048,6 +1059,11 @@ class DemandesController {
             else if (niveauInitial === 'valide_par_directeur_service_exterieur') niveauActuelInitial = 'directeur_service_exterieur';
             else if (niveauInitial === 'valide_par_dir_cabinet') niveauActuelInitial = 'dir_cabinet';
             else if (niveauInitial === 'valide_par_drh') niveauActuelInitial = 'drh';
+            else if (niveauInitial === 'valide_par_directeur') niveauActuelInitial = 'drh';
+            else if (niveauInitial === 'en_attente_directeur_central_drh') {
+                niveauInitial = 'soumis';
+                niveauActuelInitial = 'directeur_central';
+            }
             else if (niveauInitial === 'soumis') {
                 // 'soumis' = demande déposée, mais le "niveau_actuel" doit pointer vers le prochain acteur.
                 // - Si le demandeur est un sous-directeur, la demande doit aller au directeur (ou DRH si directeur=DRH, géré plus haut).
@@ -2526,7 +2542,7 @@ class DemandesController {
             }
 
             id_demande = req.params.id_demande;
-            let { action, commentaire } = req.body || {};
+            let { action, commentaire, date_effet_mutation, id_direction_destination, direction_destination, id_direction_generale_destination, direction_generale_destination } = req.body || {};
             let documentGenerated = null;
             let nextNiveau = null; // Déclaré au niveau de la fonction pour être accessible partout
             let nextEvolutionNiveau = null; // Déclaré au niveau de la fonction pour être accessible partout
@@ -2748,11 +2764,19 @@ class DemandesController {
                         } else if (agentSansSousDirection) {
                             // Agent directement lié à direction → Directeur (ou DRH si directeur est DRH)
                             if (directeurEstDRH) {
-                                niveauValidation = 'drh';
-                                statutField = 'statut_drh';
-                                dateField = 'date_validation_drh';
-                                commentaireField = 'commentaire_drh';
-                                console.log(`Agent directement lié à direction - Directeur est DRH → Validation DRH`);
+                                if (demande.type_demande === 'autorisation_absence') {
+                                    niveauValidation = 'directeur_central';
+                                    statutField = 'statut_directeur';
+                                    dateField = 'date_validation_directeur';
+                                    commentaireField = 'commentaire_directeur';
+                                    console.log(`Agent directement lié à direction - Directeur est DRH (autorisation_absence) → Validation Directeur Central`);
+                                } else {
+                                    niveauValidation = 'drh';
+                                    statutField = 'statut_drh';
+                                    dateField = 'date_validation_drh';
+                                    commentaireField = 'commentaire_drh';
+                                    console.log(`Agent directement lié à direction - Directeur est DRH → Validation DRH`);
+                                }
                             } else {
                                 niveauValidation = 'directeur';
                                 statutField = 'statut_directeur';
@@ -2790,12 +2814,19 @@ class DemandesController {
                             (sousDirecteurInfo.directeur_role_nom.toLowerCase() === 'drh');
 
                         if (directeurEstDRH) {
-                            // Sous-directeur rattaché à la direction de la DRH → Demande va directement au DRH
-                            niveauValidation = 'drh';
-                            statutField = 'statut_drh';
-                            dateField = 'date_validation_drh';
-                            commentaireField = 'commentaire_drh';
-                            console.log(`✅ Demande validée par sous-directeur (rattaché à DRH) → Validation par DRH`);
+                            if (demande.type_demande === 'autorisation_absence') {
+                                niveauValidation = 'directeur_central';
+                                statutField = 'statut_directeur';
+                                dateField = 'date_validation_directeur';
+                                commentaireField = 'commentaire_directeur';
+                                console.log(`✅ Demande validée par sous-directeur (rattaché à DRH) (autorisation_absence) → Validation par Directeur Central`);
+                            } else {
+                                niveauValidation = 'drh';
+                                statutField = 'statut_drh';
+                                dateField = 'date_validation_drh';
+                                commentaireField = 'commentaire_drh';
+                                console.log(`✅ Demande validée par sous-directeur (rattaché à DRH) → Validation par DRH`);
+                            }
                         } else {
                             // Sous-directeur normal → Demande va au directeur
                             niveauValidation = 'directeur';
@@ -2847,12 +2878,20 @@ class DemandesController {
                             (sousDirecteurDemandeurInfo.directeur_role_nom.toLowerCase() === 'drh');
 
                         if (directeurEstDRH) {
-                            // Sous-directeur rattaché à la direction de la DRH → Demande va directement au DRH
-                            niveauValidation = 'drh';
-                            statutField = 'statut_drh';
-                            dateField = 'date_validation_drh';
-                            commentaireField = 'commentaire_drh';
-                            console.log(`✅ Demande créée par sous-directeur (rattaché à DRH) → Validation par DRH`);
+                            if (demande.type_demande === 'autorisation_absence') {
+                                niveauValidation = 'directeur_central';
+                                statutField = 'statut_directeur';
+                                dateField = 'date_validation_directeur';
+                                commentaireField = 'commentaire_directeur';
+                                console.log(`✅ Demande créée par sous-directeur (rattaché à DRH) (autorisation_absence) → Validation par Directeur Central`);
+                            } else {
+                                // Sous-directeur rattaché à la direction de la DRH → Demande va directement au DRH
+                                niveauValidation = 'drh';
+                                statutField = 'statut_drh';
+                                dateField = 'date_validation_drh';
+                                commentaireField = 'commentaire_drh';
+                                console.log(`✅ Demande créée par sous-directeur (rattaché à DRH) → Validation par DRH`);
+                            }
                         } else {
                             // Sous-directeur normal → Demande va au directeur
                             niveauValidation = 'directeur';
@@ -3044,92 +3083,99 @@ class DemandesController {
                 // 🔹 CAS SPÉCIAL : validation par le Directeur des services extérieurs
                 // On force systématiquement le passage au DRH, sans finalisation.
                 if (niveauValidation === 'directeur_service_exterieur') {
-                    try {
-                        const phaseNext = 'aller';
-                        const nextNiveauLocal = 'drh';
-                        const nextEvolutionLocal = 'valide_par_directeur_service_exterieur';
+                    if (demande.type_demande === 'absence') {
+                        nextNiveau = 'finalise';
+                        nextEvolutionNiveau = 'valide_par_directeur_service_exterieur';
+                        console.log(`✅ Directeur service extérieur valide une demande d'absence → Finalisation directe`);
+                        // Ne pas faire le return, on laisse le flux finaliser la demande
+                    } else {
+                        try {
+                            const phaseNext = 'aller';
+                            const nextNiveauLocal = 'drh';
+                            const nextEvolutionLocal = 'valide_par_directeur_service_exterieur';
 
-                        // Mettre la demande en attente chez le DRH
-                        const updateToDrhResult = await db.query(
-                            `UPDATE demandes 
+                            // Mettre la demande en attente chez le DRH
+                            const updateToDrhResult = await db.query(
+                                `UPDATE demandes 
                                  SET niveau_actuel = $1,
                                      niveau_evolution_demande = $2,
                                      phase = $3,
                                      status = $4
                                  WHERE id = $5
                                  RETURNING id, status, niveau_actuel, niveau_evolution_demande, phase, statut_drh`,
-                            [nextNiveauLocal, nextEvolutionLocal, phaseNext, 'en_attente', id_demande]
-                        );
-                        const demandeFinale = updateToDrhResult.rows[0] || null;
+                                [nextNiveauLocal, nextEvolutionLocal, phaseNext, 'en_attente', id_demande]
+                            );
+                            const demandeFinale = updateToDrhResult.rows[0] || null;
 
-                        // Notifier les DRH du ministère de l'agent
-                        try {
-                            const demandeAgentQuery = `SELECT a.id_ministere FROM agents a WHERE a.id = $1`;
-                            const demandeAgentResult = await db.query(demandeAgentQuery, [demande.id_agent]);
-                            const idMinistereAgent = (demandeAgentResult.rows[0] && demandeAgentResult.rows[0].id_ministere) || null;
+                            // Notifier les DRH du ministère de l'agent
+                            try {
+                                const demandeAgentQuery = `SELECT a.id_ministere FROM agents a WHERE a.id = $1`;
+                                const demandeAgentResult = await db.query(demandeAgentQuery, [demande.id_agent]);
+                                const idMinistereAgent = (demandeAgentResult.rows[0] && demandeAgentResult.rows[0].id_ministere) || null;
 
-                            if (idMinistereAgent) {
-                                const drhQuery = `
+                                if (idMinistereAgent) {
+                                    const drhQuery = `
                                         SELECT a.id AS id_agent
                                         FROM agents a
                                         JOIN utilisateurs u ON u.id_agent = a.id
                                         JOIN roles r ON r.id = u.id_role
                                         WHERE LOWER(r.nom) = 'drh' AND a.id_ministere = $1
                                     `;
-                                const drhResult = await db.query(drhQuery, [idMinistereAgent]);
+                                    const drhResult = await db.query(drhQuery, [idMinistereAgent]);
 
-                                for (const row of drhResult.rows) {
-                                    const notificationQueryForDRH = `
+                                    for (const row of drhResult.rows) {
+                                        const notificationQueryForDRH = `
                                             INSERT INTO notifications_demandes (
                                                 id_demande, id_agent_destinataire, type_notification, 
                                                 titre, message, lu, date_creation
                                             ) VALUES ($1, $2, $3, $4, $5, FALSE, CURRENT_TIMESTAMP)
                                         `;
 
-                                    const titre = 'Nouvelle demande à valider';
-                                    const message = `Une demande de ${demande.type_demande} nécessite votre validation au niveau DRH.`;
+                                        const titre = 'Nouvelle demande à valider';
+                                        const message = `Une demande de ${demande.type_demande} nécessite votre validation au niveau DRH.`;
 
-                                    await db.query(notificationQueryForDRH, [
-                                        id_demande,
-                                        row.id_agent,
-                                        'nouvelle_demande',
-                                        titre,
-                                        message
-                                    ]);
+                                        await db.query(notificationQueryForDRH, [
+                                            id_demande,
+                                            row.id_agent,
+                                            'nouvelle_demande',
+                                            titre,
+                                            message
+                                        ]);
+                                    }
                                 }
+                            } catch (notifyErr) {
+                                console.error('Erreur lors de la notification aux DRH après validation DSE :', notifyErr);
                             }
-                        } catch (notifyErr) {
-                            console.error('Erreur lors de la notification aux DRH après validation DSE :', notifyErr);
-                        }
 
-                        // Réponse spécifique pour le cas DSE → DRH
-                        return res.json({
-                            success: true,
-                            message: 'Demande approuvée avec succès',
-                            demande_id: id_demande,
-                            niveau_validation: niveauValidation,
-                            prochain_niveau: nextNiveauLocal,
-                            debug: {
-                                niveauValidation,
-                                nextNiveau: nextNiveauLocal,
-                                nextEvolutionNiveau: nextEvolutionLocal,
-                                shouldFinalize: false,
-                                validateurRole,
-                                validateurRoleLower,
-                                demandeInitiale: {
-                                    niveau_evolution_demande: demande.niveau_evolution_demande,
-                                    phase: demande.phase,
-                                    statut_drh: demande.statut_drh
+                            // Réponse spécifique pour le cas DSE → DRH
+                            return res.json({
+                                success: true,
+                                message: 'Demande approuvée avec succès',
+                                demande_id: id_demande,
+                                niveau_validation: niveauValidation,
+                                prochain_niveau: nextNiveauLocal,
+                                debug: {
+                                    niveauValidation,
+                                    nextNiveau: nextNiveauLocal,
+                                    nextEvolutionNiveau: nextEvolutionLocal,
+                                    shouldFinalize: false,
+                                    validateurRole,
+                                    validateurRoleLower,
+                                    demandeInitiale: {
+                                        niveau_evolution_demande: demande.niveau_evolution_demande,
+                                        phase: demande.phase,
+                                        statut_drh: demande.statut_drh
+                                    },
+                                    demandeFinale
                                 },
-                                demandeFinale
-                            },
-                            demande: demandeFinale,
-                            document_generated: false
-                        });
-                    } catch (dseError) {
-                        console.error('❌ Erreur lors du traitement spécial Directeur service extérieur → DRH :', dseError);
-                        // En cas d’erreur, on laisse continuer le flux normal pour ne pas bloquer,
-                        // mais normalement ce bloc doit suffire.
+                                demande: demandeFinale,
+                                document_generated: false
+                            });
+                        } catch (dseError) {
+                            console.error('❌ Erreur lors du traitement spécial Directeur service extérieur → DRH :', dseError);
+                            // En cas d’erreur, on laisse continuer le flux normal pour ne pas bloquer,
+                            // mais normalement ce bloc doit suffire.
+                        }
                     }
                 }
 
@@ -3261,11 +3307,18 @@ class DemandesController {
                         nextEvolutionNiveau = 'valide_par_drh';
                         phase = 'retour';
                     } else if (niveauValidation === 'directeur_service_exterieur') {
-                        // Directeur des services extérieurs en phase retour → renvoie toujours vers le DRH (jamais de finalisation directe)
-                        nextNiveau = 'drh';
-                        nextEvolutionNiveau = 'valide_par_directeur_service_exterieur';
-                        phase = 'aller';
-                        console.log(`✅ Phase retour avec directeur_service_exterieur → Demande renvoyée au DRH`);
+                        if (demande.type_demande === 'absence') {
+                            nextNiveau = 'finalise';
+                            nextEvolutionNiveau = 'valide_par_directeur_service_exterieur';
+                            phase = 'retour';
+                            console.log(`✅ Phase retour avec directeur_service_exterieur (absence) → Finalisation directe`);
+                        } else {
+                            // Directeur des services extérieurs en phase retour → renvoie toujours vers le DRH (jamais de finalisation directe)
+                            nextNiveau = 'drh';
+                            nextEvolutionNiveau = 'valide_par_directeur_service_exterieur';
+                            phase = 'aller';
+                            console.log(`✅ Phase retour avec directeur_service_exterieur → Demande renvoyée au DRH`);
+                        }
                     } else {
                         // Cas par défaut pour phase retour : finaliser si c'est une validation finale
                         console.warn(`⚠️ Cas non géré en phase retour pour niveauValidation=${niveauValidation}, finalisation par défaut`);
@@ -3389,10 +3442,17 @@ class DemandesController {
                             }
                         } else if (niveauValidation === 'directeur' || niveauValidation === 'directeur_central') {
                             // Directeur valide pour un agent (ou sous-directeur) :
-                            // - aller directement au DRH
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = `valide_par_${niveauValidation}`;
-                            console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            if (demande.type_demande === 'absence') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                phase = 'retour';
+                                console.log(`✅ Directeur ou Directeur Central valide une absence (hors DRH) → Finalisation directe`);
+                            } else {
+                                // - aller directement au DRH
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            }
                         } else if (niveauValidation === 'drh') {
                             // DRH valide → Toujours finaliser directement (pas d'étape supplémentaire)
                             nextNiveau = 'finalise';
@@ -3406,10 +3466,17 @@ class DemandesController {
                             console.log(`✅ Chef de cabinet a validé → Demande va chez le DRH (finalisation par le DRH)`);
                         } else if (niveauValidation === 'directeur_general') {
                             // Directeur général a validé (agent rattaché à la DG) → Demande va au DRH (seul le DRH finalise)
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = 'valide_par_directeur_general';
-                            phase = 'aller';
-                            console.log(`✅ Directeur général a validé → Demande va chez le DRH (finalisation par le DRH)`);
+                            if (demande.type_demande === 'absence') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = 'valide_par_directeur_general';
+                                phase = 'retour';
+                                console.log(`✅ Directeur général a validé une absence (hors DRH) → Finalisation directe`);
+                            } else {
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = 'valide_par_directeur_general';
+                                phase = 'aller';
+                                console.log(`✅ Directeur général a validé → Demande va chez le DRH (finalisation par le DRH)`);
+                            }
                         } else {
                             // Cas par défaut pour agent : utiliser la hiérarchie par défaut
                             const niveauHierarchy = {
@@ -3424,6 +3491,13 @@ class DemandesController {
                             };
                             nextNiveau = niveauHierarchy[niveauValidation] || 'finalise';
                             nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+
+                            // OVERRIDE: Si le directeur_central ou directeur valide une autorisation d'absence, il finalise.
+                            if ((niveauValidation === 'directeur_central' || niveauValidation === 'directeur') && demande.type_demande === 'autorisation_absence') {
+                                nextNiveau = 'finalise';
+                                console.log(`✅ Directeur ou Directeur Central valide autorisation d'absence → Finalisation directe`);
+                            }
+
                             if (nextNiveau === 'finalise') {
                                 phase = 'retour';
                             }
@@ -3434,10 +3508,22 @@ class DemandesController {
                     else if (demandeurRoleLower === 'sous_directeur') {
                         if (niveauValidation === 'directeur' || niveauValidation === 'directeur_central') {
                             // Directeur valide une demande d'un sous-directeur :
-                            // - aller directement au DRH
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = `valide_par_${niveauValidation}`;
-                            console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            if (demande.type_demande === 'absence') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                phase = 'retour';
+                                console.log(`✅ Directeur ou Directeur Central valide absence de sous-directeur (hors DRH) → Finalisation directe`);
+                            } else if (demande.type_demande === 'autorisation_absence') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                phase = 'retour';
+                                console.log(`✅ Directeur ou Directeur Central valide autorisation d'absence de sous-directeur → Finalisation directe`);
+                            } else {
+                                // - aller directement au DRH
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            }
                         } else if (niveauValidation === 'drh') {
                             // DRH valide → Document généré et transmis au sous-directeur
                             nextNiveau = 'finalise';
@@ -3493,7 +3579,7 @@ class DemandesController {
                     }
                     // 3. Directeur, DRH, Directeur général, Directeur central → Directeur de cabinet → Retour DRH
                     else if (demandeurRoleLower === 'directeur' || demandeurRoleLower === 'drh' ||
-                        demandeurRoleLower === 'directeur_general' || demandeurRoleLower === 'directeur_central' ||
+                        demandeurRoleLower === 'directeur_general' || demandeurRoleLower === 'directeur_central' || demandeurRoleLower === 'inspecteur_general' ||
                         demandeurRoleLower === 'gestionnaire_du_patrimoine' || demandeurRoleLower === 'president_du_fond' || demandeurRoleLower === 'responsble_cellule_de_passation') {
                         // Si la demande vient d'être créée par un Directeur ou DRH, elle doit aller au Dir Cabinet
                         if (demande.niveau_evolution_demande === 'valide_par_directeur' || demande.niveau_evolution_demande === 'valide_par_drh') {
@@ -3502,10 +3588,11 @@ class DemandesController {
                             nextEvolutionNiveau = demande.niveau_evolution_demande === 'valide_par_drh' ? 'valide_par_drh' : 'valide_par_directeur';
                             console.log(`✅ Demande de ${demandeurRoleLower} → Va au Dir Cabinet (nextEvolutionNiveau: ${nextEvolutionNiveau})`);
                         } else if (niveauValidation === 'dir_cabinet') {
-                            // Dir Cabinet valide → Retour vers DRH (comme ordre à exécuter)
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = 'retour_dir_cabinet';
+                            // Dir Cabinet valide → Finalisation directe (comme demandé par le client pour toutes les validations du Dir Cabinet)
+                            nextNiveau = 'finalise';
+                            nextEvolutionNiveau = 'valide_par_dir_cabinet';
                             phase = 'retour';
+                            console.log(`✅ Dir Cabinet valide une demande de ${demandeurRoleLower} → Finalisation directe systématique`);
                         } else if (niveauValidation === 'drh' && demande.phase === 'retour') {
                             // DRH exécute l'ordre → Document généré et transmis au Directeur
                             nextNiveau = 'finalise';
@@ -3537,10 +3624,17 @@ class DemandesController {
                     else if (demandeurRoleLower === 'dir_cabinet' || demandeurRoleLower === 'chef_cabinet') {
                         if (niveauValidation === 'ministre') {
                             // Ministre valide → envoi au DRH (pas de finalisation par le Ministre)
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = 'valide_par_ministre';
-                            phase = 'aller';
-                            console.log(`✅ Ministre valide une demande provenant du ${demandeurRoleLower} → Demande envoyée au DRH (finalisation par le DRH)`);
+                            if (demande.type_demande === 'absence' && demandeurRoleLower !== 'drh') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = 'valide_par_ministre';
+                                phase = 'retour';
+                                console.log(`✅ Ministre valide une absence de ${demandeurRoleLower} (hors DRH) → Finalisation directe`);
+                            } else {
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = 'valide_par_ministre';
+                                phase = 'aller';
+                                console.log(`✅ Ministre valide une demande provenant du ${demandeurRoleLower} → Demande envoyée au DRH (finalisation par le DRH)`);
+                            }
                         } else {
                             // Cas par défaut pour directeur de cabinet
                             console.warn(`⚠️ Cas non géré pour ${demandeurRoleLower} avec niveauValidation=${niveauValidation}, utilisation de la hiérarchie par défaut`);
@@ -3570,10 +3664,17 @@ class DemandesController {
                             console.log(`✅ Sous-directeur valide → Demande va chez Directeur`);
                         } else if (niveauValidation === 'directeur' || niveauValidation === 'directeur_central') {
                             // Directeur valide (cas générique) :
-                            // - aller directement au DRH
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = `valide_par_${niveauValidation}`;
-                            console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            if (demande.type_demande === 'absence') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                phase = 'retour';
+                                console.log(`✅ Directeur ou Directeur Central valide une absence (hors DRH) → Finalisation directe`);
+                            } else {
+                                // - aller directement au DRH
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = `valide_par_${niveauValidation}`;
+                                console.log(`✅ Directeur ou Directeur Central valide → Demande va directement au DRH`);
+                            }
                         } else if (niveauValidation === 'drh') {
                             // DRH valide → Toujours finaliser directement
                             nextNiveau = 'finalise';
@@ -3581,21 +3682,37 @@ class DemandesController {
                             phase = 'retour';
                             console.log(`✅ DRH valide → Finalisation directe`);
                         } else if (niveauValidation === 'dir_cabinet') {
-                            // Dir Cabinet valide (demande DG/DC/DRH/inspecteur_general) → DRH puis finalisation
-                            nextNiveau = 'drh';
+                            // Dir Cabinet valide → Finalisation directe systématique
+                            nextNiveau = 'finalise';
                             nextEvolutionNiveau = 'valide_par_dir_cabinet';
+                            phase = 'retour';
+                            console.log(`✅ Dir Cabinet valide → Finalisation directe`);
                         } else if (niveauValidation === 'directeur_general') {
                             // Directeur général valide (ex: demande d'un DSE) → transmettre au DRH pour finalisation, jamais finaliser ici
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = 'valide_par_directeur_general';
-                            phase = 'aller';
-                            console.log(`✅ Directeur général a validé (demande DSE/autre) → Demande transmise au DRH pour finalisation`);
+                            if (demande.type_demande === 'absence' && demandeurRoleLower !== 'drh') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = 'valide_par_directeur_general';
+                                phase = 'retour';
+                                console.log(`✅ Directeur général a validé (demande DSE/absence) → Finalisation directe`);
+                            } else {
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = 'valide_par_directeur_general';
+                                phase = 'aller';
+                                console.log(`✅ Directeur général a validé (demande DSE/autre) → Demande transmise au DRH pour finalisation`);
+                            }
                         } else if (niveauValidation === 'ministre') {
                             // Le Ministre ne finalise plus : il envoie toujours au DRH
-                            nextNiveau = 'drh';
-                            nextEvolutionNiveau = 'valide_par_ministre';
-                            phase = 'aller';
-                            console.log(`✅ Ministre valide (cas générique) → Demande envoyée au DRH (finalisation par le DRH)`);
+                            if (demande.type_demande === 'absence' && demandeurRoleLower !== 'drh') {
+                                nextNiveau = 'finalise';
+                                nextEvolutionNiveau = 'valide_par_ministre';
+                                phase = 'retour';
+                                console.log(`✅ Ministre valide (cas générique/absence) → Finalisation directe`);
+                            } else {
+                                nextNiveau = 'drh';
+                                nextEvolutionNiveau = 'valide_par_ministre';
+                                phase = 'aller';
+                                console.log(`✅ Ministre valide (cas générique) → Demande envoyée au DRH (finalisation par le DRH)`);
+                            }
                         } else {
                             // Cas par défaut : si aucun cas ne correspond, logger une erreur mais définir une valeur par défaut
                             console.error(`⚠️ Cas non géré pour niveauValidation=${niveauValidation}, demandeurRole=${demandeurRoleLower}, phase=${demande.phase}`);
@@ -3715,8 +3832,8 @@ class DemandesController {
                     // Finalisation normale uniquement si ce n'est PAS le DSE ni le Directeur général
                     // Le chef de cabinet et le Ministre n'ont jamais le droit de finaliser : ils transmettent au DRH
                     (nextNiveau === 'finalise'
-                        && niveauValidation !== 'directeur_service_exterieur'
-                        && niveauValidation !== 'directeur_general'
+                        && (niveauValidation !== 'directeur_service_exterieur' || demande.type_demande === 'absence')
+                        && (niveauValidation !== 'directeur_general' || demande.type_demande === 'absence')
                         && niveauValidation !== 'ministre') ||
                     niveauValidation === 'drh' ||
                     (niveauValidation === 'dir_cabinet' && demande.phase === 'retour');
@@ -3824,6 +3941,7 @@ class DemandesController {
                                 s.libelle as service_nom,
                                 m.nom as ministere_nom,
                                 m.sigle as ministere_sigle,
+                                dg.libelle as direction_generale_nom,
                                 sig.id AS signature_id,
                                 sig.signature_url AS signature_url,
                                 sig.signature_path AS signature_path,
@@ -3831,6 +3949,7 @@ class DemandesController {
                             FROM agents a
                             LEFT JOIN directions s ON a.id_direction = s.id
                             LEFT JOIN ministeres m ON a.id_ministere = m.id
+                            LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
                             LEFT JOIN agent_signatures sig ON sig.id_agent = a.id AND sig.is_active = true
                             WHERE a.id = $1
                         `;
@@ -3839,6 +3958,52 @@ class DemandesController {
                         if (agentResult.rows.length > 0 && validateurResult.rows.length > 0) {
                             const agent = agentResult.rows[0];
                             const validateur = validateurResult.rows[0];
+
+                            // Pour le directeur de cabinet, on force l'affichage de sa Direction Générale sur l'en-tête
+                            if (niveauValidation === 'dir_cabinet') {
+                                let dgNom = validateur.direction_generale_nom;
+
+                                // Si la jointure n'a pas ramené le nom (ex: données manquantes), on le récupère explicitement
+                                if (!dgNom && validateur.id_direction_generale) {
+                                    try {
+                                        const dgResult = await db.query(
+                                            "SELECT libelle FROM direction_generale WHERE id = $1",
+                                            [validateur.id_direction_generale]
+                                        );
+                                        if (dgResult.rows.length > 0) {
+                                            dgNom = dgResult.rows[0].libelle;
+                                            console.log(`✅ Direction Générale récupérée explicitement pour dir_cabinet (id=${validateur.id_direction_generale}): ${dgNom}`);
+                                        }
+                                    } catch (dgErr) {
+                                        console.error(`⚠️ Impossible de récupérer la Direction Générale pour dir_cabinet:`, dgErr.message);
+                                    }
+                                }
+
+                                // Si aucune Direction Générale n'est trouvée en base, on force "CABINET DU MINISTRE"
+                                if (!dgNom) {
+                                    dgNom = "CABINET DU MINISTRE";
+                                    console.warn(`⚠️ Dir Cabinet sans Direction Générale trouvée en base (id_agent=${validateur.id}, id_dg=${validateur.id_direction_generale}). Fallback sur "CABINET DU MINISTRE".`);
+                                }
+
+                                if (dgNom) {
+                                    // Écraser TOUS les champs direction pour éviter tout fallback sur la DRH
+                                    validateur.direction_generale_nom = dgNom;
+                                    validateur.direction_nom = dgNom;
+                                    validateur.direction = dgNom;
+                                    validateur.service_nom = dgNom;
+                                    validateur.service = dgNom;
+                                    validateur.structure_nom = dgNom;
+                                    validateur.structure = dgNom;
+                                    validateur.departement_nom = null;
+                                    validateur.unite_nom = null;
+                                    // Effacer fonction_actuelle pour éviter que le fallback "ressources humaines" se déclenche
+                                    validateur.fonction_actuelle = null;
+                                    validateur.fonction = null;
+                                    console.log(`✅ En-tête forcé avec Direction Générale du Dir Cabinet: ${dgNom}`);
+                                } else {
+                                    console.warn(`⚠️ Dir Cabinet sans Direction Générale configurée (id_agent=${validateur.id})`);
+                                }
+                            }
 
                             // Générer le document selon le type de demande
                             if (demande.type_demande === 'attestation_presence') {
@@ -3949,6 +4114,8 @@ class DemandesController {
                                         mutationOptions = {
                                             id_direction_destination: mutationData.id_direction_destination,
                                             direction_destination: mutationData.direction_destination,
+                                            id_direction_generale_destination: mutationData.id_direction_generale_destination,
+                                            direction_generale_destination: mutationData.direction_generale_destination,
                                             // Utiliser date_debut (qui contient la date de validation) comme date d'effet
                                             date_effet: demande.date_debut || new Date(),
                                             motif: mutationData.motif
@@ -3958,17 +4125,54 @@ class DemandesController {
                                     console.warn('⚠️ Erreur lors de l\'extraction des infos de mutation:', e);
                                 }
 
+                                // OVERRIDE AVEC LES DONNÉES DU FORMULAIRE DE VALIDATION
+                                if (id_direction_generale_destination) {
+                                    mutationOptions.id_direction_generale_destination = parseInt(id_direction_generale_destination);
+                                    mutationOptions.direction_generale_destination = direction_generale_destination;
+                                    mutationOptions.id_direction_destination = null;
+                                    mutationOptions.direction_destination = null;
+                                } else if (id_direction_destination) {
+                                    mutationOptions.id_direction_destination = parseInt(id_direction_destination);
+                                    mutationOptions.direction_destination = direction_destination;
+                                    mutationOptions.id_direction_generale_destination = null;
+                                    mutationOptions.direction_generale_destination = null;
+                                }
+
                                 documentGenerated = await DocumentGenerationService.generateMutation(demande, agent, validateur, mutationOptions);
                                 console.log(`✅ Document de note de service de mutation généré avec succès: ${documentGenerated.id}`);
 
-                                // Mettre à jour la direction de l'agent si la mutation est approuvée
-                                if (mutationOptions.id_direction_destination) {
+                                // Mettre à jour la direction ou direction générale de l'agent si la mutation est approuvée
+                                if (mutationOptions.id_direction_destination || mutationOptions.id_direction_generale_destination) {
                                     try {
-                                        await db.query(
-                                            `UPDATE agents SET id_direction = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-                                            [mutationOptions.id_direction_destination, demande.id_agent]
-                                        );
-                                        console.log(`✅ Direction de l'agent ${demande.id_agent} mise à jour vers la direction ${mutationOptions.id_direction_destination}`);
+                                        if (mutationOptions.id_direction_generale_destination) {
+                                            await db.query(
+                                                `UPDATE agents SET id_direction_generale = $1, id_direction = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                                                [mutationOptions.id_direction_generale_destination, demande.id_agent]
+                                            );
+                                            console.log(`✅ Direction générale de l'agent ${demande.id_agent} mise à jour vers ${mutationOptions.id_direction_generale_destination}`);
+                                        } else {
+                                            await db.query(
+                                                `UPDATE agents SET id_direction = $1, id_direction_generale = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                                                [mutationOptions.id_direction_destination, demande.id_agent]
+                                            );
+                                            console.log(`✅ Direction de l'agent ${demande.id_agent} mise à jour vers ${mutationOptions.id_direction_destination}`);
+                                        }
+                                        
+                                        // Update the description with the new overridden values for history traceability
+                                        try {
+                                            const updatedMutationData = {
+                                                id_direction_destination: mutationOptions.id_direction_destination,
+                                                direction_destination: mutationOptions.direction_destination,
+                                                id_direction_generale_destination: mutationOptions.id_direction_generale_destination,
+                                                direction_generale_destination: mutationOptions.direction_generale_destination,
+                                                date_effet: mutationOptions.date_effet,
+                                                motif: mutationOptions.motif
+                                            };
+                                            await db.query('UPDATE demandes SET description = $1 WHERE id = $2', [`MUTATION_DATA:${JSON.stringify(updatedMutationData)}`, demande.id]);
+                                        } catch (descErr) {
+                                            console.warn('⚠️ Erreur update description mutation:', descErr);
+                                        }
+                                        
                                     } catch (updateError) {
                                         console.error('❌ Erreur lors de la mise à jour de la direction de l\'agent:', updateError);
                                         // Ne pas faire échouer la génération du document si la mise à jour échoue
@@ -4101,7 +4305,7 @@ class DemandesController {
                                 await db.query(notificationQueryForSousDir, [
                                     id_demande,
                                     row.id_agent,
-                                    'information',
+                                    'demande_finalisee',
                                     titre,
                                     message
                                 ]);
@@ -4987,6 +5191,83 @@ class DemandesController {
                 console.log(`Requête historique chef de service: ${query}`);
                 console.log(`Paramètres: ${JSON.stringify(params)}`);
 
+            } else if (roleNomNorm === 'sous_directeur') {
+                console.log(`Historique sous-directeur - Agent validateur: ${validateur.id}`);
+                query = `
+                    SELECT d.*, a.prenom, a.nom, a.matricule, a.email,
+                           fa.designation_poste as fonction_actuelle,
+                           s.libelle as service_nom, m.nom as ministere_nom,
+                           f.libele as fonction_libelle,
+                           CASE 
+                               WHEN d.status = 'approuve' THEN 'Approuvée'
+                               WHEN d.status = 'rejete' THEN 'Rejetée'
+                               WHEN d.status = 'en_attente' THEN 'En attente'
+                               ELSE d.status
+                           END as statut_libelle,
+                           CASE 
+                               WHEN d.niveau_evolution_demande = 'soumis' THEN 'Soumise'
+                               WHEN d.niveau_evolution_demande = 'valide_par_superieur' THEN 'Validée par chef de service'
+                               WHEN d.niveau_evolution_demande = 'valide_par_sous_directeur' THEN 'Validée par sous-directeur'
+                               WHEN d.niveau_evolution_demande = 'valide_par_drh' THEN 'Validée par DRH'
+                               WHEN d.niveau_evolution_demande = 'valide_par_ministre' THEN 'Validée par ministre'
+                               WHEN d.niveau_evolution_demande = 'retour_drh' THEN 'Retour DRH'
+                               WHEN d.niveau_evolution_demande = 'retour_chef_service' THEN 'Retour chef de service'
+                               WHEN d.niveau_evolution_demande = 'retour_ministre' THEN 'Retour ministre'
+                               ELSE d.niveau_evolution_demande
+                           END as niveau_libelle
+                    FROM demandes d
+                    LEFT JOIN agents a ON d.id_agent = a.id
+                    LEFT JOIN directions s ON a.id_direction = s.id
+                    LEFT JOIN ministeres m ON a.id_ministere = m.id
+                    LEFT JOIN fonction_agents fa ON a.id = fa.id_agent AND fa.date_entree = (
+                        SELECT MAX(date_entree) FROM fonction_agents WHERE id_agent = a.id
+                    )
+                    LEFT JOIN fonctions f ON fa.id_fonction = f.id
+                    WHERE d.id_validateur_sous_directeur = $1
+                    AND d.status IN ('approuve', 'rejete')
+                    ORDER BY d.date_creation DESC
+                `;
+                params = [validateur.id];
+
+            } else if (roleNomNorm === 'directeur' || roleNomNorm === 'gestionnaire_du_patrimoine' || roleNomNorm === 'president_du_fond' || roleNomNorm === 'responsble_cellule_de_passation') {
+                console.log(`Historique directeur (ou assimilé) - Agent validateur: ${validateur.id}`);
+                query = `
+                    SELECT d.*, a.prenom, a.nom, a.matricule, a.email,
+                           fa.designation_poste as fonction_actuelle,
+                           s.libelle as service_nom, m.nom as ministere_nom,
+                           f.libele as fonction_libelle,
+                           CASE 
+                               WHEN d.status = 'approuve' THEN 'Approuvée'
+                               WHEN d.status = 'rejete' THEN 'Rejetée'
+                               WHEN d.status = 'en_attente' THEN 'En attente'
+                               ELSE d.status
+                           END as statut_libelle,
+                           CASE 
+                               WHEN d.niveau_evolution_demande = 'soumis' THEN 'Soumise'
+                               WHEN d.niveau_evolution_demande = 'valide_par_superieur' THEN 'Validée par chef de service'
+                               WHEN d.niveau_evolution_demande = 'valide_par_sous_directeur' THEN 'Validée par sous-directeur'
+                               WHEN d.niveau_evolution_demande = 'valide_par_directeur' THEN 'Validée par directeur'
+                               WHEN d.niveau_evolution_demande = 'valide_par_drh' THEN 'Validée par DRH'
+                               WHEN d.niveau_evolution_demande = 'valide_par_ministre' THEN 'Validée par ministre'
+                               WHEN d.niveau_evolution_demande = 'retour_drh' THEN 'Retour DRH'
+                               WHEN d.niveau_evolution_demande = 'retour_chef_service' THEN 'Retour chef de service'
+                               WHEN d.niveau_evolution_demande = 'retour_ministre' THEN 'Retour ministre'
+                               ELSE d.niveau_evolution_demande
+                           END as niveau_libelle
+                    FROM demandes d
+                    LEFT JOIN agents a ON d.id_agent = a.id
+                    LEFT JOIN directions s ON a.id_direction = s.id
+                    LEFT JOIN ministeres m ON a.id_ministere = m.id
+                    LEFT JOIN fonction_agents fa ON a.id = fa.id_agent AND fa.date_entree = (
+                        SELECT MAX(date_entree) FROM fonction_agents WHERE id_agent = a.id
+                    )
+                    LEFT JOIN fonctions f ON fa.id_fonction = f.id
+                    WHERE d.id_validateur_directeur = $1
+                    AND d.status IN ('approuve', 'rejete')
+                    ORDER BY d.date_creation DESC
+                `;
+                params = [validateur.id];
+
             } else if (roleNomNorm === 'drh') {
                 // DRH : voir les demandes finalisées de son ministère (historique uniquement)
                 // IMPORTANT: Exclure les demandes en attente (status='en_attente')
@@ -5858,6 +6139,129 @@ class DemandesController {
     }
 
     /**
+     * Annuler une demande
+     */
+    static async annulerDemande(req, res) {
+        const { id_demande } = req.params;
+        const id_agent = req.user.id; // L'agent connecté
+
+        try {
+            // Vérifier que la demande appartient à l'agent et qu'elle est au statut 'soumis'
+            const checkQuery = `
+                SELECT id, niveau_evolution_demande, status
+                FROM demandes
+                WHERE id = $1 AND id_agent = $2
+            `;
+            const checkResult = await db.query(checkQuery, [id_demande, id_agent]);
+
+            if (checkResult.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Demande non trouvée ou non autorisée' });
+            }
+
+            const demande = checkResult.rows[0];
+
+            if (demande.niveau_evolution_demande !== 'soumis') {
+                return res.status(403).json({ success: false, error: 'Cette demande a déjà été traitée ou n\'est plus annulable' });
+            }
+
+            // Mettre à jour la demande
+            const updateQuery = `
+                UPDATE demandes
+                SET status = 'annule', niveau_evolution_demande = 'annule', date_modification = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING id
+            `;
+            await db.query(updateQuery, [id_demande]);
+
+            res.json({ success: true, message: 'Demande annulée avec succès' });
+
+        } catch (error) {
+            console.error('Erreur lors de l\'annulation de la demande:', error);
+            res.status(500).json({ success: false, error: 'Erreur lors de l\'annulation de la demande' });
+        }
+    }
+
+    /**
+     * Modifier une demande
+     */
+    static async modifierDemande(req, res) {
+        const { id_demande } = req.params;
+        const id_agent = req.user.id;
+
+        const {
+            type_demande, description, date_debut, date_fin, lieu, priorite,
+            motif_conge, nombre_jours, raison_exceptionnelle, agree_motif, agree_date_cessation,
+            date_reprise_service, date_fin_conges, annee_non_jouissance_conge, annee_au_titre_conge
+        } = req.body;
+
+        try {
+            const checkQuery = `
+                SELECT id, status, niveau_evolution_demande
+                FROM demandes
+                WHERE id = $1 AND id_agent = $2
+            `;
+            const checkResult = await db.query(checkQuery, [id_demande, id_agent]);
+
+            if (checkResult.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Demande non trouvée ou non autorisée' });
+            }
+
+            const demande = checkResult.rows[0];
+
+            if (demande.status === 'approuve' || demande.status === 'rejete' || demande.status === 'annule' ||
+                demande.niveau_evolution_demande === 'valide_par_ministre' || demande.niveau_evolution_demande === 'annule') {
+                return res.status(403).json({ success: false, error: 'Cette demande est finalisée ou annulée et ne peut plus être modifiée' });
+            }
+
+            // Réinitialiser les validations partielles si elles existent
+            const updateQuery = `
+                UPDATE demandes
+                SET type_demande = COALESCE($1, type_demande),
+                    description = COALESCE($2, description),
+                    date_debut = COALESCE($3, date_debut),
+                    date_fin = COALESCE($4, date_fin),
+                    lieu = COALESCE($5, lieu),
+                    priorite = COALESCE($6, priorite),
+                    motif_conge = COALESCE($7, motif_conge),
+                    nombre_jours = COALESCE($8, nombre_jours),
+                    raison_exceptionnelle = COALESCE($9, raison_exceptionnelle),
+                    agree_motif = COALESCE($10, agree_motif),
+                    agree_date_cessation = COALESCE($11, agree_date_cessation),
+                    date_reprise_service = COALESCE($12, date_reprise_service),
+                    date_fin_conges = COALESCE($13, date_fin_conges),
+                    annee_non_jouissance_conge = COALESCE($14, annee_non_jouissance_conge),
+                    annee_au_titre_conge = COALESCE($15, annee_au_titre_conge),
+                    status = 'en_attente',
+                    niveau_evolution_demande = 'soumis',
+                    statut_sous_directeur = NULL,
+                    statut_directeur = NULL,
+                    statut_chef_cabinet = NULL,
+                    statut_dir_cabinet = NULL,
+                    statut_drh = NULL,
+                    statut_directeur_general = NULL,
+                    statut_directeur_service_exterieur = NULL,
+                    statut_ministre = NULL,
+                    date_modification = CURRENT_TIMESTAMP
+                WHERE id = $16
+                RETURNING id
+            `;
+
+            await db.query(updateQuery, [
+                type_demande, description, date_debut, date_fin, lieu, priorite,
+                motif_conge, nombre_jours, raison_exceptionnelle, agree_motif, agree_date_cessation,
+                date_reprise_service, date_fin_conges, annee_non_jouissance_conge, annee_au_titre_conge,
+                id_demande
+            ]);
+
+            res.json({ success: true, message: 'Demande modifiée et réinitialisée avec succès' });
+
+        } catch (error) {
+            console.error('Erreur lors de la modification de la demande:', error);
+            res.status(500).json({ success: false, error: 'Erreur lors de la modification de la demande' });
+        }
+    }
+
+    /**
      * Récupère les détails d'une demande spécifique par son ID
      * @param {Object} req - Requête Express
      * @param {Object} res - Réponse Express
@@ -6076,6 +6480,124 @@ class DemandesController {
             });
         } catch (error) {
             console.error('Erreur lors de la satisfaction de la demande:', error);
+            res.status(500).json({ success: false, error: 'Erreur interne du serveur' });
+        }
+    }
+    // Méthode pour obtenir les statistiques globales des demandes par agent
+    static async getStatistiquesGlobalesAgents(req, res) {
+        try {
+            let {
+                annee,
+                id_ministere,
+                id_direction_generale,
+                id_direction,
+                id_sous_direction,
+                id_service
+            } = req.query;
+
+            // Filtre automatique par ministère pour les utilisateurs non super_admin
+            if (req.user && req.user.role !== 'super_admin' && req.user.id_ministere) {
+                id_ministere = req.user.id_ministere;
+            }
+
+            let queryParams = [];
+            let whereConditions = [];
+
+            if (annee) {
+                whereConditions.push(`EXTRACT(YEAR FROM d.date_creation) = $${queryParams.length + 1}`);
+                queryParams.push(parseInt(annee, 10));
+            }
+
+            if (id_ministere) {
+                whereConditions.push(`a.id_ministere = $${queryParams.length + 1}`);
+                queryParams.push(id_ministere);
+            }
+
+            if (id_direction_generale) {
+                whereConditions.push(`a.id_direction_generale = $${queryParams.length + 1}`);
+                queryParams.push(id_direction_generale);
+            }
+            if (id_direction) {
+                whereConditions.push(`a.id_direction = $${queryParams.length + 1}`);
+                queryParams.push(id_direction);
+            }
+            if (id_sous_direction) {
+                whereConditions.push(`a.id_sous_direction = $${queryParams.length + 1}`);
+                queryParams.push(id_sous_direction);
+            }
+            if (id_service) {
+                whereConditions.push(`a.id_service = $${queryParams.length + 1}`);
+                queryParams.push(id_service);
+            }
+
+            const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
+
+            // 1. Data Query
+            const dataQuery = `
+                SELECT 
+                    a.id as agent_id, 
+                    a.nom, 
+                    a.prenom,
+                    a.sexe,
+                    t.libele as type_agent,
+                    dg.libelle as direction_generale_libelle,
+                    dir.libelle as direction_libelle,
+                    sdir.libelle as sous_direction_libelle,
+                    d.type_demande, 
+                    COUNT(d.id) as total,
+                    EXTRACT(YEAR FROM d.date_creation) as annee
+                FROM demandes d
+                JOIN agents a ON d.id_agent = a.id
+                LEFT JOIN type_d_agents t ON a.id_type_d_agent = t.id
+                LEFT JOIN direction_generale dg ON a.id_direction_generale = dg.id
+                LEFT JOIN directions dir ON a.id_direction = dir.id
+                LEFT JOIN sous_directions sdir ON a.id_sous_direction = sdir.id
+                ${whereClause}
+                GROUP BY 
+                    a.id, a.nom, a.prenom, a.sexe, t.libele, 
+                    dg.libelle, dir.libelle, sdir.libelle, 
+                    d.type_demande, EXTRACT(YEAR FROM d.date_creation)
+                ORDER BY a.nom, a.prenom, d.type_demande
+            `;
+
+            // 2. Summary Query
+            const summaryQuery = `
+                SELECT 
+                    COUNT(DISTINCT a.id) as total_agents,
+                    COUNT(DISTINCT CASE WHEN UPPER(a.sexe) IN ('M', 'MASCULIN', 'HOMME') THEN a.id END) as total_hommes,
+                    COUNT(DISTINCT CASE WHEN UPPER(a.sexe) IN ('F', 'FEMININ', 'FEMME') THEN a.id END) as total_femmes,
+                    
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Fonctionnaire%' THEN a.id END) as nb_fonctionnaire,
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Contractuel%' THEN a.id END) as nb_contractuel,
+                    
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Fonctionnaire%' AND UPPER(a.sexe) IN ('M', 'MASCULIN', 'HOMME') THEN a.id END) as nb_fonctionnaire_hommes,
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Fonctionnaire%' AND UPPER(a.sexe) IN ('F', 'FEMININ', 'FEMME') THEN a.id END) as nb_fonctionnaire_femmes,
+                    
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Contractuel%' AND UPPER(a.sexe) IN ('M', 'MASCULIN', 'HOMME') THEN a.id END) as nb_contractuel_hommes,
+                    COUNT(DISTINCT CASE WHEN t.libele ILIKE '%Contractuel%' AND UPPER(a.sexe) IN ('F', 'FEMININ', 'FEMME') THEN a.id END) as nb_contractuel_femmes,
+
+                    COUNT(DISTINCT CASE WHEN t.libele NOT ILIKE '%Fonctionnaire%' AND t.libele NOT ILIKE '%Contractuel%' THEN a.id END) as nb_autres,
+                    COUNT(DISTINCT CASE WHEN t.libele NOT ILIKE '%Fonctionnaire%' AND t.libele NOT ILIKE '%Contractuel%' AND UPPER(a.sexe) IN ('M', 'MASCULIN', 'HOMME') THEN a.id END) as nb_autres_hommes,
+                    COUNT(DISTINCT CASE WHEN t.libele NOT ILIKE '%Fonctionnaire%' AND t.libele NOT ILIKE '%Contractuel%' AND UPPER(a.sexe) IN ('F', 'FEMININ', 'FEMME') THEN a.id END) as nb_autres_femmes
+
+                FROM demandes d
+                JOIN agents a ON d.id_agent = a.id
+                LEFT JOIN type_d_agents t ON a.id_type_d_agent = t.id
+                ${whereClause}
+            `;
+
+            const [dataResult, summaryResult] = await Promise.all([
+                db.query(dataQuery, queryParams),
+                db.query(summaryQuery, queryParams)
+            ]);
+
+            res.json({
+                success: true,
+                data: dataResult.rows,
+                summary: summaryResult.rows[0]
+            });
+        } catch (error) {
+            console.error('Erreur lors de la récupération des statistiques globales par agent:', error);
             res.status(500).json({ success: false, error: 'Erreur interne du serveur' });
         }
     }

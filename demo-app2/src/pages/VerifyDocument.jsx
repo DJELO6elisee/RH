@@ -13,7 +13,12 @@ const VerifyDocument = () => {
 
         if (base64Data) {
             try {
-                const decoded = atob(base64Data);
+                const binStr = atob(base64Data);
+                const bytes = new Uint8Array(binStr.length);
+                for (let i = 0; i < binStr.length; i++) {
+                    bytes[i] = binStr.charCodeAt(i);
+                }
+                const decoded = new TextDecoder('utf-8').decode(bytes);
                 const parsedData = JSON.parse(decoded);
                 setDocData({
                     titre: parsedData.t || 'Document Officiel',

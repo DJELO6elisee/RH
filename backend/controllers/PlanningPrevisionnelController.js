@@ -803,11 +803,11 @@ class PlanningPrevisionnelController {
                 reprises_validees AS (
                     -- Récupérer les agents qui ont une demande de reprise de service validée
                     SELECT DISTINCT
-                        d2.id_agent
+                        d2.id_agent,
+                        d2.date_debut as date_reprise
                     FROM demandes d2
                     JOIN agents_roles ar2 ON d2.id_agent = ar2.id_agent
                     WHERE d2.type_demande IN ('reprise_service', 'certificat_reprise_service', 'reprise', 'certificat_reprise')
-                        AND d2.date_debut <= CURRENT_DATE
                         AND d2.status != 'rejete'
                         AND (
                             -- Agent simple : validé par DRH
@@ -847,8 +847,8 @@ class PlanningPrevisionnelController {
                     FROM demandes d
                     JOIN agents a ON d.id_agent = a.id
                     LEFT JOIN agents_roles ar ON a.id = ar.id_agent
-                    WHERE d.type_demande IN ('conges', 'absence', 'conge')
-                        AND d.date_debut <= CURRENT_DATE
+                    WHERE d.type_demande IN ('conges', 'conge', 'certificat_cessation')
+                        AND (d.date_debut IS NULL OR d.date_debut <= CURRENT_DATE)
                         AND d.status != 'rejete'
                         AND (
                             -- Agent simple : validé par DRH
@@ -867,9 +867,9 @@ class PlanningPrevisionnelController {
                              AND (d.niveau_evolution_demande = 'valide_par_ministre' 
                                   OR d.statut_ministre = 'approuve'))
                         )
-                        -- Exclure les agents qui ont une demande de reprise de service validée
+                        -- Exclure les agents qui ont une demande de reprise de service validée POSTÉRIEURE à la date de début de cette cessation
                         AND NOT EXISTS (
-                            SELECT 1 FROM reprises_validees rv WHERE rv.id_agent = d.id_agent
+                            SELECT 1 FROM reprises_validees rv WHERE rv.id_agent = d.id_agent AND rv.date_reprise >= d.date_debut
                         )
                 )
                 SELECT 

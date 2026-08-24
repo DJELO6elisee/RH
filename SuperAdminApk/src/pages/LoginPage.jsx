@@ -142,9 +142,13 @@ const LoginPage = () => {
         // Redirection basée sur le rôle et l'organisation
         const userRoleRaw = result.user.role;
         // Normaliser le rôle (API peut renvoyer "Chef de cabinet", "chef_cabinet", etc.)
-        const userRole = typeof userRoleRaw === 'string'
+        let userRole = typeof userRoleRaw === 'string'
           ? userRoleRaw.toLowerCase().trim().replace(/\s+/g, '_').replace(/^directeur_de_cabinet$|^dir_de_cabinet$/i, 'dir_cabinet').replace(/^chef_de_cabinet$/i, 'chef_cabinet')
           : userRoleRaw;
+          
+        if (typeof userRole === 'string' && (userRole === 'responsble_cellule_de_passation' || userRole.includes('passation'))) {
+            userRole = 'responsable_cellule_de_passation';
+        }
         
         if (userRole === 'super_admin') {
           // Les super_admin accèdent au dashboard principal sans restriction d'organisation
@@ -155,7 +159,7 @@ const LoginPage = () => {
             ? `/dashboard?organization=${organizationType}&id=${organizationId}`
             : '/dashboard';
           history.push(dashboardUrl);
-        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'directeur_service_exterieur', 'inspecteur_general', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'admin_entite'].includes(userRole)) {
+        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'directeur_service_exterieur', 'inspecteur_general', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'admin_entite', 'responsable_cellule_de_passation', 'responsable_cellule_de_passation'].includes(userRole)) {
           // Chef de cabinet et Dir cabinet → même tableau de bord agent (espace cabinet) ; idem directeurs, agents, etc.
           const agentDashboardUrl = organizationId && organizationType 
             ? `/agent-dashboard?organization=${organizationType}&id=${organizationId}`
@@ -210,9 +214,13 @@ const LoginPage = () => {
 
         // Redirection basée sur le rôle (même normalisation que login mot de passe)
         const userRoleRaw = result.user.role;
-        const userRole = typeof userRoleRaw === 'string'
+        let userRole = typeof userRoleRaw === 'string'
           ? userRoleRaw.toLowerCase().trim().replace(/\s+/g, '_').replace(/^directeur_de_cabinet$|^dir_de_cabinet$/i, 'dir_cabinet').replace(/^chef_de_cabinet$/i, 'chef_cabinet')
           : userRoleRaw;
+          
+        if (typeof userRole === 'string' && (userRole === 'responsble_cellule_de_passation' || userRole.includes('passation'))) {
+            userRole = 'responsable_cellule_de_passation';
+        }
         
         if (userRole === 'super_admin') {
           history.push('/dashboard');
@@ -221,7 +229,7 @@ const LoginPage = () => {
             ? `/dashboard?organization=${organizationType}&id=${organizationId}`
             : '/dashboard';
           history.push(dashboardUrl);
-        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'directeur_service_exterieur', 'inspecteur_general', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'admin_entite'].includes(userRole)) {
+        } else if (['agent', 'chef_service', 'directeur', 'sous_directeur', 'dir_cabinet', 'ministre', 'chef_cabinet', 'directeur_general', 'directeur_central', 'directeur_service_exterieur', 'inspecteur_general', 'conseiller_technique', 'charge_d_etude', 'charge_de_mission', 'chef_du_secretariat_particulier', 'admin_entite', 'responsable_cellule_de_passation', 'responsable_cellule_de_passation'].includes(userRole)) {
           const agentDashboardUrl = organizationId && organizationType 
             ? `/agent-dashboard?organization=${organizationType}&id=${organizationId}`
             : '/agent-dashboard';

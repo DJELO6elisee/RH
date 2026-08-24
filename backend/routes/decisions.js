@@ -27,6 +27,9 @@ router.get('/:id/document', requireRoleOrAssigned, decisionsController.downloadD
 // Activer/Désactiver une décision (doit être avant /:id)
 router.patch('/:id/activate', requireRoleOrAssigned, decisionsController.toggleActive.bind(decisionsController));
 
+// Générer automatiquement le document d'une décision
+router.post('/:id/generate-document', requireRoleOrAssigned, decisionsController.generateDocument.bind(decisionsController));
+
 // Uploader un fichier pour une décision existante (doit être avant /:id)
 router.post('/:id/upload', requireRoleOrAssigned, uploadDecisionFile, decisionsController.uploadDocument.bind(decisionsController));
 

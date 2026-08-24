@@ -1,16 +1,13 @@
-const fs = require('fs');
-const files = [
-  'c:/Users/HP/Desktop/All Folder/RH/backend/services/PDFKitGenerationService.js',
-  'c:/Users/HP/Desktop/All Folder/RH/backend/services/MemoryPDFService.js'
-];
-
-const replacement = `titre: typeof title !== 'undefined' && title ? title : (typeof documentTitle !== 'undefined' && documentTitle ? documentTitle : (typeof template !== 'undefined' && template && (template.nom || template.type) ? (template.nom || template.type) : "Document Officiel")),
-                        ministere: typeof agent !== 'undefined' && agent && agent.ministere ? (typeof agent.ministere === 'object' ? agent.ministere.nom : agent.ministere) : (typeof ministereName !== 'undefined' ? ministereName : 'N/A'),`;
-
-files.forEach(file => {
-  if (!fs.existsSync(file)) return;
-  let content = fs.readFileSync(file, 'utf8');
-  content = content.replace(/titre:\s*"Document Officiel",/g, replacement);
-  fs.writeFileSync(file, content);
-  console.log('Updated ' + file);
-});
+const fs = require('fs'); 
+const lines = fs.readFileSync('c:\\\\Users\\\\HP\\\\Desktop\\\\All Folder\\\\RH\\\\backend\\\\controllers\\\\AgentsController.js', 'utf8').split('\n'); 
+const newLines = lines.map(line => { 
+    if (line.includes("WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65")) { 
+        return line.replace("WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65", "WHEN UPPER(REPLACE(g.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR g.libele ILIKE '%PREFEC%' OR g.libele ILIKE '%PRÉFEC%' OR g.libele ILIKE '%PREFET%' OR g.libele ILIKE '%PRÉFET%' OR g.libele ILIKE '%HORS GRADE%' THEN 65"); 
+    } 
+    if (line.includes("WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65")) { 
+        return line.replace("WHEN ${gradeAlias}.libele IS NOT NULL AND UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') THEN 65", "WHEN ${gradeAlias}.libele IS NOT NULL AND (UPPER(REPLACE(${gradeAlias}.libele, ' ', '')) IN ('A4', 'A5', 'A6', 'A7') OR ${gradeAlias}.libele ILIKE '%PREFEC%' OR ${gradeAlias}.libele ILIKE '%PRÉFEC%' OR ${gradeAlias}.libele ILIKE '%PREFET%' OR ${gradeAlias}.libele ILIKE '%PRÉFET%' OR ${gradeAlias}.libele ILIKE '%HORS GRADE%') THEN 65"); 
+    } 
+    return line; 
+}); 
+fs.writeFileSync('c:\\\\Users\\\\HP\\\\Desktop\\\\All Folder\\\\RH\\\\backend\\\\controllers\\\\AgentsController.js', newLines.join('\n')); 
+console.log('success');

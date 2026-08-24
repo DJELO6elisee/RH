@@ -142,6 +142,8 @@ const AgentDashboard = () => {
     
     // États pour les demandes et notifications
     const [showCreateDemandeModal, setShowCreateDemandeModal] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [demandeToEdit, setDemandeToEdit] = useState(null);
     const [showDemandeDetails, setShowDemandeDetails] = useState(false);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [selectedDemande, setSelectedDemande] = useState(null);
@@ -288,7 +290,7 @@ const AgentDashboard = () => {
     useEffect(() => {
         const loadAgentsForCertificat = async () => {
             const userRole = getNormalizedRole();
-            const isAuthorized = userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'chef_cabinet' || userRole === 'dir_cabinet' || userRole === 'chef_service' || userRole === 'inspecteur_general' || userRole === 'directeur_service_exterieur' || userRole === 'drh' || userRole === 'super_admin' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation';
+            const isAuthorized = userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'chef_cabinet' || userRole === 'dir_cabinet' || userRole === 'chef_service' || userRole === 'inspecteur_general' || userRole === 'directeur_service_exterieur' || userRole === 'drh' || userRole === 'super_admin' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation';
             
             if (activeTab === '14' && isAuthorized) {
                 try {
@@ -313,12 +315,12 @@ const AgentDashboard = () => {
                             setLoadingAgents(false);
                             return;
                         }
-                    } else if (userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'chef_cabinet' || userRole === 'dir_cabinet' || userRole === 'inspecteur_general' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') {
+                    } else if (userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'chef_cabinet' || userRole === 'dir_cabinet' || userRole === 'inspecteur_general' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') {
                         if ((isCabinetRole || isDirectionGeneraleRole) && dgId != null && dgId !== '') {
                             params.append('id_direction_generale', dgId);
-                        } else if ((userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') && dirId != null && dirId !== '') {
+                        } else if ((userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') && dirId != null && dirId !== '') {
                             params.append('id_direction', dirId);
-                        } else if (!(isCabinetRole || isDirectionGeneraleRole) && (userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation')) {
+                        } else if (!(isCabinetRole || isDirectionGeneraleRole) && (userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation')) {
                             console.log('⏳ En attente du chargement de agentData (id_direction) pour le directeur...');
                             setLoadingAgents(false);
                             return;
@@ -1996,7 +1998,7 @@ const AgentDashboard = () => {
             if ((isCabinetRole || userRole === 'directeur_general' || userRole === 'directeur_generale' || userRole === 'inspecteur_general') && dgId != null && dgId !== '') {
                 // Cabinet, Directeur général et Inspecteur général : filtrer par direction générale
                 url += `&id_direction_generale=${dgId}`;
-            } else if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') && dirId) {
+            } else if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') && dirId) {
                 url += `&id_direction=${dirId}`;
             } else if ((userRole === 'sous_directeur' || userRole === 'sous-directeur') && agentData?.id_sous_direction) {
                 url += `&id_sous_direction=${agentData.id_sous_direction}`;
@@ -2045,7 +2047,7 @@ const AgentDashboard = () => {
                 // Cabinet, Directeur général et Inspecteur général : filtrer par direction générale
                 urlCurrent += `?id_direction_generale=${dgId}`;
                 urlNext += `?id_direction_generale=${dgId}`;
-            } else if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') && dirId) {
+            } else if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') && dirId) {
                 urlCurrent += `?id_direction=${dirId}`;
                 urlNext += `?id_direction=${dirId}`;
             } else if ((userRole === 'sous_directeur' || userRole === 'sous-directeur') && agentData?.id_sous_direction) {
@@ -2106,7 +2108,7 @@ const AgentDashboard = () => {
                 userRole === 'directeur_generale' ||
                 userRole === 'inspecteur_general';
 
-            if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') && dirIdValue) {
+            if ((userRole === 'directeur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') && dirIdValue) {
                 params.append('id_direction', dirIdValue);
             } else if ((userRole === 'sous_directeur' || userRole === 'sous-directeur') && agentData?.id_sous_direction) {
                 params.append('id_sous_direction', agentData.id_sous_direction);
@@ -2304,7 +2306,7 @@ const AgentDashboard = () => {
         })));
 
         const userRole = getNormalizedRole();
-        const isDirecteur = userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation';
+        const isDirecteur = userRole === 'directeur' || userRole === 'directeur_central' || userRole === 'directeur_general' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation';
         const isSousDirecteur = userRole === 'sous_directeur' || userRole === 'sous-directeur';
         
         // Récupérer le nom de la direction ou sous-direction
@@ -2600,7 +2602,7 @@ const AgentDashboard = () => {
             // Cabinet, directeur général, inspecteur général : filtrer par direction générale
             if ((userRole === 'directeur_general' || userRole === 'directeur_generale' || userRole === 'dir_cabinet' || userRole === 'chef_cabinet' || userRole === 'inspecteur_general') && dgId) {
                 params.push(`id_direction_generale=${dgId}`);
-            } else if ((userRole === 'directeur' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsble_cellule_de_passation') && dirId) {
+            } else if ((userRole === 'directeur' || userRole === 'directeur_service_exterieur' || userRole === 'gestionnaire_du_patrimoine' || userRole === 'president_du_fond' || userRole === 'responsable_cellule_de_passation') && dirId) {
                 params.push(`id_direction=${dirId}`);
             } else if ((userRole === 'sous_directeur' || userRole === 'sous-directeur') && (sousDirId || dirId)) {
                 if (sousDirId) params.push(`id_sous_direction=${sousDirId}`);
@@ -2985,13 +2987,17 @@ const AgentDashboard = () => {
     const getNormalizedRole = () => {
         if (!user) return '';
         const roleCode = user.role_code;
-        if (roleCode && typeof roleCode === 'string' && roleCode.trim()) return roleCode.trim().toLowerCase();
+        if (roleCode && typeof roleCode === 'string' && roleCode.trim()) {
+            let rc = roleCode.trim().toLowerCase();
+            if (rc === 'responsble_cellule_de_passation' || rc.includes('passation')) return 'responsable_cellule_de_passation';
+            return rc;
+        }
         const raw = (user.role ?? user.role_nom ?? '').toString().trim().replace(/\s+/g, ' ');
         if (!raw) return '';
         const r = raw.toLowerCase();
         const withUnderscore = r.replace(/\s+/g, '_');
         // Rôles tels qu'en base (roles.nom) : accepter exactement les codes
-        const exactCodes = ['chef_service', 'chef_cabinet', 'dir_cabinet', 'directeur', 'sous_directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'ministre', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsble_cellule_de_passation'];
+        const exactCodes = ['chef_service', 'chef_cabinet', 'dir_cabinet', 'directeur', 'sous_directeur', 'directeur_central', 'directeur_general', 'drh', 'super_admin', 'inspecteur_general', 'directeur_service_exterieur', 'ministre', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsable_cellule_de_passation'];
         if (exactCodes.includes(r)) return r === 'sous-directeur' ? 'sous_directeur' : r;
         if (withUnderscore === 'cabinet_chef' || (r.includes('chef') && r.includes('cabinet'))) return 'chef_cabinet';
         if (withUnderscore === 'dir_cabinet' || (r.includes('cabinet') && (r.includes('directeur') || r.includes('dir')))) return 'dir_cabinet';
@@ -3026,7 +3032,7 @@ const AgentDashboard = () => {
             'super_admin',
             'gestionnaire_du_patrimoine',
             'president_du_fond',
-            'responsble_cellule_de_passation'
+            'responsable_cellule_de_passation'
         ];
         return authorizedRoles.includes(userRole);
     };
@@ -3051,7 +3057,7 @@ const AgentDashboard = () => {
             'super_admin',
             'gestionnaire_du_patrimoine',
             'president_du_fond',
-            'responsble_cellule_de_passation'
+            'responsable_cellule_de_passation'
         ];
         return managementRoles.includes(userRole);
     };
@@ -3071,7 +3077,7 @@ const AgentDashboard = () => {
         if (roleLower === 'directeur_general' || roleLower === 'directeur_generale') return 'Demandes de ma direction générale';
         if (roleLower === 'sous_directeur' || roleLower === 'sous-directeur') return 'Demandes de ma sous direction';
         if (roleLower === 'directeur_central') return 'Demande de ma direction';
-        if (roleLower === 'directeur' || roleLower === 'gestionnaire_du_patrimoine' || roleLower === 'president_du_fond' || roleLower === 'responsble_cellule_de_passation') return 'Demandes de ma direction';
+        if (roleLower === 'directeur' || roleLower === 'gestionnaire_du_patrimoine' || roleLower === 'president_du_fond' || roleLower === 'responsable_cellule_de_passation') return 'Demandes de ma direction';
         if (roleLower === 'dir_cabinet') return 'Demandes à valider';
         if (roleLower === 'chef_cabinet') return 'Demandes du Cabinet';
         if (roleLower === 'ministre') return 'Demandes à valider par le (Ministre)';
@@ -3090,7 +3096,7 @@ const AgentDashboard = () => {
         if (roleLower === 'directeur_service_exterieur') return 'ESPACE SERVICES EXTÉRIEURS';
         if (roleLower === 'directeur_general' || roleLower === 'directeur_generale') return 'ESPACE DE MA DIRECTION GÉNÉRALE';
         if (roleLower === 'directeur_central') return 'ESPACE DE MA DIRECTION CENTRAL';
-        if (roleLower === 'directeur' || roleLower === 'gestionnaire_du_patrimoine' || roleLower === 'president_du_fond' || roleLower === 'responsble_cellule_de_passation') return 'ESPACE DE MA DIRECTION';
+        if (roleLower === 'directeur' || roleLower === 'gestionnaire_du_patrimoine' || roleLower === 'president_du_fond' || roleLower === 'responsable_cellule_de_passation') return 'ESPACE DE MA DIRECTION';
         if (roleLower === 'sous_directeur' || roleLower === 'sous-directeur') return 'ESPACE DE MA SOUS-DIRECTION';
         if (roleLower === 'chef_service') return 'ESPACE DE MON SERVICE';
         return 'ESPACE GESTION';
@@ -3106,6 +3112,12 @@ const AgentDashboard = () => {
     const handleDemandeClick = useCallback((action, demande = null) => {
         if (action === 'create') {
             // Tous les utilisateurs qui voient le bouton peuvent ouvrir la modal
+            setEditMode(false);
+            setDemandeToEdit(null);
+            setShowCreateDemandeModal(true);
+        } else if (action === 'edit') {
+            setEditMode(true);
+            setDemandeToEdit(demande);
             setShowCreateDemandeModal(true);
         } else if (action === 'view') {
             setSelectedDemande(demande || null);
@@ -5126,7 +5138,7 @@ const AgentDashboard = () => {
                                 </NavItem>
                                 <Collapse isOpen={isManagementMenuOpen}>
                                     {/* Certificat de prise de service - uniquement pour les directeurs */}
-                                    {(['directeur', 'directeur_central', 'directeur_general', 'chef_cabinet', 'dir_cabinet', 'inspecteur_general', 'directeur_service_exterieur', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsble_cellule_de_passation'].includes(getNormalizedRole())) && (
+                                    {(['directeur', 'directeur_central', 'directeur_general', 'chef_cabinet', 'dir_cabinet', 'inspecteur_general', 'directeur_service_exterieur', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsable_cellule_de_passation'].includes(getNormalizedRole())) && (
                                         <NavItem style={{ display: 'block', width: '100%', marginBottom: '0' }}>
                                             <NavLink 
                                                 className={`text-white ${activeTab === '14' ? 'bg-white text-primary' : ''}`}
@@ -5491,7 +5503,7 @@ const AgentDashboard = () => {
                                 </NavItem>
                                 <Collapse isOpen={isManagementMenuOpen}>
                                     {/* Certificat de prise de service - uniquement pour les directeurs */}
-                                    {(['directeur', 'directeur_central', 'directeur_general', 'chef_cabinet', 'dir_cabinet', 'inspecteur_general', 'directeur_service_exterieur', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsble_cellule_de_passation'].includes(getNormalizedRole())) && (
+                                    {(['directeur', 'directeur_central', 'directeur_general', 'chef_cabinet', 'dir_cabinet', 'inspecteur_general', 'directeur_service_exterieur', 'gestionnaire_du_patrimoine', 'president_du_fond', 'responsable_cellule_de_passation'].includes(getNormalizedRole())) && (
                                         <NavItem>
                                             <NavLink 
                                                 className={`text-white ${activeTab === '14' ? 'bg-white text-primary' : ''}`}
@@ -5984,7 +5996,7 @@ const AgentDashboard = () => {
                                                             <CardTitle className={`mb-0 d-flex align-items-center ${isMobile ? 'flex-column align-items-start' : 'justify-content-between'}`}>
                                                                 <div className="d-flex align-items-center">
                                                                     <MdWork className="me-2" style={{ fontSize: isMobile ? '1.2rem' : '1.5rem' }} />
-                                                                    <span className={isMobile ? "small" : ""} style={{ fontWeight: 'bold' }}>👥 AGENTS ACTUELLEMENT EN CONGÉS</span>
+                                                                    <span className={isMobile ? "small" : ""} style={{ fontWeight: 'bold' }}>👥 AGENTS EN CESSATION DE SERVICE</span>
                                                                 </div>
                                                                 {agentsEnConges && Object.keys(agentsEnConges).length > 0 && (
                                                                     <Button color="light" size={isMobile ? "sm" : "sm"} className={isMobile ? "w-100 mt-2" : ""} onClick={() => setShowAgentsEnCongesModal(true)}>
@@ -6012,7 +6024,7 @@ const AgentDashboard = () => {
                                                                                             <div key={sdIndex} className="mb-2" style={{ fontSize: '0.9rem' }}>
                                                                                                 <div style={{ color: '#495057', fontWeight: '600' }}>{sousDirection.libelle}</div>
                                                                                                 <div style={{ color: '#6c757d', fontSize: '0.85rem' }}>
-                                                                                                    {totalAgents} agent{totalAgents > 1 ? 's' : ''} en congés
+                                                                                                    {totalAgents} agent{totalAgents > 1 ? 's' : ''} en cessation de service
                                                                                                     {totalRetards > 0 && (
                                                                                                         <span style={{ color: '#dc3545', fontWeight: 'bold', marginLeft: '5px' }}>
                                                                                                             (dont {totalRetards} en retard de reprise)
@@ -8952,7 +8964,7 @@ const AgentDashboard = () => {
                                     ) : directionAgents.length === 0 ? (
                                         <Alert color="info">
                                             <MdInfo className="me-2" />
-                                            Aucun agent trouvé dans votre {(() => { const r = getNormalizedRole(); if (r === 'dir_cabinet' || r === 'chef_cabinet') return 'Cabinet'; if (r === 'inspecteur_general') return 'inspection générale'; if (r === 'directeur_service_exterieur') return 'périmètre (services extérieurs)'; if (r === 'directeur' || r === 'directeur_central' || r === 'directeur_general' || r === 'gestionnaire_du_patrimoine' || r === 'president_du_fond' || r === 'responsble_cellule_de_passation') return 'direction'; if (r === 'chef_service') return 'service'; return 'sous-direction'; })()}.
+                                            Aucun agent trouvé dans votre {(() => { const r = getNormalizedRole(); if (r === 'dir_cabinet' || r === 'chef_cabinet') return 'Cabinet'; if (r === 'inspecteur_general') return 'inspection générale'; if (r === 'directeur_service_exterieur') return 'périmètre (services extérieurs)'; if (r === 'directeur' || r === 'directeur_central' || r === 'directeur_general' || r === 'gestionnaire_du_patrimoine' || r === 'president_du_fond' || r === 'responsable_cellule_de_passation') return 'direction'; if (r === 'chef_service') return 'service'; return 'sous-direction'; })()}.
                                         </Alert>
                                     ) : (
                                         <>
@@ -9207,9 +9219,18 @@ const AgentDashboard = () => {
             {/* Modales */}
             <CreateDemandeModal
                 isOpen={showCreateDemandeModal}
-                toggle={() => setShowCreateDemandeModal(!showCreateDemandeModal)}
+                toggle={() => {
+                    setShowCreateDemandeModal(!showCreateDemandeModal);
+                    if (showCreateDemandeModal) {
+                        setEditMode(false);
+                        setDemandeToEdit(null);
+                    }
+                }}
                 onDemandeCreated={handleDemandeCreated}
                 agentId={user?.id_agent}
+                editMode={editMode}
+                initialData={demandeToEdit}
+                demandeId={demandeToEdit?.id}
             />
 
             <DemandeDetails
@@ -9410,7 +9431,7 @@ const AgentDashboard = () => {
             <Modal isOpen={showAgentsEnCongesModal} toggle={() => setShowAgentsEnCongesModal(false)} size="xl">
                 <ModalHeader toggle={() => setShowAgentsEnCongesModal(false)}>
                     <MdWork className="me-2" />
-                    Agents actuellement en congés
+                    Agents en cessation de service
                 </ModalHeader>
                 <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                     {agentsEnConges && Object.keys(agentsEnConges).length > 0 ? (
@@ -9478,7 +9499,7 @@ const AgentDashboard = () => {
                         </div>
                     ) : (
                         <Alert color="info">
-                            Aucun agent actuellement en congés
+                            Aucun agent en cessation de service
                         </Alert>
                     )}
                 </ModalBody>
